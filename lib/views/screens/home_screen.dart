@@ -289,6 +289,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   label: spec.label,
                 ),
             ],
+            onReselect: (index) {
+              // Tapping 路線 again while a category is open -> category list.
+              if (visibleIndices[index] == 1) {
+                context.read<NavigationController>().closeRouteCategory();
+              }
+            },
             onChanged: (index) {
               final busCtrl = context.read<BusController>();
               busCtrl.cancelMapPicking();

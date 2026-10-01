@@ -119,7 +119,29 @@ class _RouteListScreenState extends State<RouteListScreen> {
     });
 
     final keys = _RouteGroups.keys(busCtrl);
+    // In-tab sub-view (not a pushed route) so the bottom tab bar stays visible.
+    final open = context.select<NavigationController, String?>((n) => n.routeCategory);
+    final onRouteTab = context.select<NavigationController, bool>(
+      (n) => n.selectedIndex == 1 && !n.showMapView,
+    );
+    final showCategory = open != null && keys.contains(open);
 
+    return PopScope(
+      // Android back on a category page returns to the category list.
+      canPop: !(showCategory && onRouteTab),
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && showCategory && onRouteTab) {
+          context.read<NavigationController>().closeRouteCategory();
+        }
+      },
+      child: showCategory
+          ? _RouteCategoryView(key: ValueKey(open), categoryKey: open)
+          : _categoryList(context, isDark, busCtrl, langCtrl, keys),
+    );
+  }
+
+  Widget _categoryList(BuildContext context, bool isDark, BusController busCtrl,
+      LanguageController langCtrl, List<String> keys) {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Column(
@@ -168,9 +190,7 @@ class _RouteListScreenState extends State<RouteListScreen> {
                       title: Text(_categoryTitle(langCtrl, key), style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontSize: 15)), 
                       subtitle: Text(langCtrl.tr('routes_count').replaceAll('{n}', '$count'), style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[600], fontSize: 13)), 
                       trailing: const Icon(Icons.chevron_right, color: Colors.grey, size: 18), 
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => _RouteCategoryPage(categoryKey: key)),
-                      ),
+                      onTap: () => context.read<NavigationController>().openRouteCategory(key),
                     );
                   }
                 ),
@@ -182,9 +202,10 @@ class _RouteListScreenState extends State<RouteListScreen> {
 }
 
 /// Routes of one category, natural-sorted, in the existing route-row style.
-class _RouteCategoryPage extends StatelessWidget {
+/// Shown in place of the category list inside the 路線 tab.
+class _RouteCategoryView extends StatelessWidget {
   final String categoryKey;
-  const _RouteCategoryPage({required this.categoryKey});
+  const _RouteCategoryView({super.key, required this.categoryKey});
 
   @override
   Widget build(BuildContext context) {
@@ -194,7 +215,7 @@ class _RouteCategoryPage extends StatelessWidget {
     final routes = _RouteGroups.routes(busCtrl, categoryKey);
 
     return Scaffold(
-      backgroundColor: isDark ? Colors.black : Colors.white,
+      backgroundColor: Colors.transparent,
       body: Column(
         children: [
           Container(
@@ -205,7 +226,7 @@ class _RouteCategoryPage extends StatelessWidget {
                 IconButton(
                   icon: const Icon(Icons.arrow_back_ios_new, color: Colors.amber, size: 20),
                   tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-                  onPressed: () => Navigator.of(context).maybePop(),
+                  onPressed: () => context.read<NavigationController>().closeRouteCategory(),
                 ),
                 Expanded(
                   child: Text(
@@ -237,7 +258,6 @@ class _RouteCategoryPage extends StatelessWidget {
                   onTap: () { 
                     final bus = context.read<BusController>();
                     final nav = context.read<NavigationController>();
-                    Navigator.of(context).pop();
                     bus.setRoute(r.routeNo);
                     bus.fetchStops();
                     nav.changeTab(2);

@@ -269,6 +269,21 @@ class NavigationController extends ChangeNotifier {
     if (notify) notifyListeners();
   }
 
+  /// Category open inside the 路線 tab ('★' or a leading character); null =
+  /// category list. Kept while switching tabs.
+  String? routeCategory;
+
+  void openRouteCategory(String key) {
+    routeCategory = key;
+    notifyListeners();
+  }
+
+  void closeRouteCategory() {
+    if (routeCategory == null) return;
+    routeCategory = null;
+    notifyListeners();
+  }
+
   void changeTab(int index, {BusController? busCtrl}) {
     selectedIndex = index;
     closeMap(busCtrl: busCtrl, notify: false);

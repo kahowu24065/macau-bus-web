@@ -289,6 +289,7 @@ class RouteLiquidGlassNav extends StatelessWidget {
     required this.items,
     required this.selectedIndex,
     required this.onChanged,
+    this.onReselect,
     this.width,
     this.selectedColor = kRouteLgAccent,
     this.unselectedColor = Colors.white,
@@ -301,6 +302,8 @@ class RouteLiquidGlassNav extends StatelessWidget {
   final List<RouteLiquidGlassNavItem> items;
   final int selectedIndex;
   final ValueChanged<int> onChanged;
+  /// Tap on the already-selected tab (the package bar only reports changes).
+  final ValueChanged<int>? onReselect;
   final double? width;
   final Color selectedColor;
   final Color unselectedColor;
@@ -320,7 +323,7 @@ class RouteLiquidGlassNav extends StatelessWidget {
         ? RouteLiquidGlassNavStyle.kDarkGlassFill
         : RouteLiquidGlassNavStyle.kLightGlassFill;
 
-    return Stack(
+    final stack = Stack(
       fit: StackFit.expand,
       children: [
         // 1) Your controllable dark glass (always respects kDarkGlassFill).
@@ -348,6 +351,27 @@ class RouteLiquidGlassNav extends StatelessWidget {
           pillStyle: RouteLiquidGlassNavStyle.pillStyle,
         ),
       ],
+    );
+    if (onReselect == null) return stack;
+    // Re-tap detection: a Listener sees raw pointers without joining the
+    // gesture arena, so the bar's own tap/drag handling is untouched.
+    Offset? down;
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (e) => down = e.position,
+      onPointerUp: (e) {
+        final start = down;
+        down = null;
+        if (start == null || (e.position - start).distance > 12) return;
+        final size = MediaQuery.sizeOf(context);
+        final left = (size.width - w) / 2;
+        final top = size.height - bottom - h;
+        final p = e.position;
+        if (p.dx < left || p.dx > left + w || p.dy < top || p.dy > top + h) return;
+        final idx = ((p.dx - left) / (w / items.length)).floor().clamp(0, items.length - 1);
+        if (idx == selectedIndex) onReselect!(idx);
+      },
+      child: stack,
     );
   }
 }
