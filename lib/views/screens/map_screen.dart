@@ -489,7 +489,7 @@ class _MapScreenState extends State<MapScreen> {
             child: Container(
               alignment: Alignment.center,
               decoration: BoxDecoration(color: Colors.green.shade700, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2.5), boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 4)]),
-              child: const Text('上', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+              child: Text(context.read<LanguageController>().tr('badge_board'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
             ),
           ),
         ),
@@ -513,7 +513,7 @@ class _MapScreenState extends State<MapScreen> {
             child: Container(
               alignment: Alignment.center,
               decoration: BoxDecoration(color: Colors.red.shade700, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2.5), boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 4)]),
-              child: const Text('落', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+              child: Text(context.read<LanguageController>().tr('badge_alight'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
             ),
           ),
         ),

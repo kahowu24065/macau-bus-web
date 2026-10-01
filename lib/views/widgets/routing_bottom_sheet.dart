@@ -436,16 +436,8 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
         }
 
         if (activeItineraries.isEmpty) {
-          final noValidTitle = langCtrl.currentLanguage == 'en'
-              ? 'No valid bus route'
-              : (langCtrl.currentLanguage == 'pt'
-                  ? 'Sem rota válida'
-                  : '沒有可用巴士方案');
-          final noValidDesc = langCtrl.currentLanguage == 'en'
-              ? 'No official bus links the stops near your start and end. Try another destination or time.'
-              : (langCtrl.currentLanguage == 'pt'
-                  ? 'Nenhuma carreira oficial liga as paragens perto do início e do fim. Tente outro destino ou horário.'
-                  : '起點同終點附近搵唔到官方站表對得通嘅巴士。請試其他目的地或時間。');
+          final noValidTitle = langCtrl.tr('no_valid_route');
+          final noValidDesc = langCtrl.tr('no_valid_route_desc');
           if (mounted) _showErrorDialog(noValidTitle, noValidDesc, langCtrl);
           return;
         }

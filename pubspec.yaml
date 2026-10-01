@@ -2,7 +2,7 @@ name: macau_bus_app
 description: "A new Flutter project."
 publish_to: 'none'
 
-version: 1.0.9+10
+version: 1.0.10+11
 
 environment:
   sdk: ^3.12.2

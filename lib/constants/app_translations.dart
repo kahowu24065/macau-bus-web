@@ -1,6 +1,7 @@
 class AppTranslations {
   static const Map<String, Map<String, String>> data = {
     'zh': {
+      'service_warning': '服務警告', 'stop_warning_body': '@stop 目前有服務警告或暫停停靠，請留意最新交通消息或考慮改用其他相近站點。', 'err_server_blocked': '伺服器回應逾時或被阻擋，請再試一次', 'err_no_stops': '查無此路線之站點 / 此乃循環路線', 'err_query_failed': '查詢失敗', 'badge_board': '上', 'badge_alight': '落', 'unknown_stop': '未知車站', 'no_valid_route': '沒有可用巴士方案', 'no_valid_route_desc': '起點同終點附近搵唔到官方站表對得通嘅巴士。請試其他目的地或時間。',
       'suspended_stops': '暫停停靠站點：',
       'temp_alt_stops': '臨時 / 替代站點：',
       'approx_mins': '約 @mins 分鐘',
@@ -142,6 +143,7 @@ class AppTranslations {
       'about_us': '關於我們', 'disclaimer': '免責聲明', 'privacy_policy': '隱私權政策',
     },
     'zhHans': {
+      'service_warning': '服务警告', 'stop_warning_body': '@stop 目前有服务警告或暂停停靠，请留意最新交通消息或考虑改用其他相近站点。', 'err_server_blocked': '服务器响应超时或被阻挡，请再试一次', 'err_no_stops': '查无此路线之站点 / 此乃循环路线', 'err_query_failed': '查询失败', 'badge_board': '上', 'badge_alight': '下', 'unknown_stop': '未知车站', 'no_valid_route': '没有可用巴士方案', 'no_valid_route_desc': '起点和终点附近找不到官方站表相连的巴士。请尝试其他目的地或时间。',
       'suspended_stops': '暂停停靠站点：',
       'temp_alt_stops': '临时 / 替代站点：',
       'approx_mins': '约 @mins 分钟',
@@ -266,6 +268,7 @@ class AppTranslations {
       'about_us': '关于我们', 'disclaimer': '免责声明', 'privacy_policy': '隐私权政策',
     },
     'pt': {
+      'service_warning': 'Aviso de serviço', 'stop_warning_body': '@stop tem atualmente um aviso de serviço ou paragem suspensa. Consulte as últimas notícias de trânsito ou use uma paragem próxima.', 'err_server_blocked': 'O servidor não respondeu ou bloqueou o pedido. Tente novamente.', 'err_no_stops': 'Sem paragens para esta rota / rota circular', 'err_query_failed': 'Falha na consulta', 'badge_board': 'S', 'badge_alight': 'D', 'unknown_stop': 'Paragem desconhecida', 'no_valid_route': 'Sem rota válida', 'no_valid_route_desc': 'Nenhuma carreira oficial liga as paragens perto do início e do fim. Tente outro destino ou horário.',
       'suspended_stops': 'Paragens suspensas:',
       'temp_alt_stops': 'Paragens temporárias/alternativas:',
       'approx_mins': 'Aprox. @mins min',
@@ -373,7 +376,7 @@ class AppTranslations {
       'gps_opened': 'GPS ligado. Alarme ativado.', 'gps_failed': 'Falha ao obter localização GPS',
       'jump_to_nearest': 'Ir para paragem próxima', 'cannot_calc_nearest': 'Incapaz de calcular paragem',
       'no_timetable': 'Sem horário disponível', 'service_hours': 'Horário de Serviço', 'frequency_mins': 'Frequência (min)',
-      'mon_to_sat': 'Segunda a Sábado', 'sun_and_holidays': 'Domingos e Feriados',
+      'mon_to_sat': 'Seg. a Sáb. (exceto feriados públicos)', 'sun_and_holidays': 'Dom. e feriados públicos',
       'upgrade_pro': 'Mudar para Pro', 'upgrade_desc': 'Apoie o desenvolvimento e remova anúncios com a mensalidade.', 'upgrade_desc_priced': 'Apoie o desenvolvimento e remova anúncios por {price}/mês.',
       'buy_coffee': 'Pagar um café', 'buy_coffee_priced': 'Pagar um café ({price}/mês)', 'pro_title': 'Patrocinador Pro',
       'pro_subtitle_active': 'Obrigado! Anúncios removidos.', 'pro_subtitle_inactive': 'Assine para remover anúncios.',
@@ -390,6 +393,7 @@ class AppTranslations {
       'about_us': 'Sobre Nós', 'disclaimer': 'Isenção de responsabilidade', 'privacy_policy': 'Política de Privacidade',
     },
     'en': {
+      'service_warning': 'Service warning', 'stop_warning_body': '@stop currently has a service warning or suspended stop. Check the latest traffic news or consider a nearby stop.', 'err_server_blocked': 'The server timed out or blocked the request. Please try again.', 'err_no_stops': 'No stops found for this route / circular route', 'err_query_failed': 'Query failed', 'badge_board': 'On', 'badge_alight': 'Off', 'unknown_stop': 'Unknown stop', 'no_valid_route': 'No valid bus route', 'no_valid_route_desc': 'No official bus links the stops near your start and end. Try another destination or time.',
       'suspended_stops': 'Suspended Stops:',
       'temp_alt_stops': 'Temporary / Alternative Stops:',
       'approx_mins': '~@mins mins',
@@ -497,7 +501,7 @@ class AppTranslations {
       'gps_opened': 'GPS turned on. Alarm set.', 'gps_failed': 'Failed to get GPS location',
       'jump_to_nearest': 'Jumped to nearest stop', 'cannot_calc_nearest': 'Cannot calculate nearest stop',
       'no_timetable': 'No timetable available', 'service_hours': 'Service Hours', 'frequency_mins': 'Frequency (mins)',
-      'mon_to_sat': 'Mon to Sat', 'sun_and_holidays': 'Sun & Holidays',
+      'mon_to_sat': 'Mon–Sat (except public holidays)', 'sun_and_holidays': 'Sun & public holidays',
       'upgrade_pro': 'Upgrade to Pro', 'upgrade_desc': 'Support development and remove all ads with a monthly subscription.', 'upgrade_desc_priced': 'Support development and remove all ads for {price}/month.',
       'buy_coffee': 'Buy me a coffee', 'buy_coffee_priced': 'Buy me a coffee ({price}/month)', 'pro_title': 'Pro Sponsor',
       'pro_subtitle_active': 'Thank you! Ads removed.', 'pro_subtitle_inactive': 'Subscribe to remove all ads.',
@@ -541,6 +545,16 @@ class AppTranslations {
     }
     if (t.toLowerCase() == 'origin') return tr('map_start_name');
     if (t.toLowerCase() == 'destination') return tr('map_dest_name');
+    return raw;
+  }
+
+  /// Known Chinese client/server error messages -> current language.
+  static String localizeErrorMessage(String raw, String Function(String key) tr) {
+    final s = raw.trim();
+    if (s.contains('逾時') || s.contains('被阻擋')) return tr('err_server_blocked');
+    if (s.contains('查無此路線') || s.contains('循環路線')) return tr('err_no_stops');
+    if (s == '查詢失敗') return tr('err_query_failed');
+    if (s.startsWith('查無路線')) return tr('err_no_stops');
     return raw;
   }
 

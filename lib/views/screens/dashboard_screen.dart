@@ -336,7 +336,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[600], borderRadius: BorderRadius.circular(2))),
               const SizedBox(height: 16),
-              Text(stopData['name'] ?? '未知車站', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 20, fontWeight: FontWeight.bold)),
+              Text(stopData['name'] ?? context.read<LanguageController>().tr('unknown_stop'), style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 4),
               Text('Code: ${stopData['code'] ?? '-'}', style: TextStyle(color: Colors.grey.shade500, fontSize: 14)),
               const SizedBox(height: 24),

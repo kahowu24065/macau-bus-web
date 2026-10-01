@@ -16,6 +16,8 @@ import '../widgets/glowing_badge.dart';
 import '../widgets/blinking_warning_icon.dart';
 import '../../controllers/language_controller.dart';
 import '../widgets/route_liquid_glass_nav.dart';
+import '../../utils/service_label_i18n.dart';
+import '../../constants/app_translations.dart';
 
 class BusRouteScreen extends StatefulWidget {
   const BusRouteScreen({super.key});
@@ -136,7 +138,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                info != null ? (info['title'] ?? langCtrl.tr('route_notice')) : '服務警告',
+                info != null ? (info['title'] ?? langCtrl.tr('route_notice')) : langCtrl.tr('service_warning'),
                 style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ),
@@ -170,7 +172,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                 ],
               )
             : Text(
-                '$localizedStopName 目前有服務警告或暫停停靠，請留意最新交通消息或考慮改用其他相近站點。', 
+                langCtrl.tr('stop_warning_body').replaceAll('@stop', localizedStopName), 
                 style: TextStyle(
                   color: isDark ? Colors.white70 : Colors.black87,
                   fontSize: 15,
@@ -371,7 +373,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                     children: [
                       const SizedBox(height: 10),
                       Container(width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 12), color: Colors.green[700], child: Row(children: [Expanded(child: Center(child: Text(langCtrl.tr('service_hours'), style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)))), Expanded(child: Center(child: Text(langCtrl.tr('frequency_mins'), style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold))))])),
-                      Flexible(child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: sections.map((sec) => _buildTimetableSection(sec['title']?.toString() ?? '', sec['items'], isDark)).toList()))),
+                      Flexible(child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: sections.map((sec) => _buildTimetableSection(ServiceLabelI18n.translate(sec['title']?.toString() ?? '', langCtrl.currentLanguage), sec['items'], isDark, langCtrl.currentLanguage)).toList()))),
                     ],
                   ),
           ),
@@ -381,7 +383,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     );
   }
 
-  Widget _buildTimetableSection(String title, dynamic dataDynamic, bool isDark) {
+  Widget _buildTimetableSection(String title, dynamic dataDynamic, bool isDark, String lang) {
     if (dataDynamic == null) return const SizedBox();
     final List<dynamic> data = dataDynamic as List<dynamic>;
     if (data.isEmpty) return const SizedBox();
@@ -399,7 +401,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
           return Container(
             decoration: BoxDecoration(color: isDark ? const Color(0xFF1E1E1E) : Colors.white, border: isLast ? null : Border(bottom: BorderSide(color: isDark ? const Color(0xFF333333) : Colors.grey.shade300, width: 1))),
             padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Row(children: [Expanded(child: Center(child: Text(item['time']?.toString() ?? '', style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 14)))), Expanded(child: Center(child: Text(item['freq']?.toString() ?? '', style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 14))))]),
+            child: Row(children: [Expanded(child: Center(child: Text(ServiceLabelI18n.translate(item['time']?.toString() ?? '', lang), style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 14)))), Expanded(child: Center(child: Text(ServiceLabelI18n.translate(item['freq']?.toString() ?? '', lang), style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 14))))]),
           );
         })
       ],
@@ -504,7 +506,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
           'plate': '',
         });
       } else if (busCtrl.etaData != null) {
-        upcoming.add({'status': cleanEta.isEmpty ? langCtrl.tr('click_to_update') : cleanEta, 'plate': officialPlate.trim()});
+        upcoming.add({'status': cleanEta.isEmpty ? langCtrl.tr('click_to_update') : AppTranslations.localizeEtaStatus(cleanEta, langCtrl.tr), 'plate': officialPlate.trim()});
       }
     }
     
@@ -1158,7 +1160,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                       )
                     : Center(
                         child: Text(
-                          busCtrl.errorMessage ?? '',
+                          AppTranslations.localizeErrorMessage(busCtrl.errorMessage ?? '', langCtrl.tr),
                           style: const TextStyle(color: Colors.redAccent),
                         ),
                       ),
