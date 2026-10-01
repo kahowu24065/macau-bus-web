@@ -93,7 +93,7 @@ class AppTranslations {
       
       // Route List (總覽頁)
       'all_routes_title': '🚌 全澳巴士路線總覽', 'macau_bus_route_desc': '澳門巴士路線',
-      'routes_special': '節日特別班次',
+      'routes_special': '特別班次', 'routes_starting_with': '{c} 開頭路線', 'routes_count': '{n} 條路線',
       
       // Favorites (收藏頁)
       'fav_routes_title': '⭐ 我的收藏路線', 'no_fav_routes': '暫無收藏路線\n快啲去車站頁面收藏啦！',
@@ -223,7 +223,7 @@ class AppTranslations {
       'open_amap': '打开 高德地图',
       'open_gmap': '打开 Google Maps',
       'all_routes_title': '🚌 全澳巴士路线总览', 'macau_bus_route_desc': '澳门巴士路线',
-      'routes_special': '节日特别班次',
+      'routes_special': '特别班次', 'routes_starting_with': '{c} 开头路线', 'routes_count': '{n} 条路线',
       'fav_routes_title': '⭐ 我的收藏路线', 'no_fav_routes': '暂无收藏路线\n快去车站页面收藏吧！',
       'unknown_dir': '未知方向',
       'nav_history': '🕒 导航历史纪录', 'no_nav_history': '暂无导航纪录', 'route_plan_count': ' 个路线方案',
@@ -347,7 +347,7 @@ class AppTranslations {
       'open_amap': 'Abrir Amap',
       'open_gmap': 'Abrir Google Maps',
       'all_routes_title': '🚌 Todas as Rotas', 'macau_bus_route_desc': 'Rota de Autocarro',
-      'routes_special': 'Serviços especiais',
+      'routes_special': 'Serviços especiais', 'routes_starting_with': 'Rotas começadas por {c}', 'routes_count': '{n} rotas',
       'fav_routes_title': '⭐ Minhas Favoritas', 'no_fav_routes': 'Sem favoritos\nVá à página de paragens para adicionar!',
       'unknown_dir': 'Desconhecida',
       'nav_history': '🕒 Histórico de Navegação', 'no_nav_history': 'Sem histórico', 'route_plan_count': ' Opções de rota',
@@ -471,7 +471,7 @@ class AppTranslations {
       'open_amap': 'Open Amap',
       'open_gmap': 'Open Google Maps',
       'all_routes_title': '🚌 All Bus Routes', 'macau_bus_route_desc': 'Macau Bus Route',
-      'routes_special': 'Festival / special services',
+      'routes_special': 'Special services', 'routes_starting_with': 'Routes starting with {c}', 'routes_count': '{n} routes',
       'fav_routes_title': '⭐ Favorite Routes', 'no_fav_routes': 'No favorites yet\nGo to Stops page to add one!',
       'unknown_dir': 'Unknown',
       'nav_history': '🕒 Route History', 'no_nav_history': 'No routing history', 'route_plan_count': ' route options',
