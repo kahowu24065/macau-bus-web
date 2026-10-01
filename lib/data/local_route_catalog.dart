@@ -4,6 +4,11 @@
 /// incl. the DSAT routes added by the monthly rebuild). Fallback only: the app
 /// replaces it with the live list (and its SharedPreferences cache) when reachable.
 class LocalRouteCatalog {
+  /// Festival / special-service routes (server specialRoutes on 2026-10-01).
+  static const List<String> special = [
+    '21AT', '26AT', '3AS', '3BX', '17S1', '17T', '26S', '52S', '101XS',
+  ];
+
   static const List<String> zh = [
     '1|關閘 ↔ 媽閣',
     '1A|筷子基街 ↔ 新口岸/科英布拉街',

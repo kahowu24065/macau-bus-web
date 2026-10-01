@@ -42,6 +42,9 @@ class BusController extends ChangeNotifier {
   int _etaShownDir = -1;
 
   List<String> allRoutesWithDir = [];
+  /// Festival / special-service routes (節日特別班次), from the server's
+  /// specialRoutes (bundled list until the first successful fetch).
+  List<String> specialRoutes = List<String>.from(LocalRouteCatalog.special);
   bool isLoadingAllRoutes = false;
 
   List<LatLng> gpxRoutePoints = [];
@@ -376,7 +379,10 @@ class BusController extends ChangeNotifier {
         allRoutesWithDir = routes;
         _currentRoutesLang = lang;
         _catalogNetworkLang = lang;
+        final special = BusApiService.lastSpecialRoutes;
+        if (special != null) specialRoutes = special;
         try {
+          if (special != null) await prefs.setStringList('cache_special_routes', special);
           await prefs.setStringList(cacheKey, routes);
           await prefs.setInt('${cacheKey}_ts', DateTime.now().millisecondsSinceEpoch);
         } catch (e) {
@@ -389,6 +395,7 @@ class BusController extends ChangeNotifier {
             cached.isNotEmpty &&
             _isDiskCacheFresh(prefs, cacheKey, _routesDiskTtl)) {
           allRoutesWithDir = cached;
+          specialRoutes = prefs.getStringList('cache_special_routes') ?? specialRoutes;
           _currentRoutesLang = lang;
           notifyListeners();
         }

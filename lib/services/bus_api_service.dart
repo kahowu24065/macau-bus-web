@@ -175,6 +175,10 @@ class BusApiService {
     return [];
   }
 
+  /// specialRoutes from the last successful /all-routes.json (festival /
+  /// date-only routes); null if the server did not send the field.
+  static List<String>? lastSpecialRoutes;
+
   static Future<List<String>> fetchAllRoutes({String lang = 'zh'}) async {
     try {
       final res = await _get(
@@ -185,7 +189,11 @@ class BusApiService {
 
       if (res.statusCode == 200 && !res.body.trimLeft().startsWith('<')) {
         final json = jsonDecode(res.body);
-        if (json['success'] == true) return List<String>.from(json['routes']);
+        if (json['success'] == true) {
+          final sp = json['specialRoutes'];
+          lastSpecialRoutes = sp is List ? sp.map((e) => '$e'.trim().toUpperCase()).toList() : null;
+          return List<String>.from(json['routes']);
+        }
       }
     } catch (e) {
       debugPrint('fetchAllRoutes Error: $e');
