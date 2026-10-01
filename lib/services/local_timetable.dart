@@ -58,10 +58,37 @@ class LocalTimetable {
   static bool serviceEnded(String route, {DateTime? at}) =>
       _windowState(route, at) == _Win.ended;
 
+  /// Running filter for planning. [at] set = an OTP leg's scheduled boarding
+  /// time at that stop: the OTP GTFS has explicit trips with per-stop times
+  /// and day/holiday services, so the leg is trusted as-is (the bundled
+  /// windows are terminal departures and wrongly dropped mid-route boardings
+  /// after the last terminal departure). Without [at] (official fallback
+  /// suggestions) the bundled window is checked against now.
   static bool unavailableForPlanning(String route, {DateTime? at}) {
-    if (noServiceToday(route, at: at)) return true;
+    if (at != null) return false;
+    if (noServiceToday(route)) return true;
     final win = _windowState(route, at);
     return win == _Win.notStarted || win == _Win.ended;
+  }
+
+  /// [at] (Macau wall clock) is within [beforeMins] before to [afterMins]
+  /// after a route's last terminal departure: the boarding may be on one of
+  /// the last trips, so a live ETA cross-check is worth showing.
+  static bool nearLastTrip(
+    String route,
+    DateTime at, {
+    int beforeMins = 30,
+    int afterMins = 90,
+  }) {
+    final atMins = at.hour * 60 + at.minute;
+    for (final row in _rowsFor(route)) {
+      if (_rowIsNoService(row)) continue;
+      final endMins = _toMins('${row['endTime'] ?? ''}');
+      if (endMins == null) continue;
+      final delta = (atMins - endMins + 1440) % 1440; // minutes after end
+      if (delta <= afterMins || delta >= 1440 - beforeMins) return true;
+    }
+    return false;
   }
 
   static List<Map> _rowsFor(String route) {

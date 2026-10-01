@@ -63,6 +63,8 @@ class AppTranslations {
       'service_not_started': '本日服務尚未開始',
       'last_bus_departed': '尾班車已過',
       'service_ended': '本日服務已結束',
+      'last_bus_maybe_passed': '尾班車可能已過站',
+      'last_bus_confirmed': '尾班車仍在途 ✓',
       'click_to_update': '點擊更新',
       'waiting_at_terminal': '等候總站發車',
 
@@ -196,6 +198,8 @@ class AppTranslations {
       'service_not_started': '本日服务尚未开始',
       'last_bus_departed': '尾班车已过',
       'service_ended': '本日服务已结束',
+      'last_bus_maybe_passed': '尾班车可能已过站',
+      'last_bus_confirmed': '尾班车仍在途 ✓',
       'click_to_update': '点击更新',
       'waiting_at_terminal': '等候总站发车',
       'btn_close': '关闭', 'cancel': '取消', 'open': '开启', 'direction_to': '往', 'received': '收到',
@@ -317,6 +321,8 @@ class AppTranslations {
       'service_not_started': 'Serviço não iniciado',
       'last_bus_departed': 'Último autocarro partiu',
       'service_ended': 'Serviço terminado',
+      'last_bus_maybe_passed': 'O último autocarro pode já ter passado',
+      'last_bus_confirmed': 'Último autocarro a caminho ✓',
       'click_to_update': 'Toque para atualizar',
       'waiting_at_terminal': 'A aguardar no terminal',
       'btn_close': 'Fechar', 'cancel': 'Cancelar', 'open': 'Ligar', 'direction_to': 'Para', 'received': 'OK',
@@ -438,6 +444,8 @@ class AppTranslations {
       'service_not_started': 'Service not started',
       'last_bus_departed': 'Last bus departed',
       'service_ended': 'Service ended',
+      'last_bus_maybe_passed': 'Last bus may have passed',
+      'last_bus_confirmed': 'Last bus on its way ✓',
       'click_to_update': 'Tap to update',
       'waiting_at_terminal': 'Waiting at terminal',
       'btn_close': 'Close', 'cancel': 'Cancel', 'open': 'Turn On', 'direction_to': 'To', 'received': 'Got it',
@@ -553,6 +561,12 @@ class AppTranslations {
     }
     if (s.contains('服務已結束') || s.contains('服务已结束') || s.contains('收車')) {
       return tr('service_ended');
+    }
+    if (s.contains('可能已過站') ||
+        s.contains('可能已过站') ||
+        s.toLowerCase().contains('may have passed') ||
+        s.contains('pode já ter passado')) {
+      return tr('last_bus_maybe_passed');
     }
     if (s.contains('尾班車已過') || s.contains('尾班车已过')) return tr('last_bus_departed');
     if (s.contains('等候總站') || s.contains('等候总站')) return tr('waiting_at_terminal');

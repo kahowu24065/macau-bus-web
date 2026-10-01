@@ -203,11 +203,15 @@ class RouteResultHelper {
                       );
                       final etaPending = etaRaw.isEmpty;
                       
-                      final isNoService = etaStr == langCtrl.tr('no_service_today') ||
-                          etaStr == langCtrl.tr('service_ended') ||
-                          etaStr == langCtrl.tr('service_not_started') ||
-                          etaStr == langCtrl.tr('last_bus_departed') ||
-                          etaStr == langCtrl.tr('no_service_ghost');
+                      // Live check near the last trip: warn, never strike through.
+                      final maybeEnded = leg.liveCheck == 'maybe_ended' ||
+                          etaStr == langCtrl.tr('last_bus_maybe_passed');
+                      final isNoService = !maybeEnded &&
+                          (etaStr == langCtrl.tr('no_service_today') ||
+                              etaStr == langCtrl.tr('service_ended') ||
+                              etaStr == langCtrl.tr('service_not_started') ||
+                              etaStr == langCtrl.tr('last_bus_departed') ||
+                              etaStr == langCtrl.tr('no_service_ghost'));
 
                       // 🌟 獲取路段嘅翻譯時間 (例如: "約 6 分鐘" 或 "(約 12 分鐘)")
                       final legTimeStr = langCtrl.tr('approx_mins').replaceAll('@mins', legDuration.toString());
@@ -244,11 +248,21 @@ class RouteResultHelper {
                                       ? langCtrl.tr('no_service_ghost')
                                       : '${langCtrl.tr('realtime_eta')}${etaPending ? langCtrl.tr('eta_updating') : etaStr}',
                                   style: TextStyle(
-                                    color: isNoService ? Colors.redAccent : Colors.greenAccent[700],
+                                    color: isNoService
+                                        ? Colors.redAccent
+                                        : (maybeEnded ? Colors.orangeAccent[700] : Colors.greenAccent[700]),
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
+                                if (leg.liveCheck == 'confirmed')
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 2.0),
+                                    child: Text(
+                                      langCtrl.tr('last_bus_confirmed'),
+                                      style: TextStyle(color: Colors.greenAccent[700], fontSize: 12),
+                                    ),
+                                  ),
                               ],
                             ),
                           ),

@@ -1413,17 +1413,21 @@ class NavigationController extends ChangeNotifier {
     final lang = langCtrl.currentLanguage;
     await LocalTimetable.ensureLoaded();
     final at = leg.boardingTimeMacau;
-    if (LocalTimetable.noServiceToday(route, at: at)) {
-      leg.realtimeEta = langCtrl.tr('no_service_today');
-      return;
-    }
-    if (LocalTimetable.serviceNotStarted(route, at: at)) {
-      leg.realtimeEta = langCtrl.tr('service_not_started');
-      return;
-    }
-    if (LocalTimetable.serviceEnded(route, at: at)) {
-      leg.realtimeEta = langCtrl.tr('service_ended');
-      return;
+    // OTP legs (boarding time known) are trusted: the GTFS has per-stop
+    // times. The bundled terminal windows only gate official fallback legs.
+    if (at == null) {
+      if (LocalTimetable.noServiceToday(route)) {
+        leg.realtimeEta = langCtrl.tr('no_service_today');
+        return;
+      }
+      if (LocalTimetable.serviceNotStarted(route)) {
+        leg.realtimeEta = langCtrl.tr('service_not_started');
+        return;
+      }
+      if (LocalTimetable.serviceEnded(route)) {
+        leg.realtimeEta = langCtrl.tr('service_ended');
+        return;
+      }
     }
 
     try {
@@ -1496,6 +1500,7 @@ class NavigationController extends ChangeNotifier {
       );
       if (etaRes['success'] == true && etaRes['etaData'] != null) {
         leg.realtimeEta = etaRes['etaData']['status'];
+        _applyLastTripCheck(leg, etaRes, langCtrl);
       } else {
         leg.realtimeEta = langCtrl.tr('no_eta');
       }
@@ -1504,6 +1509,34 @@ class NavigationController extends ChangeNotifier {
     }
   }
 
+
+  /// Near a route's last trip, use the same live ETA response to confirm a
+  /// bus is still on the way to the boarding stop, or warn that the last bus
+  /// may have passed. Only annotates; never hides the plan. OTP legs only.
+  void _applyLastTripCheck(
+    RouteLeg leg,
+    Map<String, dynamic> etaRes,
+    LanguageController langCtrl,
+  ) {
+    final at = leg.boardingTimeMacau;
+    if (at == null) return;
+    // Only when boarding is soon (the live feed says nothing about later).
+    final mins = DateTime.fromMillisecondsSinceEpoch(leg.startTime!)
+        .difference(DateTime.now())
+        .inMinutes;
+    if (mins > 45) return;
+    if (!LocalTimetable.nearLastTrip(leg.routeName, at)) return;
+    final approaching = (etaRes['approachingCount'] as int?) ?? 0;
+    if (approaching > 0) {
+      leg.liveCheck = 'confirmed';
+      return;
+    }
+    if (etaRes['lastBusWindow'] == true || etaRes['serviceEnded'] == true) {
+      leg.liveCheck = 'maybe_ended';
+      // OTP still schedules this trip: show a warning, not "service ended".
+      leg.realtimeEta = langCtrl.tr('last_bus_maybe_passed');
+    }
+  }
 
   List<LatLng> decodePolyline(String encoded) {
     List<LatLng> polyline = [];

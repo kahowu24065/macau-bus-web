@@ -111,7 +111,16 @@ class BusApiService {
       final json = jsonDecode(res.body);
       if (json['success'] == true) {
         List<Bus> buses = ((json['allBuses'] ?? []) as List).map((b) => Bus.fromJson(b as Map<String, dynamic>)).toList();
-        return { 'success': true, 'etaData': json['data'], 'allBuses': buses, 'timetableDetails': json['debug_details'] };
+        return {
+          'success': true,
+          'etaData': json['data'],
+          'allBuses': buses,
+          'timetableDetails': json['debug_details'],
+          // Buses between the terminal and the target stop.
+          'approachingCount': (json['dataList'] is List) ? (json['dataList'] as List).length : 0,
+          'lastBusWindow': json['lastBusWindow'] == true,
+          'serviceEnded': json['serviceEnded'] == true,
+        };
       }
       return {'success': false, 'message': json['message'] ?? '查詢失敗'};
     } catch (e) {

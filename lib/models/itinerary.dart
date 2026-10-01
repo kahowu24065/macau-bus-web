@@ -80,6 +80,11 @@ class RouteLeg {
   int? alightStopSeq;
   String? realtimeEta;
 
+  /// Live cross-check near a route's last trip (set after results show):
+  /// 'confirmed' = a bus is still before the boarding stop,
+  /// 'maybe_ended' = no bus before the stop and the service window is over.
+  String? liveCheck;
+
   /// Official DSAT names after match (override OTP phantom names in UI).
   String? displayFromName;
   String? displayFromNameEn;

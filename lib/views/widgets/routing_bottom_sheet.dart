@@ -9,6 +9,7 @@ import '../../services/places_service.dart';
 import '../../services/otp_service.dart'; // 🌟 正規化引入獨立嘅 Service
 import '../../services/local_timetable.dart';
 import '../../models/itinerary.dart';
+import '../../utils/venue_entrances.dart';
 import 'route_liquid_glass_nav.dart';
 
 class RoutingBottomSheet extends StatefulWidget {
@@ -275,8 +276,12 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
         _destPlaceId,
         langCtrl,
       );
-      final startLoc = await startFuture;
-      final destLoc = await destFuture;
+      // Pins inside large venues (威尼斯人) are routed from/to the nearest
+      // walk-connected entrance.
+      final startRaw = await startFuture;
+      final destRaw = await destFuture;
+      final startLoc = startRaw == null ? null : VenueEntrances.snap(startRaw);
+      final destLoc = destRaw == null ? null : VenueEntrances.snap(destRaw);
       if (startLoc == null) {
         String desc = langCtrl.tr('invalid_start_desc').replaceAll('@text', startText);
         if (mounted) _showErrorDialog(langCtrl.tr('invalid_start_title'), desc, langCtrl);
@@ -306,8 +311,9 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
         for (var rawIt in result) {
           final itinerary = Itinerary.fromJson(rawIt as Map<String, dynamic>)
             ..requestedAtMs = requestedAtMs;
-          // Service window is checked at each leg's boarding time, so a
-          // night bus boarding after midnight (N2 00:11) is kept at 23:30.
+          // OTP legs carry their scheduled boarding time at that stop (GTFS
+          // per-stop times incl. holidays), so they are trusted; the bundled
+          // terminal windows only gate legs without a time.
           final hasNoServiceRoute = itinerary.legs.any((leg) =>
               _isBusLeg(leg) &&
               LocalTimetable.unavailableForPlanning(
