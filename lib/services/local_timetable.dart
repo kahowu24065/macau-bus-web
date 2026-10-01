@@ -1,11 +1,23 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 
-/// Official DSAT window from the app bundle — no network.
+import '../config/api_config.dart';
+
+/// Official DSAT service windows. Starts from the app bundle (no network);
+/// a background refresh then swaps in today's windows from the server
+/// (/api/timetable.json: refreshed monthly, picks the weekday / Sunday-holiday
+/// / UM-holiday section for the day). The bundled copy stays the fallback, and
+/// callers never wait for the network.
 /// Used to hide 不設服務 / 尚未開始 / 已結束 routes before ETA/stop APIs.
 class LocalTimetable {
   static Map<String, dynamic> _map = {};
   static bool _loaded = false;
+  static DateTime? _lastFetch;
+  static String? _serverDate;
+  static bool _fetching = false;
+  static const Duration _refreshEvery = Duration(minutes: 30);
 
   static String normalizeRoute(String route) {
     var r = route.trim().toUpperCase();
@@ -16,7 +28,10 @@ class LocalTimetable {
   }
 
   static Future<void> ensureLoaded() async {
-    if (_loaded && _map.isNotEmpty) return;
+    if (_loaded && _map.isNotEmpty) {
+      _maybeRefresh();
+      return;
+    }
     try {
       final raw = await rootBundle.loadString('assets/timetable.json');
       final decoded = jsonDecode(raw);
@@ -27,7 +42,40 @@ class LocalTimetable {
       // Keep previous map if reload fails.
     }
     _loaded = _map.isNotEmpty;
+    _maybeRefresh();
   }
+
+  /// Fire-and-forget server refresh (5 s timeout); keeps the current map on
+  /// any error, challenge page or suspiciously small answer.
+  static void _maybeRefresh() {
+    final now = DateTime.now();
+    if (_fetching) return;
+    if (_lastFetch != null && now.difference(_lastFetch!) < _refreshEvery) return;
+    _fetching = true;
+    _lastFetch = now;
+    unawaited(_fetchServer().whenComplete(() => _fetching = false));
+  }
+
+  static Future<void> _fetchServer() async {
+    try {
+      final res = await http
+          .get(Uri.parse('${ApiConfig.api}/timetable.json'))
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode != 200 || ApiConfig.looksLikeChallenge(res)) return;
+      final decoded = jsonDecode(utf8.decode(res.bodyBytes));
+      if (decoded is! Map || decoded['routes'] is! Map) return;
+      final routes = Map<String, dynamic>.from(decoded['routes'] as Map);
+      if (routes.length < 50) return;
+      _map = routes;
+      _loaded = true;
+      _serverDate = '${decoded['date'] ?? ''}';
+    } catch (_) {
+      // Offline / timeout: keep the bundled (or last fetched) windows.
+    }
+  }
+
+  /// Service day (YYYYMMDD) of the server windows in use, null = bundled copy.
+  static String? get serverDate => _serverDate;
 
   /// Seasonal routes whose dates come from the OTP GTFS calendar (e.g. 21AT
   /// runs 1-7 Oct). The bundled snapshot says 不設服務, so for OTP legs (which
