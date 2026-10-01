@@ -48,29 +48,24 @@ class BusApiService {
       timeout: timeout,
     );
 
+    // One retry on the same (Cloudflare) origin with a fresh connection.
     try {
       final res = await once();
       if (!kIsWeb && ApiConfig.looksLikeChallenge(res)) {
-        ApiConfig.preferDirectOrigin();
+        debugPrint('API got challenge/blocked ${res.statusCode}, retrying once');
         client.reset();
         return await once();
       }
       return res;
     } on TimeoutException {
       client.reset();
-      if (!kIsWeb) {
-        ApiConfig.preferDirectOrigin();
-        return await once();
-      }
+      if (!kIsWeb) return await once();
       rethrow;
     } catch (e) {
       final msg = e.toString();
       if (msg.contains('ClientException') || msg.contains('SocketException')) {
         client.reset();
-        if (!kIsWeb) {
-          ApiConfig.preferDirectOrigin();
-          return await once();
-        }
+        if (!kIsWeb) return await once();
       }
       rethrow;
     }
