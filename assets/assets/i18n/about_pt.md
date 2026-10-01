@@ -1,0 +1,1 @@
+O "Previsão de Autocarros - MBKa" dedica-se a proporcionar aos cidadãos de Macau e aos turistas uma experiência de transporte público precisa e conveniente. Esta aplicação combina dados de trânsito em tempo real com tecnologia inteligente de cálculo de rotas, ajudando os utilizadores a planear facilmente as suas viagens e a acompanhar o estado dos autocarros em tempo real.
