@@ -1,36 +1,126 @@
 import 'dart:async';
 import 'dart:ui';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart'; // 👈 必須加入這行匯入
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import 'bus_api_service.dart';
 import 'notification_service.dart';
+import '../constants/app_translations.dart';
+
+class _NotificationConfig {
+  static const String foregroundChannelId = 'macau_bus_tracking_v2';
+  static const String alarmChannelId = 'macau_bus_arrival_v2';
+
+  static const String foregroundChannelName = '巴士背景監測';
+  static const String alarmChannelName = '巴士到站提示';
+
+  static const int foregroundNotificationId = 888;
+}
+
+const String _alarmSentKey = NotificationService.boardingAlarmSentKey;
+
+String _normaliseLanguage(String language) {
+  final String value = language.trim().replaceAll('_', '-').toLowerCase();
+
+  if (value == 'zh-hk' || value == 'zh-tw' || value == 'zh-hant') return 'zh';
+  if (value == 'zh-cn' || value == 'zh-sg' || value == 'zh-hans') return 'zh';
+  if (value.startsWith('en')) return 'en';
+  if (value.startsWith('pt')) return 'pt';
+
+  return value.isEmpty ? 'zh' : value;
+}
+
+String _bgTr(
+  String key,
+  String language, {
+  Map<String, String>? params,
+}) {
+  final Map<String, Map<String, String>> data = AppTranslations.data;
+  final String lang = _normaliseLanguage(language);
+
+  String text = data[lang]?[key] ?? data[language]?[key] ?? data['zh']?[key] ?? key;
+
+  if (params != null) {
+    for (final entry in params.entries) {
+      text = text.replaceAll(entry.key, entry.value);
+    }
+  }
+  return text;
+}
+
+int? _toInt(dynamic value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value.trim());
+  return null;
+}
+
+int? _getCurrentStopSeq(dynamic bus) {
+  if (bus is Map) {
+    const keys = <String>['currentStopSeq', 'current_stop_seq', 'currentStop', 'stopSeq', 'stop_seq'];
+    for (final key in keys) {
+      final int? value = _toInt(bus[key]);
+      if (value != null) return value;
+    }
+    return null;
+  }
+  try {
+    return _toInt((bus as dynamic).currentStopSeq);
+  } catch (_) {
+    return null;
+  }
+}
+
+List<dynamic> _getAllBuses(dynamic result) {
+  if (result is! Map) return <dynamic>[];
+  final dynamic buses = result['allBuses'] ?? result['all_buses'];
+  return buses is List ? List<dynamic>.from(buses) : <dynamic>[];
+}
 
 class BackgroundTrackerService {
-static Future<void> initialize() async {
-    // 1. 註冊通知頻道 (保留上次的修改)
-    final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
-    const AndroidNotificationChannel channel = AndroidNotificationChannel(
-      'macau_bus_alarm', 
-      '巴士實時追蹤', 
-      description: '顯示巴士背景追蹤狀態', 
-      importance: Importance.high, 
-    );
-    await flutterLocalNotificationsPlugin
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(channel);
+  static Future<void> initialize() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String lang = prefs.getString('language_code') ?? 'zh';
+    final FlutterLocalNotificationsPlugin notifications = FlutterLocalNotificationsPlugin();
 
-    // 2. 設定背景服務
-    final service = FlutterBackgroundService();
+    const AndroidNotificationChannel foregroundChannel = AndroidNotificationChannel(
+      _NotificationConfig.foregroundChannelId,
+      _NotificationConfig.foregroundChannelName,
+      description: '顯示巴士背景監測狀態',
+      importance: Importance.high,
+      playSound: false,
+      enableVibration: true,
+    );
+
+    const AndroidNotificationChannel alarmChannel = AndroidNotificationChannel(
+      _NotificationConfig.alarmChannelId,
+      _NotificationConfig.alarmChannelName,
+      description: '顯示巴士到站提示',
+      importance: Importance.high,
+      playSound: true,
+      enableVibration: true,
+    );
+
+    final AndroidFlutterLocalNotificationsPlugin? androidNotifications =
+        notifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+
+    await androidNotifications?.createNotificationChannel(foregroundChannel);
+    await androidNotifications?.createNotificationChannel(alarmChannel);
+
+    final FlutterBackgroundService service = FlutterBackgroundService();
+
     await service.configure(
       androidConfiguration: AndroidConfiguration(
         onStart: onStart,
-        autoStart: false, // 🔑 必須確保這裡是 false，禁止系統自動啟動
+        autoStart: false,
         isForegroundMode: true,
-        notificationChannelId: 'macau_bus_alarm',
-        initialNotificationTitle: '巴士追蹤中',
-        initialNotificationContent: '正在背景為您實時監測巴士到站狀態',
-        foregroundServiceNotificationId: 888,
+        notificationChannelId: _NotificationConfig.foregroundChannelId,
+        initialNotificationTitle: _bgTr('bg_tracking_title', lang),
+        initialNotificationContent: _bgTr('bg_tracking_body', lang),
+        foregroundServiceNotificationId: _NotificationConfig.foregroundNotificationId,
       ),
       iosConfiguration: IosConfiguration(
         autoStart: false,
@@ -38,43 +128,60 @@ static Future<void> initialize() async {
       ),
     );
 
-    // 👇 3. 終極防呆清場機制：App 啟動時，檢查是否有進行中的任務
-    final prefs = await SharedPreferences.getInstance();
-    final route = prefs.getString('track_route');
-    
-    // 如果發現沒有儲存路線（代表用戶根本未撳追蹤），但服務卻在運行（幽靈進程）
-    if (route == null || route.isEmpty) {
-      if (await service.isRunning()) {
-        // 即刻發送停止指令，將殘留的通知與服務強制擊殺
-        service.invoke('stopService');
-      }
+    final String route = prefs.getString('track_route') ?? '';
+    if (route.isEmpty && await service.isRunning()) {
+      service.invoke('stopService');
     }
   }
 
-  // 啟動追蹤：將當前路線參數寫入 SharedPreferences，然後啟動服務
   static Future<void> startTracking({
-    required String route, 
-    required int direction, 
-    required int targetStopSeq
+    required String route,
+    required int direction,
+    required int targetStopSeq,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final FlutterBackgroundService service = FlutterBackgroundService();
+    final bool alreadyRunning = await service.isRunning();
+
     await prefs.setString('track_route', route);
     await prefs.setInt('track_dir', direction);
     await prefs.setInt('track_stop_seq', targetStopSeq);
-    
-    final service = FlutterBackgroundService();
-    await service.startService();
+
+    final String lang = prefs.getString('language_code') ?? 'zh';
+
+    await service.configure(
+      androidConfiguration: AndroidConfiguration(
+        onStart: onStart,
+        autoStart: false,
+        isForegroundMode: true,
+        notificationChannelId: _NotificationConfig.foregroundChannelId,
+        initialNotificationTitle: _bgTr('bg_tracking_title', lang),
+        initialNotificationContent: _bgTr('bg_tracking_body', lang),
+        foregroundServiceNotificationId: _NotificationConfig.foregroundNotificationId,
+      ),
+      iosConfiguration: IosConfiguration(
+        autoStart: false,
+        onForeground: onStart,
+      ),
+    );
+
+    await prefs.setBool(_alarmSentKey, false);
+
+    if (!alreadyRunning) {
+      await service.startService();
+    }
   }
 
-  // 停止追蹤
   static Future<void> stopTracking() async {
-    final service = FlutterBackgroundService();
-    service.invoke('stopService');
-    
-    final prefs = await SharedPreferences.getInstance();
+    final FlutterBackgroundService service = FlutterBackgroundService();
+    if (await service.isRunning()) {
+      service.invoke('stopService');
+    }
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.remove('track_route');
     await prefs.remove('track_dir');
     await prefs.remove('track_stop_seq');
+    await prefs.remove(_alarmSentKey);
   }
 }
 
@@ -82,51 +189,125 @@ static Future<void> initialize() async {
 void onStart(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
   await NotificationService.init();
-  
-  final prefs = await SharedPreferences.getInstance();
-  
-  service.on('stopService').listen((event) {
+
+  final SharedPreferences prefs = await SharedPreferences.getInstance();
+  Timer? timer;
+  bool isChecking = false;
+  bool hasShownAlarm = false;
+  String lastLanguage = '';
+
+  void stopBackgroundTracking() {
+    timer?.cancel();
+    timer = null;
     service.stopSelf();
+  }
+
+  service.on('stopService').listen((_) {
+    stopBackgroundTracking();
   });
 
-  // 背景定時器：每 10 秒檢查一次
-  Timer.periodic(const Duration(seconds: 10), (timer) async {
-    String route = prefs.getString('track_route') ?? '';
-    int dir = prefs.getInt('track_dir') ?? 0;
-    int stopSeq = prefs.getInt('track_stop_seq') ?? -1;
+  // 🌟 已修復：避開 AndroidServiceInstance，直接用 Plugin 覆寫通知
+  Future<void> updateForegroundText(String lang, String route) async {
+    final FlutterLocalNotificationsPlugin plugin = FlutterLocalNotificationsPlugin();
+    
+    // 🌟 修正重點：補返 id:, title:, body:, notificationDetails: 呢四個標籤
+    await plugin.show(
+      id: _NotificationConfig.foregroundNotificationId, // 888
+      title: _bgTr('bg_tracking_title', lang),
+      body: _bgTr('bg_tracking_body', lang),
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          _NotificationConfig.foregroundChannelId,
+          _NotificationConfig.foregroundChannelName,
+          icon: 'ic_bg_service_small', 
+          ongoing: true,
+          playSound: false,
+          enableVibration: false,
+          onlyAlertOnce: true,
+        ),
+      ),
+    );
+  }
 
-    if (route.isEmpty || stopSeq == -1) {
-      timer.cancel();
-      service.stopSelf();
-      return;
-    }
+  Future<void> checkTracking() async {
+    if (isChecking) return;
+    isChecking = true;
 
     try {
-      final result = await BusApiService.fetchBusETA(route, dir, targetStopSeq: stopSeq);
-      
-      if (result['success'] == true) {
-        List<dynamic> allBuses = result['allBuses'];
-        
-        for (var bus in allBuses) {
-          int currentSeq = bus.currentStopSeq;
-          if (currentSeq > 0) {
-            int stopsAway = stopSeq - currentSeq;
-            
-            if (stopsAway >= 0 && stopsAway <= 2) {
-              await NotificationService.showAlarm(
-                '🚌 準備上車！', 
-                '$route 路線即將抵達第 $stopSeq 站，請準備！'
-              );
-              
-              timer.cancel();
-              service.stopSelf();
-              break;
-            }
-          }
-        }
+      await prefs.reload();
+
+      final String route = prefs.getString('track_route') ?? '';
+      final int direction = prefs.getInt('track_dir') ?? 0;
+      final int targetStopSeq = prefs.getInt('track_stop_seq') ?? -1;
+      final String lang = prefs.getString('language_code') ?? 'zh';
+      final bool alarmSent = prefs.getBool(_alarmSentKey) ?? false;
+
+      if (route.isEmpty || targetStopSeq < 0 || alarmSent) {
+        stopBackgroundTracking();
+        return;
       }
-    } catch (e) {
-      // 容錯處理
+
+      if (lang != lastLanguage) {
+        lastLanguage = lang;
+        await updateForegroundText(lang, route);
+      }
+
+      final dynamic result = await BusApiService.fetchBusETA(
+        route,
+        direction,
+        targetStopSeq: targetStopSeq,
+        lang: _normaliseLanguage(lang),
+      );
+
+      if (result is! Map || result['success'] != true) return;
+
+      for (final dynamic bus in _getAllBuses(result)) {
+        final int? currentStopSeq = _getCurrentStopSeq(bus);
+        if (currentStopSeq == null || currentStopSeq <= 0) continue;
+
+        final int stopsAway = targetStopSeq - currentStopSeq;
+        if (stopsAway < 0 || stopsAway > 2) continue;
+
+        if (hasShownAlarm) {
+          stopBackgroundTracking();
+          return;
+        }
+
+        final bool claimed = await NotificationService.claimBoardingAlarm();
+        if (!claimed) {
+          hasShownAlarm = true;
+          stopBackgroundTracking();
+          return;
+        }
+
+        hasShownAlarm = true;
+
+        final String title = _bgTr('board_ready_title', lang);
+        final String body = _bgTr(
+          'board_ready_body',
+          lang,
+          params: <String, String>{
+            '@route': route,
+            '@stop': targetStopSeq.toString(),
+          },
+        );
+
+        await NotificationService.showAlarm(title, body);
+        stopBackgroundTracking();
+        return;
+      }
+    } catch (error, stackTrace) {
+      debugPrint('Background tracking error: $error');
+      debugPrint('$stackTrace');
+    } finally {
+      isChecking = false;
     }
-  });
+  }
+
+  timer = Timer.periodic(
+    const Duration(seconds: 10),
+    (_) => checkTracking(),
+  );
+
+  await checkTracking();
 }

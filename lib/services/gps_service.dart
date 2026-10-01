@@ -1,56 +1,90 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../controllers/bus_controller.dart';
 import '../controllers/location_controller.dart';
+import '../controllers/language_controller.dart';
+import '../views/widgets/route_liquid_glass_nav.dart';
 
 class GpsService {
   /// 統一處理開啟/關閉 GPS，並在首次定位成功時自動選取最近站點
-  static void toggleGpsAndAutoSelectStop(BuildContext context, BusController busCtrl, LocationController locCtrl) {
+  static void toggleGpsAndAutoSelectStop(
+    BuildContext context, 
+    BusController busCtrl, 
+    LocationController locCtrl, 
+    {bool showSnackbar = true} 
+  ) {
     bool wasFollowing = locCtrl.isFollowingUser;
-    bool hasAutoSelected = false; // 單次執行鎖標記
+    bool hasAutoSelected = false; 
+    
+    // 🌟 即時讀取語言設定，確保獲取最新狀態
+    final langCtrl = context.read<LanguageController>();
 
-    // 清除舊有提示
-    ScaffoldMessenger.of(context).clearSnackBars();
+    if (showSnackbar) {
+      ScaffoldMessenger.of(context).clearSnackBars();
+    }
 
     locCtrl.toggleLocationTracking((loc) {
-      // 雙重攔截：只有啱啱開啟定位 (!wasFollowing) 而且未選擇過 (!hasAutoSelected) 先執行
       if (!wasFollowing && !hasAutoSelected) {
-        hasAutoSelected = true; // 鎖上標記，防止後續更新狂彈
+        hasAutoSelected = true; 
         final res = busCtrl.findNearestStop(loc);
         
         if (res != null) {
           busCtrl.selectStop(res['seq']);
           busCtrl.fetchBusETA();
           
-          ScaffoldMessenger.of(context).clearSnackBars();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                '📍 已為您選取最近站點：${res['seq']}. ${res['name']}\n(距離約 ${res['distance']} 公尺)'
+          if (showSnackbar) {
+            // 💡 1. 提取靜態 UI 翻譯
+            String stopMsg = langCtrl.tr('auto_selected_stop');
+            String distMsg = langCtrl.tr('distance_approx');
+            
+            // 💡 2. 終極解法：喺 busCtrl.stopsList 搵返個車站，然後叫佢自己做翻譯！
+            String stopName = res['name'] ?? '未知站點'; // 預設用中文兜底
+            try {
+              // 透過 seq 搵返對應嘅車站 Object
+              final stopObj = busCtrl.stopsList.firstWhere((s) => s.seq == res['seq']);
+              // 直接調用你 Model 已經寫好嘅翻譯函數！
+              stopName = stopObj.getLocalizedName(langCtrl.currentLanguage);
+            } catch (e) {
+              // 防呆機制：萬一搵唔到，就繼續用預設中文
+              debugPrint('GPS Auto Select: 搵唔到對應嘅車站 Object');
+            }
+            
+            // 💡 3. 將翻譯好嘅 $stopName 放入 SnackBar
+            ScaffoldMessenger.of(context).clearSnackBars();
+            ScaffoldMessenger.of(context).showSnackBar(
+              RouteLiquidGlassNavStyle.snackBar(
+                context: context,
+                content: Text(
+                  '📍 $stopMsg: ${res['seq']}. $stopName\n($distMsg ${res['distance']}m)'
+                ),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 4),
               ),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 4),
-            ),
-          );
+            );
+          }
         }
       }
     });
 
-    // 顯示開關狀態提示
-    if (!wasFollowing) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('已開啟實時追蹤及定位'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('已取消實時定位追蹤'),
-          duration: Duration(seconds: 2),
-        ),
-      );
+    if (showSnackbar) {
+      if (!wasFollowing) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          RouteLiquidGlassNavStyle.snackBar(
+            context: context,
+            content: Text(langCtrl.tr('gps_tracking_on')),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          RouteLiquidGlassNavStyle.snackBar(
+            context: context,
+            content: Text(langCtrl.tr('gps_tracking_off')),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     }
   }
 }

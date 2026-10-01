@@ -1,25 +1,38 @@
 import 'dart:async';
 import 'dart:ui';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:text_scroll/text_scroll.dart'; // 🌟 引入走馬燈套件
 
 import '../../controllers/bus_controller.dart';
 import '../../controllers/location_controller.dart';
 import '../../controllers/navigation_controller.dart';
+import '../../services/gps_service.dart'; 
+import '../../services/bus_api_service.dart'; 
 import '../../models/bus.dart';
-import '../widgets/custom_banner_ad.dart';
+import '../../controllers/background_controller.dart';
+import '../widgets/glowing_badge.dart';
+import '../widgets/blinking_warning_icon.dart';
+import '../../controllers/language_controller.dart';
+import '../widgets/route_liquid_glass_nav.dart';
 
 class BusRouteScreen extends StatefulWidget {
   const BusRouteScreen({super.key});
   @override 
   State<BusRouteScreen> createState() => _BusRouteScreenState();
 }
-
+String _lastFetchedLang = '';
 class _BusRouteScreenState extends State<BusRouteScreen> {
   late BusController _busCtrl;
   late LocationController _locCtrl;
+  final ScrollController _listScrollController = ScrollController();
+  final GlobalKey _selectedStopKey = GlobalKey();
+  
+  List<dynamic> _routeAlerts = [];
+  String _lastFetchedRoute = '';
+
+  final Map<String, dynamic> _stopWarningCache = {};
 
   @override
   void initState() {
@@ -37,7 +50,142 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
       if (_busCtrl.stopsList.isEmpty && !_busCtrl.isLoadingStops && _busCtrl.currentRoute.isNotEmpty) {
         _busCtrl.fetchStops();
       }
+      
+      if (_busCtrl.currentRoute.isNotEmpty) {
+        _lastFetchedRoute = _busCtrl.currentRoute;
+        _fetchRouteAlerts(_busCtrl.currentRoute);
+      }
     });
+  }
+
+  Future<void> _fetchRouteAlerts(String route) async {
+    if (route.isEmpty) return;
+    try {
+      final alerts = await BusApiService.fetchRouteAlerts(route);
+      if (!mounted) return;
+      setState(() {
+        _routeAlerts = alerts;
+      });
+    } catch (e) {
+      debugPrint('讀取路線通告失敗: $e');
+    }
+  }
+
+  bool _hasAnyStopWarning(dynamic stop) {
+    return stop.hasAlert == true;
+  }
+
+  Future<void> _openStopWarning(dynamic stop) async {
+    final alertUrl = stop.alertUrl?.toString() ?? '';
+    final stopCode = stop.code?.toString().trim().toUpperCase() ?? '';
+
+    if (alertUrl.isNotEmpty && alertUrl != 'internal_api_call' && !alertUrl.startsWith('internal')) {
+      final url = Uri.tryParse(alertUrl);
+      if (url != null && await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+        return;
+      }
+    }
+
+    if (!mounted) return;
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final langCtrl = context.read<LanguageController>();
+    final localizedStopName = stop.getLocalizedName(langCtrl.currentLanguage);
+    final cacheKey = '${_busCtrl.currentRoute}_${stopCode}_${langCtrl.currentLanguage}';
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator(color: Colors.amber)),
+    );
+
+    Map<String, dynamic>? info;
+
+    try {
+      if (_stopWarningCache.containsKey(cacheKey)) {
+        info = _stopWarningCache[cacheKey]; 
+      } else {
+        info = await BusApiService.fetchStopDetour(
+          route: _busCtrl.currentRoute,
+          stationCode: stopCode,
+          lang: langCtrl.currentLanguage,
+        );
+        if (info != null) {
+          _stopWarningCache[cacheKey] = info;
+        }
+      }
+    } catch (e) {
+      debugPrint('獲取車站官方通告失敗: $e');
+    }
+
+    if (mounted) {
+      Navigator.of(context).pop(); 
+    }
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(info != null ? Icons.warning_amber_rounded : Icons.warning_rounded, color: info != null ? Colors.redAccent : Colors.amber, size: 28),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                info != null ? (info['title'] ?? langCtrl.tr('route_notice')) : '服務警告',
+                style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: info != null 
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    info['time'] ?? '',
+                    style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 14, height: 1.4),
+                  ),
+                  const SizedBox(height: 12),
+                  if (info['suspendStops'] != null && (info['suspendStops'] as List).isNotEmpty) ...[
+                    Text(langCtrl.tr('suspended_stops'), style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 14)),
+                    ...((info['suspendStops'] as List).map((s) => Text('• $s', style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 13)))),
+                    const SizedBox(height: 8),
+                  ],
+                  if (info['alternativeStops'] != null && (info['alternativeStops'] as List).isNotEmpty) ...[
+                    Text(langCtrl.tr('temp_alt_stops'), style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 14)),
+                    ...((info['alternativeStops'] as List).map((s) => Text('• $s', style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 13)))),
+                    const SizedBox(height: 8),
+                  ],
+                  if (info['provider'] != null && info['provider'].toString().isNotEmpty) ...[
+                    const Divider(color: Colors.grey),
+                    Text(info['provider'], style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                  ],
+                ],
+              )
+            : Text(
+                '$localizedStopName 目前有服務警告或暫停停靠，請留意最新交通消息或考慮改用其他相近站點。', 
+                style: TextStyle(
+                  color: isDark ? Colors.white70 : Colors.black87,
+                  fontSize: 15,
+                  height: 1.4,
+                ),
+              ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(langCtrl.tr('btn_close'), style: const TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _onLocationChanged() {
@@ -47,12 +195,18 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
   }
 
   void _onBusStateChanged() {
+    if (_busCtrl.currentRoute.isNotEmpty && _busCtrl.currentRoute != _lastFetchedRoute) {
+      _lastFetchedRoute = _busCtrl.currentRoute;
+      _fetchRouteAlerts(_busCtrl.currentRoute);
+    }
+
     if (_busCtrl.pendingAlarmTitle != null && mounted) {
       final title = _busCtrl.pendingAlarmTitle!;
       final body = _busCtrl.pendingAlarmBody ?? '';
       
       _busCtrl.clearPendingAlarm();
       final isDark = Theme.of(context).brightness == Brightness.dark;
+      final langCtrl = context.read<LanguageController>();
       
       showDialog(
         context: context,
@@ -70,7 +224,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('收到', style: TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
+              child: Text(langCtrl.tr('received'), style: const TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
             )
           ],
         )
@@ -82,56 +236,103 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
   void dispose() {
     _busCtrl.removeListener(_onBusStateChanged);
     _locCtrl.removeListener(_onLocationChanged);
+    _listScrollController.dispose();
     super.dispose();
   }
 
-  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
-    const p = 0.017453292519943295;
-    final a = 0.5 - math.cos((lat2 - lat1) * p)/2 + 
-              math.cos(lat1 * p) * math.cos(lat2 * p) * 
-              (1 - math.cos((lon2 - lon1) * p))/2;
-    return 12742 * math.asin(math.sqrt(a)) * 1000; 
+  // Jump near the selected row first (builder only mounts visible
+  // children), then ensureVisible so the live-tracking card is on screen.
+  void _ensureSelectedStopVisible() {
+    if (!mounted || !_listScrollController.hasClients) return;
+    final seq = _busCtrl.selectedStopSeq;
+    if (seq == null) return;
+    final index = _busCtrl.stopsList.indexWhere((s) => s.seq == seq);
+    if (index < 0) return;
+
+    const compactRowHeight = 56.0;
+    final maxExtent = _listScrollController.position.maxScrollExtent;
+    final estimate = (index * compactRowHeight).clamp(0.0, maxExtent);
+    _listScrollController.jumpTo(estimate);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ctx = _selectedStopKey.currentContext;
+      if (ctx == null) return;
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: 0.08,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
-  void _showAllAlertsDialog(BusController busCtrl) {
-    final alertStops = busCtrl.stopsList.where((s) => s.hasAlert && s.alertUrl != null && s.alertUrl!.isNotEmpty).toList(); 
-    if (alertStops.isEmpty) { 
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('本路線目前沒有生效中的通告。'))); 
-      return; 
+  void _scrollToNearestStop() {
+    if (_locCtrl.userLocation == null) {
+      return;
+    }
+    
+    final nearest = _busCtrl.findNearestStop(_locCtrl.userLocation!);
+    if (nearest != null && nearest['seq'] != null) {
+      int targetSeq = nearest['seq'];
+      _busCtrl.selectStop(targetSeq);
+      _busCtrl.fetchBusETA();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _ensureSelectedStopVisible();
+      });
     } 
-    final isDark = Theme.of(context).brightness == Brightness.dark; 
-    showDialog(context: context, builder: (context) { 
-      return AlertDialog(
-        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white, 
-        title: Row(children: [const Icon(Icons.campaign, color: Colors.redAccent), const SizedBox(width: 8), Text('路線通告總覽', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 18, fontWeight: FontWeight.bold))]), 
-        content: SizedBox(
-          width: double.maxFinite, 
-          child: ListView.separated(
-            shrinkWrap: true, itemCount: alertStops.length, 
-            separatorBuilder: (ctx, i) => Divider(height: 1, color: isDark ? const Color(0xFF333333) : Colors.grey[300]), 
-            itemBuilder: (ctx, i) { 
-              final stop = alertStops[i]; 
-              return ListTile(
-                contentPadding: EdgeInsets.zero, leading: const Icon(Icons.warning_rounded, color: Colors.yellow, size: 20), 
-                title: Text('${stop.seq}. ${stop.name} (${stop.code})', style: TextStyle(color: isDark ? Colors.white : Colors.black)), 
-                trailing: const Icon(Icons.open_in_new, color: Colors.grey, size: 16), 
-                onTap: () async { 
-                  final url = Uri.parse(stop.alertUrl!); 
-                  if (await canLaunchUrl(url)) {
-                    await launchUrl(url, mode: LaunchMode.externalApplication); 
-                  }
-                }
-              ); 
-            }
-          )
-        ), 
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('關閉', style: TextStyle(color: Colors.amber)))]
-      ); 
-    }); 
+  }
+  
+  void _showFareDialog(BuildContext context, bool isDark) {
+    final langCtrl = context.read<LanguageController>();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.monetization_on, color: Colors.amber, size: 28),
+            const SizedBox(width: 8),
+            Text(langCtrl.tr('fare_table'), style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontSize: 18)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildFareRow(langCtrl.tr('general_fare'), '\$6.0', isDark),
+            const SizedBox(height: 12),
+            _buildFareRow(langCtrl.tr('macau_pass'), '\$3.0', isDark),
+            const SizedBox(height: 12),
+            _buildFareRow(langCtrl.tr('student_card'), '\$1.5', isDark),
+            const SizedBox(height: 12),
+            _buildFareRow(langCtrl.tr('elderly_disabled'), '\$0.0', isDark),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(langCtrl.tr('btn_close'), style: const TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFareRow(String type, String price, bool isDark) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(type, style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 15)),
+        Text(price, style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 16, fontWeight: FontWeight.bold)),
+      ],
+    );
   }
 
   void _showTimetableDialog(BusController busCtrl) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final langCtrl = context.read<LanguageController>();
     final currentRoute = busCtrl.currentRoute;
     List<dynamic> sections = [];
     
@@ -144,10 +345,10 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
           sections = details['sections'];
         } else if (details['weekday'] != null || details['holiday'] != null) {
           if (details['weekday'] != null && (details['weekday'] as List).isNotEmpty) {
-            sections.add({'title': '星期一至六（公眾假期除外）', 'items': details['weekday']});
+            sections.add({'title': langCtrl.tr('mon_to_sat'), 'items': details['weekday']});
           }
           if (details['holiday'] != null && (details['holiday'] as List).isNotEmpty) {
-            sections.add({'title': '星期日及公眾假期', 'items': details['holiday']});
+            sections.add({'title': langCtrl.tr('sun_and_holidays'), 'items': details['holiday']});
           }
         }
       }
@@ -160,21 +361,21 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
           backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
           contentPadding: EdgeInsets.zero, clipBehavior: Clip.antiAlias,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          title: Row(children: [const Icon(Icons.schedule, color: Colors.amber), const SizedBox(width: 8), Text('$currentRoute 時間表', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontSize: 18))]),
+          title: Row(children: [const Icon(Icons.schedule, color: Colors.amber), const SizedBox(width: 8), Text('$currentRoute ${langCtrl.tr('timetable')}', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontSize: 18))]),
           content: SizedBox(
             width: double.maxFinite,
             child: sections.isEmpty
-                ? const Padding(padding: EdgeInsets.all(30.0), child: Center(child: Text('暫無詳細時間表資料', style: TextStyle(color: Colors.grey))))
+                ? Padding(padding: const EdgeInsets.all(30.0), child: Center(child: Text(langCtrl.tr('no_timetable'), style: const TextStyle(color: Colors.grey))))
                 : Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const SizedBox(height: 10),
-                      Container(width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 12), color: Colors.green[700], child: const Row(children: [Expanded(child: Center(child: Text('服務時間', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)))), Expanded(child: Center(child: Text('班次 (分鐘)', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold))))])),
+                      Container(width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 12), color: Colors.green[700], child: Row(children: [Expanded(child: Center(child: Text(langCtrl.tr('service_hours'), style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)))), Expanded(child: Center(child: Text(langCtrl.tr('frequency_mins'), style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold))))])),
                       Flexible(child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: sections.map((sec) => _buildTimetableSection(sec['title']?.toString() ?? '', sec['items'], isDark)).toList()))),
                     ],
                   ),
           ),
-          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('關閉', style: TextStyle(color: Colors.amber)))],
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text(langCtrl.tr('btn_close'), style: const TextStyle(color: Colors.amber)))],
         );
       },
     );
@@ -205,30 +406,37 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     );
   }
 
-  List<Map<String, String>> _getUpcomingBusesInfo(BusController busCtrl) {
+  List<Map<String, String>> _getUpcomingBusesInfo(BusController busCtrl, LanguageController langCtrl) {
     if (busCtrl.etaData == null && busCtrl.allBusesList.isEmpty) return [];
     
     String rawEtaStatus = busCtrl.etaData?['status']?.toString() ?? '';
     String cleanEta = rawEtaStatus.replaceAll(RegExp(r'[\(（].*?[\)）]'), '').trim();
     
-    bool isTerminalEnded = busCtrl.isServiceEnded || 
-                           cleanEta.contains('本日服務已結束') || 
-                           cleanEta.contains('服務已結束') || 
-                           cleanEta.contains('收車') || 
-                           cleanEta.contains('尾班車已過');
-
     bool hasBusesOnRoad = busCtrl.allBusesList.isNotEmpty;
 
+    bool isTerminalNoService = busCtrl.isNoServiceToday || cleanEta.contains('不設服務');
+    
+    bool endedFromEta = cleanEta.contains('本日服務已結束') ||
+        cleanEta.contains('服務已結束') ||
+        cleanEta.contains('收車') ||
+        cleanEta.contains('尾班車已過') ||
+        cleanEta.toLowerCase().contains('service ended') ||
+        cleanEta.toLowerCase().contains('terminad');
+    bool notStartedFromEta = cleanEta.contains('尚未開始') ||
+        cleanEta.contains('未開始') ||
+        cleanEta.toLowerCase().contains('not started') ||
+        cleanEta.toLowerCase().contains('não iniciado') ||
+        cleanEta.toLowerCase().contains('nao iniciado');
+
+    bool isServiceStopped = busCtrl.isServiceNotStarted ||
+        busCtrl.isServiceEnded ||
+        notStartedFromEta ||
+        endedFromEta;
+
     int? firstBusMins;
-    final minMatch = RegExp(r'約\s*(\d+)\s*分鐘').firstMatch(cleanEta) ?? RegExp(r'(\d+)\s*分鐘').firstMatch(cleanEta);
+    final minMatch = RegExp(r'(?:約\s*|~\s*)?(\d+)\s*(?:分鐘|mins|min)', caseSensitive: false).firstMatch(cleanEta);
     if (minMatch != null) {
       firstBusMins = int.tryParse(minMatch.group(1)!);
-    }
-
-    int? firstBusStops;
-    final stopMatch = RegExp(r'尚有\s*(\d+)\s*站').firstMatch(cleanEta) ?? RegExp(r'(\d+)\s*站').firstMatch(cleanEta);
-    if (stopMatch != null) {
-      firstBusStops = int.tryParse(stopMatch.group(1)!);
     }
 
     String officialPlate = busCtrl.etaData?['busLicense']?.toString() ?? 
@@ -245,43 +453,6 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
       approachingBuses.sort((a, b) => 
           (busCtrl.selectedStopSeq! - a.currentStopSeq).compareTo(busCtrl.selectedStopSeq! - b.currentStopSeq));
       
-      approachingBuses.removeWhere((bus) {
-        int diff = busCtrl.selectedStopSeq! - bus.currentStopSeq;
-        if (diff == 0) {
-            bool isGhost = false;
-            if (firstBusStops != null && firstBusStops > 1) {
-              isGhost = true;
-            } else if (firstBusMins != null && firstBusMins > 3) {
-              isGhost = true;
-            } else if (officialPlate.isNotEmpty && officialPlate != bus.busLicense.trim()) {
-              isGhost = true;
-            }
-            if (isGhost) return true;
-
-            try {
-              final currStop = busCtrl.stopsList.firstWhere((s) => s.seq == busCtrl.selectedStopSeq);
-              double distToCurr = _calculateDistance(bus.lat, bus.lng, currStop.lat, currStop.lng);
-              if (distToCurr > 200) {
-                dynamic nextStop;
-                for (var s in busCtrl.stopsList) {
-                  if (s.seq == busCtrl.selectedStopSeq! + 1) {
-                    nextStop = s;
-                  }
-                }
-                if (nextStop != null) {
-                  double distToNext = _calculateDistance(bus.lat, bus.lng, nextStop.lat, nextStop.lng);
-                  if (distToNext < distToCurr) {
-                    return true; 
-                  }
-                }
-              }
-            } catch (e) {
-              // Ignore
-            }
-        }
-        return false;
-      });
-      
       int firstBusDiff = -1;
       
       for (var bus in approachingBuses) {
@@ -297,9 +468,18 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
            } else {
              estimatedMins = (diff * 2.5).round();
            }
-           status = diff == 1 ? (estimatedMins > 0 ? '下站到達 (約 $estimatedMins 分鐘)' : '下站到達') : (estimatedMins > 0 ? '尚有 $diff 站 (約 $estimatedMins 分鐘)' : '尚有 $diff 站');
+           
+           if (diff == 1) {
+             status = estimatedMins > 0 
+                 ? langCtrl.tr('arriving_next_mins').replaceAll('@mins', estimatedMins.toString()) 
+                 : langCtrl.tr('arriving_next');
+           } else {
+             status = estimatedMins > 0 
+                 ? langCtrl.tr('stops_away_mins').replaceAll('@stops', diff.toString()).replaceAll('@mins', estimatedMins.toString()) 
+                 : langCtrl.tr('stops_away').replaceAll('@stops', diff.toString());
+           }
         } else {
-           status = '即將到站 / 到站中';
+           status = langCtrl.tr('arriving_soon');
         }
         upcoming.add({'status': status, 'plate': bus.busLicense.trim()});
         if (upcoming.length >= 2) break; 
@@ -307,29 +487,41 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     }
     
     if (upcoming.isEmpty) {
-      if (isTerminalEnded) {
-        if (hasBusesOnRoad) {
-          upcoming.add({'status': '尾班車已過', 'plate': ''});
-        } else {
-          upcoming.add({'status': '本日服務已結束', 'plate': ''});
-        }
+      if (isTerminalNoService) {
+        upcoming.add({'status': langCtrl.tr('no_service_today'), 'plate': ''});
+      } else if (hasBusesOnRoad && isServiceStopped) {
+        upcoming.add({'status': langCtrl.tr('last_bus_departed'), 'plate': ''});
+      } else if (busCtrl.isServiceEnded || endedFromEta) {
+        upcoming.add({'status': langCtrl.tr('service_ended'), 'plate': ''});
+      } else if (busCtrl.isServiceNotStarted || notStartedFromEta) {
+        upcoming.add({'status': langCtrl.tr('service_not_started'), 'plate': ''});
+      } else if (isServiceStopped) {
+        // No timetable match: late night is still yesterday's last bus.
+        upcoming.add({
+          'status': DateTime.now().hour < 4
+              ? langCtrl.tr('service_ended')
+              : langCtrl.tr('service_not_started'),
+          'plate': '',
+        });
       } else if (busCtrl.etaData != null) {
-        upcoming.add({'status': cleanEta.isEmpty ? '點擊更新' : cleanEta, 'plate': officialPlate.trim()});
+        upcoming.add({'status': cleanEta.isEmpty ? langCtrl.tr('click_to_update') : cleanEta, 'plate': officialPlate.trim()});
       }
     }
     
     bool isStoppedStatus = upcoming.isNotEmpty && 
-        ((upcoming.first['status'] ?? '').contains('服務已結束') || 
-         (upcoming.first['status'] ?? '').contains('尾班車') || 
-         (upcoming.first['status'] ?? '').contains('尚未開始') || 
-         (upcoming.first['status'] ?? '').contains('不設服務') ||
-         (upcoming.first['status'] ?? '').contains('點擊更新'));
+        ((upcoming.first['status'] ?? '').contains(langCtrl.tr('service_ended')) || 
+         (upcoming.first['status'] ?? '').contains(langCtrl.tr('service_not_started')) || 
+         (upcoming.first['status'] ?? '').contains(langCtrl.tr('no_service_today')) || 
+         (upcoming.first['status'] ?? '').contains(langCtrl.tr('last_bus_departed')) || 
+         (upcoming.first['status'] ?? '').contains(langCtrl.tr('waiting_at_terminal')) || 
+         (upcoming.first['status'] ?? '').contains('等候總站發車') || 
+         (upcoming.first['status'] ?? '').contains(langCtrl.tr('click_to_update')));
          
     if (!isStoppedStatus && upcoming.isNotEmpty && upcoming.length < 2) {
-      if (isTerminalEnded) {
-        upcoming.add({'status': '尾班車已過', 'plate': ''});
+      if (isServiceStopped) {
+        upcoming.add({'status': langCtrl.tr('last_bus_departed'), 'plate': ''});
       } else {
-        upcoming.add({'status': '等候總站發車', 'plate': ''});
+        upcoming.add({'status': langCtrl.tr('waiting_at_terminal'), 'plate': ''});
       }
     }
     
@@ -337,6 +529,9 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
   }
 
   void _showAlarmBottomSheet(BuildContext context, dynamic stop, BusController busCtrl, LocationController locCtrl, bool isDark) {
+    final langCtrl = context.read<LanguageController>();
+    final localizedName = stop.getLocalizedName(langCtrl.currentLanguage);
+    
     showModalBottomSheet(
       context: context, backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white, shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
@@ -351,14 +546,14 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                 children: [
                   Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[600], borderRadius: BorderRadius.circular(2))),
                   const SizedBox(height: 16),
-                  const Text('設定智慧提醒', style: TextStyle(color: Colors.amber, fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text(langCtrl.tr('set_alarm'), style: const TextStyle(color: Colors.amber, fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  Text('${stop.seq}. ${stop.name} (${stop.code})', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 16)),
+                  Text('${stop.seq}. $localizedName (${stop.code})', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 16)),
                   const SizedBox(height: 24),
                   ListTile(
                     leading: CircleAvatar(backgroundColor: Colors.amber.withValues(alpha: 0.2), child: const Icon(Icons.directions_bus, color: Colors.amber)),
-                    title: Text(hasBoarding ? '取消上車提醒' : '上車提醒', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold)),
-                    subtitle: const Text('當巴士距離本站 ≤ 2 站時推播', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    title: Text(hasBoarding ? langCtrl.tr('cancel_boarding_alarm') : langCtrl.tr('boarding_alarm'), style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold)),
+                    subtitle: Text(langCtrl.tr('boarding_alarm_desc'), style: const TextStyle(color: Colors.grey, fontSize: 12)),
                     trailing: Icon(hasBoarding ? Icons.check_circle : Icons.chevron_right, color: hasBoarding ? Colors.amber : Colors.grey),
                     onTap: () {
                       if (hasBoarding) { busCtrl.setBoardingStop(null); } else { busCtrl.setBoardingStop(stop.seq); }
@@ -368,8 +563,8 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                   Divider(height: 1, color: isDark ? Colors.white10 : Colors.black12),
                   ListTile(
                     leading: CircleAvatar(backgroundColor: Colors.blueAccent.withValues(alpha: 0.2), child: const Icon(Icons.location_on, color: Colors.blueAccent)),
-                    title: Text(hasAlighting ? '取消下車提醒' : '下車提醒', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold)),
-                    subtitle: const Text('當手機 GPS 距離此站 < 300 公尺時推播', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    title: Text(hasAlighting ? langCtrl.tr('cancel_alighting_alarm') : langCtrl.tr('alighting_alarm'), style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold)),
+                    subtitle: Text(langCtrl.tr('alighting_alarm_desc'), style: const TextStyle(color: Colors.grey, fontSize: 12)),
                     trailing: Icon(hasAlighting ? Icons.check_circle : Icons.chevron_right, color: hasAlighting ? Colors.blueAccent : Colors.grey),
                     onTap: () {
                       if (hasAlighting) { 
@@ -381,18 +576,18 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                             context: context,
                             builder: (dialogCtx) => AlertDialog(
                               backgroundColor: isDark ? const Color(0xFF2A2A2A) : Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                              title: Row(children: [const Icon(Icons.location_off, color: Colors.redAccent, size: 24), const SizedBox(width: 10), Expanded(child: Text('需要開啟 GPS', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 18, fontWeight: FontWeight.bold)))]),
-                              content: Text('下車提醒功能需要讀取您的實時位置。是否允許系統立即開啟 GPS 追蹤？', style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 15, height: 1.4)),
+                              title: Row(children: [const Icon(Icons.location_off, color: Colors.redAccent, size: 24), const SizedBox(width: 10), Expanded(child: Text(langCtrl.tr('need_gps'), style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 18, fontWeight: FontWeight.bold)))]),
+                              content: Text(langCtrl.tr('need_gps_desc'), style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 15, height: 1.4)),
                               actions: [
-                                TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text('取消', style: TextStyle(color: Colors.grey, fontSize: 16))),
+                                TextButton(onPressed: () => Navigator.pop(dialogCtx), child: Text(langCtrl.tr('cancel'), style: const TextStyle(color: Colors.grey, fontSize: 16))),
                                 TextButton(
                                   onPressed: () {
                                     Navigator.pop(dialogCtx); busCtrl.setAlightingStop(stop.seq); 
                                     locCtrl.toggleLocationTracking((loc) { busCtrl.checkAlightingAlarm(loc); });
-                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已開啟 GPS 定位，下車提醒生效'), backgroundColor: Colors.green, duration: Duration(seconds: 2)));
+                                    ScaffoldMessenger.of(context).showSnackBar(RouteLiquidGlassNavStyle.snackBar(context: context, content: Text(langCtrl.tr('gps_opened')), backgroundColor: Colors.green));
                                     Navigator.pop(context); 
                                   },
-                                  child: const Text('開啟', style: TextStyle(color: Colors.blueAccent, fontSize: 16, fontWeight: FontWeight.bold)),
+                                  child: Text(langCtrl.tr('open'), style: const TextStyle(color: Colors.blueAccent, fontSize: 16, fontWeight: FontWeight.bold)),
                                 ),
                               ],
                             )
@@ -414,224 +609,566 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     );
   }
 
+  Widget _buildHeaderIcon(IconData icon, String label, bool isDark, VoidCallback onTap, {Color? color}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 4.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: [
+            Icon(icon, color: color ?? (isDark ? Colors.white : Colors.black), size: 24),
+            const SizedBox(height: 4), 
+            Text(
+              label, 
+              textAlign: TextAlign.center,
+              style: TextStyle(color: color ?? (isDark ? Colors.white70 : Colors.black87), fontSize: 11),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override 
   Widget build(BuildContext context) {
     final busCtrl = context.watch<BusController>();
     final locCtrl = context.watch<LocationController>();
+    final bgCtrl = context.watch<BackgroundController>();
+    final langCtrl = context.watch<LanguageController>();
+    final isSimpleMode = busCtrl.isSimpleMode;
+    
+    busCtrl.currentLang = langCtrl.currentLanguage;
+
+    // 🌟 加上呢行：將翻譯機借俾 BusController 用！
+    busCtrl.tr = langCtrl.tr;
+    // 🌟 加入呢段：當偵測到語言切換，即刻清空快取並重新 Fetch 路線通告
+    if (busCtrl.currentLang != _lastFetchedLang) {
+      _lastFetchedLang = busCtrl.currentLang;
+      // 確保畫面渲染完畢後先執行 API 請求
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _stopWarningCache.clear(); // 清空舊語言的車站通告快取
+        _fetchRouteAlerts(busCtrl.currentRoute); // 重新獲取對應語言的路線通告
+      });
+    }
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     String currentTerminal = busCtrl.currentDirection == 0 ? busCtrl.outboundTerminal : busCtrl.inboundTerminal;
-
     if (!busCtrl.isLoadingStops && busCtrl.stopsList.isNotEmpty) {
-      String firstStop = busCtrl.stopsList.first.name.replaceAll(RegExp(r'[\(（].*?[\)）]'), '').trim();
-      String currentClean = currentTerminal.replaceAll(RegExp(r'[\(（].*?[\)）]'), '').trim();
-      
-      if (busCtrl.currentDirection == 1 || firstStop == currentClean) {
-        String lastStop = busCtrl.stopsList.last.name.replaceAll(RegExp(r'[\(（].*?[\)）]'), '').trim();
-        if (lastStop != firstStop) {
-          currentTerminal = lastStop;
-        }
-      }
+      currentTerminal = busCtrl.stopsList.last.getLocalizedName(langCtrl.currentLanguage)
+                               .replaceAll(RegExp(r'[\(（].*?[\)）]'), '').trim();
     }
 
     final isFavorite = busCtrl.favoriteRoutes.contains(busCtrl.currentRoute);
     final hasRoute = busCtrl.currentRoute.isNotEmpty;
 
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: CustomPaint(
-            painter: VirtualMapPainter(isDark: isDark),
-          ),
-        ),
+    final alertStops = busCtrl.stopsList.where(_hasAnyStopWarning).toList();
 
-        Column(
-          children: [
-            // 🌟 瘦身後嘅頂部操作列
-            ClipRect( 
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
-                child: Container(
-                  color: (isDark ? Colors.black : Colors.white).withValues(alpha: 0.85), 
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 12), 
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween, 
-                        children: [
-                          if (hasRoute)
-                            Expanded(
-                              child: Align(
-                                alignment: Alignment.centerLeft, 
-                                child: InkWell(
-                                  onTap: () { busCtrl.toggleDirection(); busCtrl.fetchStops(); context.read<NavigationController>().clearNavigation(); }, 
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [Icon(Icons.swap_calls, color: isDark ? Colors.white : Colors.black), const SizedBox(height: 2), Text('對頭線', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 12))]
-                                  )
-                                )
-                              )
-                            )
-                          else
-                            const Expanded(child: SizedBox.shrink()),
-                          
-                          Column(
-                            children: [
-                              Text(hasRoute ? busCtrl.currentRoute : '請先搜尋路線', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: 1.5)), 
-                              if (hasRoute) Text('往 $currentTerminal', style: const TextStyle(color: Colors.grey, fontSize: 14))
-                            ]
-                          ), 
-                          
-                          if (hasRoute)
-                            Expanded(
-                              child: Align(
-                                alignment: Alignment.centerRight, 
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min, 
-                                  children: [
-                                    InkWell(
-                                      onTap: () => _showAllAlertsDialog(busCtrl), 
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min, 
-                                        children: [
-                                          const Icon(Icons.campaign, color: Colors.redAccent), 
-                                          const SizedBox(height: 2), 
-                                          Text('通告', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 12))
-                                        ]
-                                      )
-                                    ),
-                                    const SizedBox(width: 12),
-                                    InkWell(
-                                      onTap: () => _showTimetableDialog(busCtrl), 
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min, 
-                                        children: [
-                                          Icon(Icons.schedule, color: isDark ? Colors.white : Colors.black), 
-                                          const SizedBox(height: 2), 
-                                          Text('時間表', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 12))
-                                        ]
-                                      )
-                                    ),
-                                    const SizedBox(width: 12),
-                                    InkWell(
-                                      onTap: () => busCtrl.toggleFavorite(busCtrl.currentRoute),
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min, 
-                                        children: [
-                                          Icon(isFavorite ? Icons.star : Icons.star_border, color: isFavorite ? Colors.amber : (isDark ? Colors.white : Colors.black)), 
-                                          const SizedBox(height: 2), 
-                                          Text('收藏', style: TextStyle(color: isFavorite ? Colors.amber : (isDark ? Colors.white : Colors.black), fontSize: 12))
-                                        ]
-                                      )
-                                    ),
-                                  ]
-                                )
-                              )
-                            )
-                          else
-                            const Expanded(child: SizedBox.shrink()),
-                        ]
-                      )
-                    ]
-                  )
+    List<Widget> combinedAlertWidgets = [];
+
+    for (var alert in _routeAlerts) {
+      combinedAlertWidgets.add(
+        Padding(
+          padding: const EdgeInsets.only(right: 16.0),
+          child: InkWell(
+            onTap: () async {
+              if (alert['link'] != null && alert['link'].isNotEmpty) {
+                final url = Uri.parse(alert['link']);
+                if (await canLaunchUrl(url)) {
+                  await launchUrl(url, mode: LaunchMode.externalApplication);
+                }
+              }
+            },
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const BlinkingAlertIcon(),
+                const SizedBox(width: 4),
+                Text(
+                  alert['title'] ?? langCtrl.tr('route_notice'),
+                  style: TextStyle(
+                    color: isDark ? Colors.white70 : Colors.black87,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    decoration: TextDecoration.underline,
+                  ),
                 ),
+              ],
+            ),
+          ),
+        )
+      );
+    }
+
+    if (alertStops.isNotEmpty) {
+      List<Widget> stationWidgets = [];
+      
+      for (int i = 0; i < alertStops.length; i++) {
+        final stop = alertStops[i];
+        
+        stationWidgets.add(
+          InkWell(
+            onTap: () => _openStopWarning(stop), 
+            child: Text(
+              '${stop.seq}. ${stop.getLocalizedName(langCtrl.currentLanguage)}', 
+              style: TextStyle(
+                color: isDark ? Colors.white70 : Colors.black87,
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                decoration: TextDecoration.none, 
               ),
             ),
-            Divider(height: 1, color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.1)),
-            
-            Expanded(
-              child: busCtrl.isLoadingStops 
-                ? const Center(child: CircularProgressIndicator(color: Colors.amber)) 
-                : busCtrl.errorMessage != null 
-                  ? Center(child: Text(busCtrl.errorMessage!, style: const TextStyle(color: Colors.redAccent))) 
-                  : ListView.builder(
-                      itemCount: busCtrl.stopsList.length,
-                      itemBuilder: (context, index) {
-                        final stop = busCtrl.stopsList[index]; 
-                        final isSelected = busCtrl.selectedStopSeq == stop.seq;
-                        final hasBoardingAlarm = busCtrl.boardingStopSeq == stop.seq;
-                        final hasAlightingAlarm = busCtrl.alightingStopSeq == stop.seq;
-                        final isAlarmActive = hasBoardingAlarm || hasAlightingAlarm;
-                        
-                        return Column(
+          ),
+        );
+
+        if (i < alertStops.length - 1) {
+          stationWidgets.add(
+            Text(
+              '、',
+              style: TextStyle(
+                color: isDark ? Colors.white70 : Colors.black87,
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                decoration: TextDecoration.none,
+              ),
+            ),
+          );
+        }
+      }
+
+      combinedAlertWidgets.add(
+        Padding(
+          padding: const EdgeInsets.only(right: 16.0),
+          child: Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              const BlinkingAlertIcon(),
+              const SizedBox(width: 4),
+              Text(
+                langCtrl.tr('station_info'),
+                style: TextStyle(
+                  color: isDark ? Colors.white70 : Colors.black87,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+              ...stationWidgets,
+            ],
+          ),
+        )
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Stack(
+        children: [
+          if (bgCtrl.backgroundImagePath == null)
+          Positioned.fill(
+            child: CustomPaint(
+              painter: VirtualMapPainter(isDark: isDark),
+            ),
+          ),
+
+          Column(
+            children: [
+              ClipRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
+                  child: Container(
+                    color: isDark ? Colors.black.withValues(alpha: 0.65) : Colors.white.withValues(alpha: 0.7),
+                    padding: EdgeInsets.fromLTRB(20, MediaQuery.of(context).padding.top + 12, 20, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            InkWell(
-                              onTap: () { busCtrl.selectStop(stop.seq); busCtrl.fetchBusETA(); },
-                              child: Container(
-                                color: isSelected ? Colors.amber.withValues(alpha: 0.15) : Colors.transparent, 
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                                child: Row(
-                                  children: [
-                                    Container(width: 4, height: 36, color: isSelected ? Colors.amber : Colors.transparent), 
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start, 
-                                        children: [
-                                          Text('${stop.seq}. ${stop.name} (${stop.code})', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 16, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)), 
-                                          const SizedBox(height: 4), 
-                                          const Text('車費: \$6.0', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                                          
-                                          if (isSelected && busCtrl.isLoadingETA)
-                                            const Padding(padding: EdgeInsets.only(top: 8.0), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amber)))
-                                          else if (isSelected && _getUpcomingBusesInfo(busCtrl).isNotEmpty) ...[
-                                            const SizedBox(height: 6),
-                                            ..._getUpcomingBusesInfo(busCtrl).asMap().entries.map((entry) {
-                                              int idx = entry.key; var busInfo = entry.value; bool isSecondBus = idx == 1; 
-                                              return Padding(
-                                                padding: EdgeInsets.only(top: isSecondBus ? 4.0 : 0.0),
-                                                child: Row(
-                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                  children: [
-                                                    Expanded(child: Text(busInfo['status'] ?? '', style: TextStyle(color: isDark ? (isSecondBus ? Colors.amber.shade200 : Colors.amber) : (isSecondBus ? Colors.orange.shade500 : Colors.orange.shade700), fontWeight: isSecondBus ? FontWeight.w600 : FontWeight.bold, fontSize: isSecondBus ? 12 : 14))),
-                                                    if (busInfo['plate'] != null && busInfo['plate']!.isNotEmpty) Text('車牌: ${busInfo['plate']}', style: TextStyle(color: isDark ? (isSecondBus ? Colors.grey[500] : Colors.grey[400]) : (isSecondBus ? Colors.grey[600] : Colors.grey[800]), fontSize: isSecondBus ? 10 : 11, fontWeight: FontWeight.w500)),
-                                                  ],
-                                                ),
-                                              );
-                                            }),
-                                          ]
-                                        ]
-                                      )
-                                    ),
-                                    if (stop.hasAlert) ...[
-                                      const SizedBox(width: 8),
-                                      BlinkingWarningIcon(onTap: () async { if (stop.alertUrl != null && stop.alertUrl!.isNotEmpty) { final Uri url = Uri.parse(stop.alertUrl!); if (await canLaunchUrl(url)) await launchUrl(url, mode: LaunchMode.externalApplication); } }),
+                            Text(
+                              hasRoute ? busCtrl.currentRoute : '--', 
+                              style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 64, fontWeight: FontWeight.bold, height: 1.0),
+                            ),
+                            if (hasRoute) 
+                              InkWell(
+                                onTap: () => _showFareDialog(context, isDark),
+                                borderRadius: BorderRadius.circular(12),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: isDark ? Colors.white24 : Colors.black12),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.monetization_on, size: 16, color: isDark ? Colors.grey[400] : Colors.grey[700]),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        langCtrl.tr('fare_table'),
+                                        style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[700], fontSize: 13, fontWeight: FontWeight.bold),
+                                      ),
                                     ],
-                                    const SizedBox(width: 8),
-                                    IconButton(
-                                      icon: Icon(isAlarmActive ? Icons.notifications_active : Icons.notifications_none, color: hasBoardingAlarm ? Colors.amber : (hasAlightingAlarm ? Colors.blueAccent : Colors.grey)),
-                                      padding: EdgeInsets.zero, constraints: const BoxConstraints(), tooltip: '設定提醒',
-                                      onPressed: () => _showAlarmBottomSheet(context, stop, busCtrl, locCtrl, isDark),
-                                    ),
-                                  ],
+                                  ),
                                 ),
                               ),
-                            ),
-                            Divider(height: 1, color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.1)),
                           ],
-                        );
-                      },
-                    ),
-            ),
-            
-            const CustomBannerAd(),
-          ],
-        ),
-      ],
+                        ),
+                        const SizedBox(height: 4),
+                        
+                        // 🌟 分拆靜止與走馬燈
+                        if (hasRoute)
+                          Row(
+                            children: [
+                              Text(
+                                '${langCtrl.tr('direction_to')} ',
+                                style: const TextStyle(color: Colors.grey, fontSize: 15),
+                              ),
+                              Expanded(
+                                child: TextScroll(
+                                  currentTerminal, 
+                                  mode: TextScrollMode.endless, 
+                                  velocity: const Velocity(pixelsPerSecond: Offset(35, 0)), 
+                                  delayBefore: const Duration(seconds: 2), 
+                                  pauseBetween: const Duration(seconds: 2), 
+                                  fadedBorder: true,
+                                  fadedBorderWidth: 0.05, 
+                                  style: const TextStyle(color: Colors.grey, fontSize: 15),
+                                  selectable: false,
+                                ),
+                              ),
+                            ],
+                          )
+                        else
+                          Text(langCtrl.tr('please_search_route'), style: const TextStyle(color: Colors.grey, fontSize: 15)),
+                        
+                        if (hasRoute) ...[
+                          const SizedBox(height: 20),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: _buildHeaderIcon(Icons.swap_calls, langCtrl.tr('swap_direction'), isDark, () { 
+                                  busCtrl.toggleDirection();
+                                  busCtrl.fetchStops();
+                                  context.read<NavigationController>().clearNavigation(); 
+                                }),
+                              ),
+                              Expanded(
+                                child: _buildHeaderIcon(
+                                  Icons.my_location, 
+                                  langCtrl.tr('location'), 
+                                  isDark, 
+                                  () {
+                                    // 🌟 修正開關 GPS 邏輯，避免彈出多餘白色橫幅
+                                    final isTurningOn = !locCtrl.isFollowingUser; 
+                                    GpsService.toggleGpsAndAutoSelectStop(context, busCtrl, locCtrl);
+                                    if (isTurningOn) {
+                                      _scrollToNearestStop();
+                                    }
+                                  },
+                                  color: locCtrl.isFollowingUser ? Colors.green : (isDark ? Colors.white : Colors.black87)
+                                ),
+                              ),
+                              Expanded(
+                                child: _buildHeaderIcon(Icons.schedule, langCtrl.tr('timetable'), isDark, () => _showTimetableDialog(busCtrl)),
+                              ),
+                              if (!isSimpleMode)
+                                Expanded(
+                                  child: _buildHeaderIcon(
+                                    Icons.map,
+                                    langCtrl.tr('tab_map'),
+                                    isDark,
+                                    () {
+                                      final nav = context.read<NavigationController>();
+                                      nav.clearNavigation();
+                                      nav.setPlanningRoute(false);
+                                      nav.openMap();
+                                    },
+                                  ),
+                                ),
+                              Expanded(
+                                child: _buildHeaderIcon(
+                                  isFavorite ? Icons.star : Icons.star_border, 
+                                  langCtrl.tr('favorite'), 
+                                  isDark, 
+                                  () => busCtrl.toggleFavorite(busCtrl.currentRoute),
+                                  color: isFavorite ? Colors.amber : null
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                        
+                        if (combinedAlertWidgets.isNotEmpty) ...[
+                          const SizedBox(height: 16),
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: combinedAlertWidgets,
+                            ),
+                          ),
+                        ],
+                      ]
+                    )
+                  ),
+                ),
+              ),
+              Divider(height: 1, color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.1)),
+              
+              Expanded(
+                child: busCtrl.isLoadingStops 
+                  ? const Center(child: CircularProgressIndicator(color: Colors.amber)) 
+                  : busCtrl.stopsList.isNotEmpty
+                    ? ListView.builder(
+                        controller: _listScrollController,
+                        padding: EdgeInsets.only(
+                          top: 8,
+                          bottom: MediaQuery.paddingOf(context).bottom,
+                        ),
+                        itemCount: busCtrl.stopsList.length,
+                        itemBuilder: (context, index) {
+                          final stop = busCtrl.stopsList[index]; 
+                          final isSelected = busCtrl.selectedStopSeq == stop.seq;
+                          final hasBoardingAlarm = busCtrl.boardingStopSeq == stop.seq;
+                          final hasAlightingAlarm = busCtrl.alightingStopSeq == stop.seq;
+                          final isAlarmActive = hasBoardingAlarm || hasAlightingAlarm;
+                          
+                          if (isSelected) {
+                            return Column(
+                              key: _selectedStopKey,
+                              children: [
+                                Container(
+                                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), 
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(16),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.1), 
+                                        blurRadius: 16, 
+                                        offset: const Offset(0, 8)
+                                      ),
+                                    ],
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: BackdropFilter(
+                                      filter: ImageFilter.blur(sigmaX: 24.0, sigmaY: 24.0), 
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(16),
+                                          gradient: LinearGradient(
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
+                                            colors: isDark ? [
+                                              Colors.white.withValues(alpha: 0.15),
+                                              Colors.white.withValues(alpha: 0.05),
+                                            ] : [
+                                              Colors.white.withValues(alpha: 0.85),
+                                              Colors.white.withValues(alpha: 0.5),
+                                            ],
+                                          ),
+                                          border: Border.all(
+                                            color: isDark ? Colors.white.withValues(alpha: 0.25) : Colors.white.withValues(alpha: 0.7), 
+                                            width: 1.2
+                                          ),
+                                        ),
+                                        child: Material(
+                                          color: Colors.transparent,
+                                          child: InkWell(
+                                            onTap: () { busCtrl.selectStop(stop.seq); busCtrl.fetchBusETA(); },
+                                            child: Padding(
+                                              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0), 
+                                              child: Builder(
+                                                builder: (context) {
+                                                  final upcomingInfo = _getUpcomingBusesInfo(busCtrl, langCtrl);
+                                                  return Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      // 🌟 絕對對齊：中心水平對齊
+                                                      Row(
+                                                        crossAxisAlignment: CrossAxisAlignment.center, 
+                                                        children: [
+                                                          SizedBox(
+                                                            width: 28,
+                                                            child: Text('${stop.seq}.', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 16, fontWeight: FontWeight.bold)),
+                                                          ),
+                                                          Expanded(
+                                                            child: Text(
+                                                              '${stop.getLocalizedName(langCtrl.currentLanguage)} (${stop.code})', 
+                                                              style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 16, fontWeight: FontWeight.bold)
+                                                            ),
+                                                          ),
+                                                          const SizedBox(width: 8),
+                                                          Row(
+                                                            mainAxisSize: MainAxisSize.min,
+                                                            crossAxisAlignment: CrossAxisAlignment.center,
+                                                            children: [
+                                                              AnimatedSize(
+                                                                duration: const Duration(milliseconds: 350),
+                                                                curve: Curves.easeOutCubic,
+                                                                child: _hasAnyStopWarning(stop)
+                                                                    ? Padding(
+                                                                        padding: const EdgeInsets.only(right: 4.0),
+                                                                        child: BlinkingWarningIcon(onTap: () => _openStopWarning(stop)),
+                                                                      )
+                                                                    : const SizedBox.shrink(),
+                                                              ),
+                                                              IconButton(
+                                                                icon: Icon(
+                                                                  isAlarmActive ? Icons.notifications_active : Icons.notifications_none, 
+                                                                  color: hasBoardingAlarm ? Colors.amber : (hasAlightingAlarm ? Colors.blueAccent : Colors.grey)
+                                                                ),
+                                                                padding: EdgeInsets.zero, 
+                                                                constraints: const BoxConstraints(minHeight: 32, minWidth: 32), 
+                                                                tooltip: langCtrl.tr('set_alarm'),
+                                                                onPressed: () => _showAlarmBottomSheet(context, stop, busCtrl, locCtrl, isDark),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ],
+                                                      ),
+                                                      const SizedBox(height: 8), 
+                                                      
+                                                      IntrinsicHeight(
+                                                        child: Row(
+                                                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                                                          children: [
+                                                            Container(
+                                                              width: 4, 
+                                                              decoration: BoxDecoration(
+                                                                color: Colors.amber,
+                                                                borderRadius: BorderRadius.circular(2)
+                                                              )
+                                                            ),
+                                                            const SizedBox(width: 10),
+                                                            Expanded(
+                                                              child: Column(
+                                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                                children: [
+                                                                  const LiveTrackingBadge(),
+                                                                  
+                                                                  if (busCtrl.isLoadingETA)
+                                                                    const Padding(padding: EdgeInsets.only(top: 8.0), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.amber)))
+                                                                  else if (upcomingInfo.isNotEmpty) ...[
+                                                                    const SizedBox(height: 8),
+                                                                    ...upcomingInfo.asMap().entries.map((entry) {
+                                                                      int idx = entry.key; var busInfo = entry.value; bool isSecondBus = idx == 1; 
+                                                                      return Padding(
+                                                                        padding: EdgeInsets.only(top: isSecondBus ? 6.0 : 0.0),
+                                                                        child: Row(
+                                                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                                          crossAxisAlignment: CrossAxisAlignment.center,
+                                                                          children: [
+                                                                            Expanded(
+                                                                              child: Text(
+                                                                                busInfo['status'] ?? '', 
+                                                                                style: TextStyle(color: isDark ? (isSecondBus ? Colors.amber.shade200 : Colors.amber) : (isSecondBus ? Colors.orange.shade500 : Colors.orange.shade700), fontWeight: FontWeight.bold, fontSize: isSecondBus ? 13 : 15)
+                                                                              )
+                                                                            ),
+                                                                            if (busInfo['plate'] != null && busInfo['plate']!.isNotEmpty) 
+                                                                              Text(
+                                                                                '${langCtrl.tr('bus_plate')}${busInfo['plate']}', // 🌟 多國語言車牌
+                                                                                style: TextStyle(color: isDark ? (isSecondBus ? Colors.grey[500] : Colors.grey[400]) : (isSecondBus ? Colors.grey[600] : Colors.grey[800]), fontSize: 12, fontWeight: FontWeight.normal)
+                                                                              ),
+                                                                          ],
+                                                                        ),
+                                                                      );
+                                                                    }),
+                                                                  ]
+                                                                ],
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    ]
+                                                  );
+                                                }
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Divider(height: 1, color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.1)),
+                              ],
+                            );
+                          }
+
+                          return Column(
+                            children: [
+                              InkWell(
+                                onTap: () { busCtrl.selectStop(stop.seq); busCtrl.fetchBusETA(); },
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), 
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start, 
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Row(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                SizedBox(
+                                                  width: 28,
+                                                  child: Text('${stop.seq}.', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 16, fontWeight: FontWeight.w500)),
+                                                ),
+                                                Expanded(
+                                                  child: Text(
+                                                    '${stop.getLocalizedName(langCtrl.currentLanguage)} (${stop.code})', 
+                                                    style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 16, fontWeight: FontWeight.w500)
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ]
+                                        )
+                                      ),
+                                      if (_hasAnyStopWarning(stop)) ...[
+                                        const SizedBox(width: 8),
+                                        BlinkingWarningIcon(onTap: () => _openStopWarning(stop)),
+                                      ],
+                                      const SizedBox(width: 8),
+                                      IconButton(
+                                        icon: Icon(isAlarmActive ? Icons.notifications_active : Icons.notifications_none, color: hasBoardingAlarm ? Colors.amber : (hasAlightingAlarm ? Colors.blueAccent : Colors.grey)),
+                                        padding: EdgeInsets.zero, constraints: const BoxConstraints(), tooltip: langCtrl.tr('set_alarm'),
+                                        onPressed: () => _showAlarmBottomSheet(context, stop, busCtrl, locCtrl, isDark),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              Divider(height: 1, color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.1)),
+                            ],
+                          );
+                        },
+                      )
+                    : Center(
+                        child: Text(
+                          busCtrl.errorMessage ?? '',
+                          style: const TextStyle(color: Colors.redAccent),
+                        ),
+                      ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
-}
-
-class BlinkingWarningIcon extends StatefulWidget {
-  final VoidCallback onTap;
-  const BlinkingWarningIcon({super.key, required this.onTap});
-  @override State<BlinkingWarningIcon> createState() => _BlinkingWarningIconState();
-}
-class _BlinkingWarningIconState extends State<BlinkingWarningIcon> {
-  Timer? _timer; bool _isRed = true;
-  @override void initState() { super.initState(); _timer = Timer.periodic(const Duration(milliseconds: 500), (timer) { if (mounted) setState(() => _isRed = !_isRed); }); }
-  @override void dispose() { _timer?.cancel(); super.dispose(); }
-  @override Widget build(BuildContext context) { return InkWell(onTap: widget.onTap, child: Padding(padding: const EdgeInsets.all(4.0), child: Icon(Icons.warning_rounded, color: _isRed ? Colors.redAccent : Colors.yellow, size: 22))); }
 }
 
 class VirtualMapPainter extends CustomPainter {
@@ -639,8 +1176,7 @@ class VirtualMapPainter extends CustomPainter {
   VirtualMapPainter({required this.isDark});
   @override
   void paint(Canvas canvas, Size size) {
-    final bgColor = isDark ? const Color(0xFF101010) : const Color(0xFFF7F7F7);
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), Paint()..color = bgColor);
+    final nodeInnerColor = isDark ? const Color(0xFF101010) : const Color(0xFFF7F7F7); 
 
     final lineColor1 = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.05);
     final lineColor2 = isDark ? Colors.white.withValues(alpha: 0.03) : Colors.black.withValues(alpha: 0.03);
@@ -648,7 +1184,7 @@ class VirtualMapPainter extends CustomPainter {
     final paintLine1 = Paint()..color = lineColor1..strokeWidth = 6.0..style = PaintingStyle.stroke..strokeCap = StrokeCap.round..strokeJoin = StrokeJoin.round;
     final paintLine2 = Paint()..color = lineColor2..strokeWidth = 4.0..style = PaintingStyle.stroke..strokeCap = StrokeCap.round..strokeJoin = StrokeJoin.round;
     
-    final paintNodeInner = Paint()..color = bgColor..style = PaintingStyle.fill;
+    final paintNodeInner = Paint()..color = nodeInnerColor..style = PaintingStyle.fill;
     final paintNodeOuter1 = Paint()..color = lineColor1..style = PaintingStyle.fill;
     final paintNodeOuter2 = Paint()..color = lineColor2..style = PaintingStyle.fill;
 

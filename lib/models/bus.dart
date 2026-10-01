@@ -6,6 +6,7 @@ class Bus {
   final double lng;
   final double speed;
   final int currentStopSeq;
+  final bool atStop;
 
   const Bus({
     required this.busLicense,
@@ -13,6 +14,7 @@ class Bus {
     required this.lng,
     required this.speed,
     required this.currentStopSeq,
+    this.atStop = true,
   });
 
   factory Bus.fromJson(Map<String, dynamic> json) {
@@ -24,6 +26,7 @@ class Bus {
       currentStopSeq: json['currentStopSeq'] is int
           ? json['currentStopSeq']
           : (int.tryParse(json['currentStopSeq']?.toString() ?? '') ?? -1),
+      atStop: json['atStop'] != false,
     );
   }
 }

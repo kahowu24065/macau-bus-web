@@ -18,7 +18,9 @@ class LocationController extends ChangeNotifier {
 
   Future<void> toggleLocationTracking(Function(LatLng) onLocationUpdated) async {
     if (isFollowingUser) {
-      _positionStream?.cancel();
+      // 🌟 升級 1：加入 await 確保 Android 底層完全釋放，並清空變數
+      await _positionStream?.cancel();
+      _positionStream = null;
       isFollowingUser = false;
       notifyListeners();
       return;
@@ -41,6 +43,10 @@ class LocationController extends ChangeNotifier {
       Position pos = await Geolocator.getCurrentPosition(locationSettings: const LocationSettings(accuracy: LocationAccuracy.high));
       _updateLocation(pos);
       onLocationUpdated(LatLng(pos.latitude, pos.longitude));
+
+      // 🌟 升級 2：在建立全新監聽前，強制終止並清除任何可能殘留嘅幽靈 Stream
+      await _positionStream?.cancel();
+      _positionStream = null;
 
       _positionStream = Geolocator.getPositionStream(
         locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 2),

@@ -1,26 +1,93 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/bus_stop.dart';
 import '../models/bus.dart';
 import 'package:flutter/foundation.dart';
+import '../config/api_config.dart';
+
+class _ResettableClient {
+  http.Client _client = http.Client();
+
+  void reset() {
+    try {
+      _client.close();
+    } catch (_) {}
+    _client = http.Client();
+  }
+
+  Future<http.Response> get(
+    String url, {
+    required Map<String, String> headers,
+    required Duration timeout,
+  }) {
+    return _client.get(Uri.parse(url), headers: headers).timeout(timeout);
+  }
+}
 
 class BusApiService {
-  static const String baseUrl = 'https://api.macaubus-kat1.com/api';
+  static String get baseUrl => ApiConfig.api;
+  static final _ResettableClient _stops = _ResettableClient();
+  static final _ResettableClient _eta = _ResettableClient();
+  static final _ResettableClient _detour = _ResettableClient();
+  static final _ResettableClient _catalog = _ResettableClient();
 
-  // 核心修正：加入共用 Headers 偽裝成真實手機瀏覽器，防止 Cloudflare WAF 封鎖
   static const Map<String, String> _headers = {
     'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
     'Accept': 'application/json',
   };
 
-  static Future<Map<String, dynamic>> fetchStops(String route, int dir) async {
+  static Future<http.Response> _get(
+    _ResettableClient client,
+    String path, {
+    required Duration timeout,
+  }) async {
+    Future<http.Response> once() => client.get(
+      '${ApiConfig.api}$path',
+      headers: _headers,
+      timeout: timeout,
+    );
+
     try {
-      // 修正：移除 baseUrl 後面多餘嘅 /api，避免變成 /api/api/bus-stops
-      final res = await http.get(
-        Uri.parse('$baseUrl/bus-stops?route=$route&dir=$dir'),
-        headers: _headers,
-      ).timeout(const Duration(seconds: 8));
-      
+      final res = await once();
+      if (!kIsWeb && ApiConfig.looksLikeChallenge(res)) {
+        ApiConfig.preferDirectOrigin();
+        client.reset();
+        return await once();
+      }
+      return res;
+    } on TimeoutException {
+      client.reset();
+      if (!kIsWeb) {
+        ApiConfig.preferDirectOrigin();
+        return await once();
+      }
+      rethrow;
+    } catch (e) {
+      final msg = e.toString();
+      if (msg.contains('ClientException') || msg.contains('SocketException')) {
+        client.reset();
+        if (!kIsWeb) {
+          ApiConfig.preferDirectOrigin();
+          return await once();
+        }
+      }
+      rethrow;
+    }
+  }
+
+  static Future<Map<String, dynamic>> fetchStops(String route, int dir, {String lang = 'zh'}) async {
+    try {
+      final res = await _get(
+        _stops,
+        '/bus-stops?route=$route&dir=$dir&lang=$lang',
+        timeout: const Duration(seconds: 8),
+      );
+
+      if (res.body.trimLeft().startsWith('<')) {
+        debugPrint('fetchStops got HTML ${res.statusCode}');
+        return {'success': false, 'message': '伺服器回應逾時或被阻擋，請再試一次'};
+      }
       final json = jsonDecode(res.body);
       if (json['success'] == true && (json['stops'] as List).isNotEmpty) {
         List<BusStop> stops = (json['stops'] as List).map((s) => BusStop.fromJson(s as Map<String, dynamic>)).toList();
@@ -28,20 +95,24 @@ class BusApiService {
       }
       return {'success': false, 'message': json['message'] ?? '查無此路線之站點 / 此乃循環路線'};
     } catch (e) {
-      debugPrint('fetchStops Error: $e'); // 加入 Console 輸出，方便日後 Debug
+      debugPrint('fetchStops Error: $e');
       return {'success': false, 'message': '伺服器回應逾時或被阻擋，請再試一次'};
     }
   }
 
-  static Future<Map<String, dynamic>> fetchBusETA(String route, int dir, {int? targetStopSeq}) async {
+  static Future<Map<String, dynamic>> fetchBusETA(String route, int dir, {int? targetStopSeq, String lang = 'zh'}) async {
     try {
       final seqParam = targetStopSeq != null ? '&targetStopSeq=$targetStopSeq' : '';
-      // 修正：移除多餘嘅 /api 並加入 _headers
-      final res = await http.get(
-        Uri.parse('$baseUrl/bus-eta?route=$route&dir=$dir$seqParam&_t=${DateTime.now().millisecondsSinceEpoch}'),
-        headers: _headers,
-      ).timeout(const Duration(seconds: 8));
-      
+      final res = await _get(
+        _eta,
+        '/bus-eta?route=$route&dir=$dir$seqParam&lang=$lang',
+        timeout: const Duration(seconds: 8),
+      );
+
+      if (res.body.trimLeft().startsWith('<')) {
+        debugPrint('fetchBusETA got HTML ${res.statusCode}');
+        return {'success': false, 'message': '伺服器回應逾時或被阻擋，請再試一次'};
+      }
       final json = jsonDecode(res.body);
       if (json['success'] == true) {
         List<Bus> buses = ((json['allBuses'] ?? []) as List).map((b) => Bus.fromJson(b as Map<String, dynamic>)).toList();
@@ -49,44 +120,90 @@ class BusApiService {
       }
       return {'success': false, 'message': json['message'] ?? '查詢失敗'};
     } catch (e) {
-      debugPrint('fetchBusETA Error: $e');
+      debugPrint('fetchBusETA timeout: $e');
       return {'success': false, 'message': '伺服器回應逾時或被阻擋，請再試一次'};
     }
   }
 
-  static Future<List<String>> fetchAllRoutes() async {
+  static Future<Map<String, dynamic>?> fetchStopDetour({
+    required String route,
+    required String stationCode,
+    required String lang,
+  }) async {
     try {
-      // 修正：移除多餘嘅 /api 並加入 _headers
-      final res = await http.get(
-        Uri.parse('$baseUrl/search-routes?_t=${DateTime.now().millisecondsSinceEpoch}'),
-        headers: _headers,
-      ).timeout(const Duration(seconds: 8));
-      
-      if (res.statusCode == 200) {
+      final res = await _get(
+        _detour,
+        '/stop-detour?route=${Uri.encodeQueryComponent(route)}'
+        '&stationCode=${Uri.encodeQueryComponent(stationCode)}&lang=$lang',
+        timeout: const Duration(seconds: 12),
+      );
+      if (res.statusCode != 200) return null;
+      if (res.body.trimLeft().startsWith('<')) return null;
+      final json = jsonDecode(res.body);
+      if (json['success'] == true && json['data'] != null) {
+        return Map<String, dynamic>.from(json['data'] as Map);
+      }
+    } catch (e) {
+      debugPrint('fetchStopDetour Error: $e');
+    }
+    return null;
+  }
+
+  static Future<List<Map<String, dynamic>>> fetchRouteAlerts(String route) async {
+    try {
+      final res = await _get(
+        _catalog,
+        '/bus-alerts?route=${Uri.encodeQueryComponent(route)}',
+        timeout: const Duration(seconds: 6),
+      );
+      if (res.statusCode == 200 && !res.body.trimLeft().startsWith('<')) {
+        final json = jsonDecode(res.body);
+        if (json['success'] == true && json['alerts'] is List) {
+          return (json['alerts'] as List)
+              .where((e) => e is Map)
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
+        }
+      }
+    } catch (e) {
+      debugPrint('fetchRouteAlerts Error: $e');
+    }
+    return [];
+  }
+
+  static Future<List<String>> fetchAllRoutes({String lang = 'zh'}) async {
+    try {
+      final res = await _get(
+        _catalog,
+        '/all-routes.json?lang=$lang',
+        timeout: const Duration(seconds: 5),
+      );
+
+      if (res.statusCode == 200 && !res.body.trimLeft().startsWith('<')) {
         final json = jsonDecode(res.body);
         if (json['success'] == true) return List<String>.from(json['routes']);
       }
     } catch (e) {
       debugPrint('fetchAllRoutes Error: $e');
-    } 
+    }
     return [];
   }
 
-  static Future<List<String>> searchRoutes(String query) async {
+  static Future<List<String>> searchRoutes(String query, {String lang = 'zh'}) async {
     try {
-      // 修正：移除多餘嘅 /api 並加入 _headers
-      final res = await http.get(
-        Uri.parse('$baseUrl/search-routes?q=$query'),
-        headers: _headers,
-      ).timeout(const Duration(seconds: 5));
-      
-      if (res.statusCode == 200) {
+      final res = await _get(
+        _catalog,
+        '/all-routes.json?q=$query&lang=$lang',
+        timeout: const Duration(seconds: 5),
+      );
+
+      if (res.statusCode == 200 && !res.body.trimLeft().startsWith('<')) {
         final json = jsonDecode(res.body);
         if (json['success'] == true) return List<String>.from(json['routes']);
       }
     } catch (e) {
       debugPrint('searchRoutes Error: $e');
-    } 
+    }
     return [];
   }
 }

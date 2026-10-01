@@ -22,6 +22,14 @@ dependencies:
   flutter_background_service: ^5.1.0
   cached_network_image: ^3.4.1
   in_app_purchase: ^3.3.0
+  in_app_purchase_android: ^0.5.3
+  in_app_purchase_storekit: ^0.4.11+2
+  image_picker: ^1.0.7
+  path_provider: ^2.1.2
+  path: ^1.9.1
+  text_scroll: ^0.2.1
+  flutter_markdown: ^0.6.18
+  liquid_glass_easy: ^4.3.1
 
 dev_dependencies:
   flutter_test:
@@ -31,9 +39,10 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  # 確保系統能讀取 assets 資料夾內嘅圖片
+  # 確保系統能讀取 assets 資料夾內嘅圖片及多語言檔案
   assets:
     - assets/
+    - assets/i18n/
 
 # 👇 統一嘅圖示生成設定 (只用 .png)
 flutter_launcher_icons:

@@ -1,14 +1,20 @@
+import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart'; 
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../constants/app_strings.dart';
+import '../../services/gps_service.dart';
 import '../../controllers/purchase_controller.dart';
 import '../../controllers/theme_controller.dart';
 import '../../controllers/location_controller.dart';
-import '../../controllers/navigation_controller.dart';
 import '../../controllers/bus_controller.dart';
-import '../widgets/custom_banner_ad.dart';
+import '../../controllers/background_controller.dart';
+import '../../controllers/language_controller.dart';
+import '../../controllers/navigation_controller.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -18,7 +24,13 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  int _defaultTabIndex = 1;
+  int _defaultTabIndex = 0;
+
+  // 🌟 UI 顏色定義
+  final Color _darkBase = const Color(0xFF0A0A0B);
+  final Color _cardColor = const Color(0xFF161618);
+  final Color _mutedWell = const Color(0xFF2A2A2E);
+  final Color _subText = const Color(0xFF8A8A93);
 
   @override
   void initState() {
@@ -30,95 +42,325 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     if (mounted) {
       setState(() {
-        _defaultTabIndex = prefs.getInt('default_tab_index') ?? 1;
+        _defaultTabIndex = prefs.getInt('default_tab_index') ?? 0;
       });
     }
   }
 
-  // 🌟 彈出視窗：關於我們
-  void _showAboutApp(BuildContext context, bool isDark) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
-        title: Row(
-          children: [
-            const Icon(Icons.info_outline, color: Colors.blueAccent),
-            const SizedBox(width: 8),
-            Text('關於我們', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontSize: 18)),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Text(
-            AppStrings.aboutApp,
-            style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 14, height: 1.5),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('關閉', style: TextStyle(color: Colors.amber)),
-          ),
-        ],
-      ),
-    );
+  Future<String> _loadMarkdownContent(String filePrefix, String langCode) async {
+    try {
+      return await rootBundle.loadString('assets/i18n/${filePrefix}_$langCode.md');
+    } catch (e) {
+      try { return await rootBundle.loadString('assets/i18n/${filePrefix}_en.md'); } 
+      catch (e2) {
+        try { return await rootBundle.loadString('assets/i18n/${filePrefix}_zh.md'); } 
+        catch (e3) { return 'Content not found.'; }
+      }
+    }
   }
 
-  // 🌟 彈出視窗：免責聲明
-  void _showDisclaimer(BuildContext context, bool isDark) {
+  void _showMarkdownDialog(BuildContext context, bool isDark, LanguageController langCtrl, String titleKey, String filePrefix, IconData icon, Color iconColor) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+        backgroundColor: isDark ? const Color(0xFF161618) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
           children: [
-            const Icon(Icons.gavel, color: Colors.redAccent),
+            Icon(icon, color: iconColor),
             const SizedBox(width: 8),
-            Text('免責聲明', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontSize: 18)),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Text(
-            AppStrings.disclaimer,
-            style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 14, height: 1.5),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('關閉', style: TextStyle(color: Colors.amber)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // 🌟 彈出視窗：隱私權政策
-  void _showPrivacyPolicy(BuildContext context, bool isDark) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
-        title: Row(
-          children: [
-            const Icon(Icons.privacy_tip, color: Colors.amber),
-            const SizedBox(width: 8),
-            Text('隱私權政策', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontSize: 18)),
+            Expanded(child: Text(langCtrl.tr(titleKey), style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontSize: 18))),
           ],
         ),
         content: SizedBox(
           width: double.maxFinite,
-          child: SingleChildScrollView(
-            child: Text(
-              AppStrings.privacyPolicy,
-              style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 13, height: 1.5),
-            ),
+          child: FutureBuilder<String>(
+            future: _loadMarkdownContent(filePrefix, langCtrl.currentLanguage),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) return const SizedBox(height: 100, child: Center(child: CupertinoActivityIndicator()));
+              if (snapshot.hasError) return Text('Error\n${snapshot.error}', style: const TextStyle(color: Colors.redAccent));
+              
+              return SingleChildScrollView(
+                child: MarkdownBody(
+                  data: snapshot.data ?? '',
+                  selectable: true,
+                  styleSheet: MarkdownStyleSheet(
+                    p: TextStyle(color: isDark ? const Color(0xFFD1D1D6) : Colors.black87, fontSize: 14, height: 1.5, fontFamily: 'Inter'),
+                    h1: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 20, fontWeight: FontWeight.bold, fontFamily: 'Inter'),
+                    h2: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Inter'),
+                    listBullet: TextStyle(color: isDark ? Colors.amber : Colors.orange),
+                  ),
+                ),
+              );
+            },
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('關閉', style: TextStyle(color: Colors.amber)),
+            child: Text(langCtrl.tr('btn_close'), style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showActionSheet(BuildContext context, LanguageController langCtrl, {required String title, required List<Widget> actions}) {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (BuildContext context) => CupertinoActionSheet(
+        title: Text(title, style: const TextStyle(fontFamily: 'Inter')),
+        actions: actions,
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.pop(context),
+          isDefaultAction: true,
+          child: Text(langCtrl.tr('cancel'), style: const TextStyle(color: Colors.white)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 16, bottom: 8, top: 24),
+      child: Text(
+        title.toUpperCase(),
+        style: TextStyle(color: _subText, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.2, fontFamily: 'Inter'),
+      ),
+    );
+  }
+
+  Widget _buildCard({required List<Widget> children, bool isDark = true}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Material(
+        color: isDark ? _cardColor : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: children.asMap().entries.map((entry) {
+            int idx = entry.key;
+            Widget child = entry.value;
+            return Column(
+              children: [
+                child,
+                if (idx < children.length - 1)
+                  Divider(height: 1, indent: 64, color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05)),
+              ],
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTile({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    Widget? trailing,
+    String? trailingText,
+    VoidCallback? onTap,
+    bool isDark = true,
+  }) {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      onTap: onTap,
+      splashColor: isDark ? Colors.white.withValues(alpha: 0.10) : Colors.black.withValues(alpha: 0.06),
+      hoverColor: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
+      leading: Container(
+        width: 32, height: 32,
+        decoration: BoxDecoration(color: isDark ? _mutedWell : Colors.grey[200], borderRadius: BorderRadius.circular(8)),
+        child: Icon(icon, color: isDark ? const Color(0xFFD1D1D6) : Colors.black87, size: 18),
+      ),
+      title: Text(title, style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 15, fontWeight: FontWeight.w500, fontFamily: 'Inter')),
+      subtitle: subtitle != null ? Text(subtitle, style: TextStyle(color: _subText, fontSize: 13, fontFamily: 'Inter')) : null,
+      trailing: trailing ?? (trailingText != null 
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(trailingText, style: TextStyle(color: _subText, fontSize: 14, fontFamily: 'Inter')),
+                const SizedBox(width: 4),
+                Icon(Icons.chevron_right, color: _subText, size: 18),
+              ],
+            ) 
+          : Icon(Icons.chevron_right, color: _subText, size: 18)),
+    );
+  }
+
+  Widget _statusPill(bool isPro, LanguageController langCtrl) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: isPro ? const Color(0xFF1A3B28) : _mutedWell,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isPro) ...[
+            Container(
+              width: 6,
+              height: 6,
+              decoration: const BoxDecoration(
+                color: Color(0xFF34C759),
+                shape: BoxShape.circle,
+                boxShadow: [BoxShadow(color: Color(0xFF34C759), blurRadius: 4)],
+              ),
+            ),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            isPro ? langCtrl.tr('status_active') : langCtrl.tr('status_inactive'),
+            style: TextStyle(
+              color: isPro ? const Color(0xFF34C759) : _subText,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              fontFamily: 'Inter',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _buyLabel(LanguageController langCtrl, String? price) {
+    if (price == null || price.isEmpty) return langCtrl.tr('buy_coffee');
+    return langCtrl.tr('buy_coffee_priced').replaceAll('{price}', price);
+  }
+
+  String _upgradeDesc(LanguageController langCtrl, String? price) {
+    if (price == null || price.isEmpty) return langCtrl.tr('upgrade_desc');
+    return langCtrl.tr('upgrade_desc_priced').replaceAll('{price}', price);
+  }
+
+  Widget _buildPremiumHero(
+    BuildContext context,
+    bool isDark,
+    PurchaseController purchaseCtrl,
+    LanguageController langCtrl,
+  ) {
+    final isPro = purchaseCtrl.isPro;
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: isDark ? _cardColor : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          Positioned(
+            top: -60,
+            left: -40,
+            child: Container(
+              width: 160,
+              height: 160,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [Colors.amber.withValues(alpha: 0.18), Colors.transparent],
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Colors.amber.shade300, Colors.orange.shade400],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Icon(Icons.workspace_premium, color: Colors.black87, size: 28),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            isPro ? langCtrl.tr('pro_title') : langCtrl.tr('upgrade_pro'),
+                            style: TextStyle(
+                              color: isDark ? Colors.white : Colors.black,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              height: 1.25,
+                              fontFamily: 'Inter',
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          _statusPill(isPro, langCtrl),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  isPro ? langCtrl.tr('pro_subtitle_active') : _upgradeDesc(langCtrl, purchaseCtrl.removeAdsPrice),
+                  style: TextStyle(
+                    color: _subText,
+                    fontSize: 13,
+                    height: 1.5,
+                    fontFamily: 'Inter',
+                  ),
+                ),
+                if (!isPro) ...[
+                  const SizedBox(height: 16),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: purchaseCtrl.isLoading ? null : () => purchaseCtrl.buySubscription(context),
+                      borderRadius: BorderRadius.circular(14),
+                      child: Ink(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Colors.amber.shade300, Colors.orange.shade400],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: SizedBox(
+                          height: 46,
+                          child: Center(
+                            child: purchaseCtrl.isLoading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black87),
+                                  )
+                                : Text(
+                                    _buyLabel(langCtrl, purchaseCtrl.removeAdsPrice),
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: Colors.black87,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                      fontFamily: 'Inter',
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
         ],
       ),
@@ -132,302 +374,240 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final locCtrl = context.watch<LocationController>();
     final busCtrl = context.watch<BusController>();
     final purchaseCtrl = context.watch<PurchaseController>();
+    final bgCtrl = context.watch<BackgroundController>();
+    final langCtrl = context.watch<LanguageController>();
 
-    return Column(
-      children: [
-        AppBar(
-          title: Text('⚙️ 設定', style: TextStyle(color: isDark ? Colors.white : Colors.black)), 
-          centerTitle: true, 
-          automaticallyImplyLeading: false,
-        ),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            children: [
-              if (!purchaseCtrl.isPro) ...[
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Colors.amber.shade700, Colors.orange.shade800],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: const [
-                        BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 3)),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              '👑 升級為巴士預報-MBKa贊助人',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          '每月只需要 \$5 就可以去除所有廣告，請我飲杯咖啡，支持呢個app持續更新，開發，進步。',
-                          style: TextStyle(color: Colors.white70, fontSize: 14, height: 1.4),
-                        ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 44,
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              foregroundColor: Colors.orange.shade900,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
-                            onPressed: purchaseCtrl.isLoading ? null : () => purchaseCtrl.buySubscription(context),
-                            child: purchaseCtrl.isLoading
-                                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                                : const Text('請我飲杯咖啡 (\$5 / 月)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+    final availableTabs = busCtrl.isSimpleMode ? [0, 2, 4, 5] : [0, 1, 2, 4, 5];
+    final tabMap = { 
+      0: langCtrl.tr('tab_search'), 
+      1: langCtrl.tr('tab_route'), 
+      2: langCtrl.tr('tab_station'), 
+      4: langCtrl.tr('tab_favorite'), 
+      5: langCtrl.tr('tab_settings') 
+    };
+    final safeDefaultIndex = availableTabs.contains(_defaultTabIndex)
+        ? _defaultTabIndex
+        : (_defaultTabIndex == 3 ? 2 : 0);
+    final langMap = { 'zh': '繁體中文', 'zhHans': '简体中文', 'pt': 'Português', 'en': 'English' };
 
-              ListTile(
-                leading: const Icon(Icons.workspace_premium, color: Colors.amber),
-                title: Text(
-                  '巴士預報-MBKa贊助人',
-                  style: TextStyle(
-                    color: isDark ? Colors.white : Colors.black,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                subtitle: Text(
-                  purchaseCtrl.isPro ? '感謝支持！已開通去除廣告權益' : '開通月費支持開發並去除所有廣告',
-                  style: const TextStyle(color: Colors.grey, fontSize: 12),
-                ),
-                trailing: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: purchaseCtrl.isPro
-                        ? Colors.green.withValues(alpha: 0.15)
-                        : Colors.grey.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(
-                      color: purchaseCtrl.isPro ? Colors.green : Colors.grey,
-                      width: 1,
-                    ),
-                  ),
-                  child: Text(
-                    purchaseCtrl.isPro ? '已開通' : '未開通',
-                    style: TextStyle(
-                      color: purchaseCtrl.isPro ? Colors.green : Colors.grey,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-                onTap: purchaseCtrl.isPro
-                    ? null
-                    : () => purchaseCtrl.buySubscription(context),
-              ),
-              Divider(height: 1, color: isDark ? const Color(0xFF333333) : Colors.grey[300]),
-
-              ListTile(
-                leading: const Icon(Icons.restore, color: Colors.blueAccent),
-                title: Text('回復已購買項目', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold)),
-                subtitle: const Text('更換裝置或重新安裝後可在此回復訂閱', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                trailing: purchaseCtrl.isLoading
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.chevron_right, color: Colors.grey),
-                onTap: purchaseCtrl.isLoading ? null : () => purchaseCtrl.restorePurchases(context),
-              ),
-              Divider(height: 1, color: isDark ? const Color(0xFF333333) : Colors.grey[300]),
-
-              ListTile(
-                leading: Icon(themeCtrl.themeMode == ThemeMode.dark ? Icons.light_mode : Icons.dark_mode, color: Colors.amber),
-                title: Text('切換日夜模式', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold)),
-                trailing: Switch(
-                  value: themeCtrl.themeMode == ThemeMode.dark,
-                  onChanged: (val) => themeCtrl.toggleTheme(),
-                  activeThumbColor: Colors.amber,
-                ),
-                onTap: () => themeCtrl.toggleTheme(),
-              ),
-              Divider(height: 1, color: isDark ? const Color(0xFF333333) : Colors.grey[300]),
-
-              ListTile(
-                leading: const Icon(Icons.my_location, color: Colors.blueAccent),
-                title: Text('定位目前位置', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold)),
-                subtitle: const Text('尋找並跳轉至距離您最近的巴士站', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-                onTap: () {
-                  context.read<NavigationController>().changeTab(1);
-                  locCtrl.toggleLocationTracking((loc) {});
-                },
-              ),
-              Divider(height: 1, color: isDark ? const Color(0xFF333333) : Colors.grey[300]),
-
-              ListTile(
-                leading: Icon(busCtrl.isSimpleMode ? Icons.unfold_more : Icons.unfold_less, color: Colors.green),
-                title: Text(busCtrl.isSimpleMode ? '切換至詳細版' : '切換至簡潔版', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold)),
-                subtitle: Text(busCtrl.isSimpleMode ? '顯示所有進階導航與設定按鈕' : '隱藏搜尋列旁的進階按鈕，保持介面清爽', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                trailing: Switch(
-                  value: busCtrl.isSimpleMode,
-                  onChanged: (val) => busCtrl.toggleSimpleMode(val),
-                  activeThumbColor: Colors.green,
-                ),
-                onTap: () => busCtrl.toggleSimpleMode(!busCtrl.isSimpleMode),
-              ),
-              Divider(height: 1, color: isDark ? const Color(0xFF333333) : Colors.grey[300]),
-              
-              ListTile(
-                leading: const Icon(Icons.home, color: Colors.purpleAccent),
-                title: Text(
-                  '設定預設主頁',
-                  style: TextStyle(
-                    color: isDark ? Colors.white : Colors.black,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                subtitle: const Text(
-                  '選擇開啟 App 時顯示的第一個頁面',
-                  style: TextStyle(color: Colors.grey, fontSize: 12),
-                ),
-                trailing: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF333333) : Colors.grey[200],
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: DropdownButton<int>(
-                    isDense: true,
-                    value: _defaultTabIndex,
-                    dropdownColor: isDark ? const Color(0xFF333333) : Colors.white,
-                    underline: const SizedBox(),
-                    icon: const Icon(Icons.arrow_drop_down, color: Colors.grey),
-                    items: [
-                      DropdownMenuItem(value: 0, child: Text('路線', style: TextStyle(color: isDark ? Colors.white : Colors.black))),
-                      DropdownMenuItem(value: 1, child: Text('車站', style: TextStyle(color: isDark ? Colors.white : Colors.black))),
-                      DropdownMenuItem(value: 2, child: Text('地圖', style: TextStyle(color: isDark ? Colors.white : Colors.black))),
-                      DropdownMenuItem(value: 3, child: Text('收藏', style: TextStyle(color: isDark ? Colors.white : Colors.black))),
-                    ],
-                    onChanged: (int? newValue) async {
-                      if (newValue != null) {
-                        setState(() {
-                          _defaultTabIndex = newValue;
-                        });
-                        final prefs = await SharedPreferences.getInstance();
-                        await prefs.setInt('default_tab_index', newValue);
-                        
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('已將預設主頁更改為 ${["路線", "車站", "地圖", "收藏"][newValue]}'),
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
-                        }
-                      }
-                    },
-                  ),
-                ),
-              ),
-              Divider(height: 1, color: isDark ? const Color(0xFF333333) : Colors.grey[300]),
-
-              ListTile(
-                leading: const Icon(Icons.bug_report, color: Colors.grey),
-                title: const Text('測試開關：免廣告狀態', style: TextStyle(color: Colors.grey)),
-                subtitle: const Text('供測試環境手動模擬 Pro 用戶狀態', style: TextStyle(color: Colors.grey, fontSize: 11)),
-                trailing: Switch(
-                  value: purchaseCtrl.isPro,
-                  onChanged: (_) => purchaseCtrl.toggleDebugProStatus(),
-                  activeThumbColor: Colors.amber,
-                ),
-              ),
-
-              const SizedBox(height: 32), 
-
-              // 🌟 重新排版：關於、聲明與私隱權政策 (置底超連結)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        InkWell(
-                          onTap: () => _showAboutApp(context, isDark),
-                          child: Text(
-                            '關於我們',
-                            style: TextStyle(
-                              color: isDark ? Colors.grey[400] : Colors.grey[600],
-                              fontSize: 12,
-                              decoration: TextDecoration.underline,
-                            ),
-                          ),
-                        ),
-                        Text(
-                          '   |   ',
-                          style: TextStyle(color: isDark ? Colors.grey[600] : Colors.grey[400], fontSize: 12),
-                        ),
-                        InkWell(
-                          onTap: () => _showDisclaimer(context, isDark),
-                          child: Text(
-                            '免責聲明',
-                            style: TextStyle(
-                              color: isDark ? Colors.grey[400] : Colors.grey[600],
-                              fontSize: 12,
-                              decoration: TextDecoration.underline,
-                            ),
-                          ),
-                        ),
-                        Text(
-                          '   |   ',
-                          style: TextStyle(color: isDark ? Colors.grey[600] : Colors.grey[400], fontSize: 12),
-                        ),
-                        InkWell(
-                          onTap: () => _showPrivacyPolicy(context, isDark),
-                          child: Text(
-                            '隱私權政策',
-                            style: TextStyle(
-                              color: isDark ? Colors.grey[400] : Colors.grey[600],
-                              fontSize: 12,
-                              decoration: TextDecoration.underline,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
+    return Scaffold(
+      // 💡 關鍵：如果設定咗自訂背景圖片，Scaffold 背景必須為透明
+      backgroundColor: bgCtrl.backgroundImagePath != null 
+          ? Colors.transparent 
+          : (isDark ? _darkBase : const Color(0xFFF2F2F7)),
+          
+      // 💡 結構改為 Column，分開固定 Header 同 滑動內容
+      body: Column(
+        children: [
+          // 🌟 從 Source 1 移植嘅 Frosted Glass (毛玻璃) Header，並加入齒輪 Icon
+          ClipRect(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
+              child: Container(
+                color: isDark ? Colors.black.withValues(alpha: 0.65) : Colors.white.withValues(alpha: 0.7),
+                // 利用 MediaQuery 獲取系統頂部安全距離，完美取代 SafeArea
+                padding: EdgeInsets.fromLTRB(20, MediaQuery.of(context).padding.top + 12, 20, 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center, // 置中對齊
+                  children: [                    
+                    const SizedBox(width: 8),
                     Text(
-                      'v 1.0.0 (Build 1)',
+                      langCtrl.tr('settings_title'), 
                       style: TextStyle(
-                        color: isDark ? Colors.grey[600] : Colors.grey[400],
-                        fontSize: 10,
-                      ),
-                      textAlign: TextAlign.center,
+                        color: isDark ? Colors.white : Colors.black, 
+                        fontSize: 18, 
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'Inter'
+                      )
                     ),
-                    const SizedBox(height: 40), 
                   ],
                 ),
               ),
-            ],
+            ),
           ),
-        ),
+          
+          Divider(
+            height: 1, 
+            color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.1)
+          ),
 
-        const CustomBannerAd(),
-      ],
+          Expanded(
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  bottom: 24 + MediaQuery.paddingOf(context).bottom,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // --- 1. SUBSCRIPTION ---
+                    _buildSectionHeader(langCtrl.tr('section_subscription')),
+
+                    _buildPremiumHero(context, isDark, purchaseCtrl, langCtrl),                    
+                                       
+                    _buildCard(
+                      isDark: isDark,
+                      children: [
+                        _buildTile(
+                          icon: Icons.restore, title: langCtrl.tr('restore_purchase'), isDark: isDark,
+                          trailing: purchaseCtrl.isLoading ? const CupertinoActivityIndicator() : null,
+                          onTap: purchaseCtrl.isLoading ? null : () => purchaseCtrl.restorePurchases(context),
+                        ),
+                      ]
+                    ),
+
+                    // --- 2. PREFERENCES ---
+                    _buildSectionHeader(langCtrl.tr('section_preferences')),
+                    _buildCard(
+                      isDark: isDark,
+                      children: [
+                        _buildTile(
+                          icon: Icons.translate, title: langCtrl.tr('display_language'), subtitle: langCtrl.tr('display_language_desc'), trailingText: langMap[langCtrl.currentLanguage], isDark: isDark,
+                          onTap: () {
+                            _showActionSheet(
+                              context, langCtrl,
+                              title: langCtrl.tr('select_language'),
+                              actions: langMap.entries.map((e) => CupertinoActionSheetAction(
+                                onPressed: () { langCtrl.changeLanguage(e.key); Navigator.pop(context); },
+                                child: Text(e.value, style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+                              )).toList(),
+                            );
+                          }
+                        ),
+                        _buildTile(
+                          icon: Icons.grid_view, title: langCtrl.tr('default_page'), subtitle: langCtrl.tr('default_page_desc'), trailingText: tabMap[safeDefaultIndex], isDark: isDark,
+                          onTap: () {
+                            _showActionSheet(
+                              context, langCtrl,
+                              title: langCtrl.tr('select_default_page'),
+                              actions: availableTabs.map((idx) => CupertinoActionSheetAction(
+                                onPressed: () async {
+                                  setState(() => _defaultTabIndex = idx);
+                                  final prefs = await SharedPreferences.getInstance();
+                                  await prefs.setInt('default_tab_index', idx);
+                                  if (context.mounted) Navigator.pop(context);
+                                },
+                                child: Text(tabMap[idx]!, style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+                              )).toList(),
+                            );
+                          }
+                        ),
+                        _buildTile(
+                          icon: Icons.wallpaper, title: langCtrl.tr('custom_bg'), subtitle: bgCtrl.backgroundImagePath == null ? langCtrl.tr('custom_bg_default') : langCtrl.tr('custom_bg_applied'), isDark: isDark,
+                          onTap: () => bgCtrl.pickAndSaveBackground(),
+                          trailing: bgCtrl.backgroundImagePath != null 
+                              ? IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18), onPressed: () => bgCtrl.clearBackground())
+                              : null,
+                        ),
+                        if (bgCtrl.backgroundImagePath != null)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 8, 12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  langCtrl.tr('bg_blur'),
+                                  style: TextStyle(
+                                    color: isDark ? Colors.white : Colors.black,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w500,
+                                    fontFamily: 'Inter',
+                                  ),
+                                ),
+                                Slider(
+                                  value: bgCtrl.bgBlur.clamp(0.0, 20.0),
+                                  min: 0.0,
+                                  max: 20.0,
+                                  divisions: 20,
+                                  activeColor: Colors.amber,
+                                  inactiveColor: isDark ? _mutedWell : Colors.grey[300],
+                                  label: bgCtrl.bgBlur.toInt().toString(),
+                                  onChanged: (value) => bgCtrl.setBlur(value),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ]
+                    ),
+
+                    // --- 3. APP EXPERIENCE ---
+                    _buildSectionHeader(langCtrl.tr('section_app_experience')),
+                    _buildCard(
+                      isDark: isDark,
+                      children: [
+                        _buildTile(
+                          icon: Icons.dark_mode_outlined, title: langCtrl.tr('switch_theme'), subtitle: langCtrl.tr('easier_on_eyes'), isDark: isDark,
+                          trailing: CupertinoSwitch(
+                            value: themeCtrl.themeMode == ThemeMode.dark,
+                            onChanged: (_) => themeCtrl.toggleTheme(),
+                            activeTrackColor: isDark ? Colors.white : Colors.black, 
+                            inactiveTrackColor: _mutedWell,
+                            thumbColor: isDark ? Colors.black : Colors.white,
+                          ),
+                        ),
+                        _buildTile(
+                          icon: Icons.near_me_outlined, title: langCtrl.tr('locate_position'), subtitle: langCtrl.tr('locate_desc'), isDark: isDark,
+                          trailing: CupertinoSwitch(
+                            value: locCtrl.isFollowingUser,
+                            onChanged: (_) => GpsService.toggleGpsAndAutoSelectStop(context, busCtrl, locCtrl),
+                            activeTrackColor: isDark ? Colors.white : Colors.black, 
+                            inactiveTrackColor: _mutedWell,
+                            thumbColor: isDark ? Colors.black : Colors.white,
+                          ),
+                        ),
+                        _buildTile(
+                          icon: Icons.bolt_outlined, title: langCtrl.tr('simple_mode_off'), subtitle: langCtrl.tr('simple_mode_desc_off'), isDark: isDark,
+                          trailing: CupertinoSwitch(
+                            value: busCtrl.isSimpleMode,
+                            onChanged: (val) {
+                              busCtrl.toggleSimpleMode(val);
+                              if (val) {
+                                context.read<NavigationController>().closeMap(busCtrl: busCtrl);
+                              }
+                            },
+                            activeTrackColor: isDark ? Colors.white : Colors.black, 
+                            inactiveTrackColor: _mutedWell,
+                            thumbColor: isDark ? Colors.black : Colors.white,
+                          ),
+                        ),
+                        if (kDebugMode)
+                          _buildTile(
+                            icon: Icons.bug_report_outlined, title: langCtrl.tr('test_ad_free'), subtitle: langCtrl.tr('simulate_pro_status'), isDark: isDark,
+                            trailing: CupertinoSwitch(
+                              value: purchaseCtrl.isPro,
+                              onChanged: (_) => purchaseCtrl.toggleDebugProStatus(),
+                              activeTrackColor: isDark ? Colors.white : Colors.black,
+                              inactiveTrackColor: _mutedWell,
+                              thumbColor: isDark ? Colors.black : Colors.white,
+                            ),
+                          ),
+                      ]
+                    ),
+
+                    const SizedBox(height: 48),
+                    SizedBox(
+                      width: double.infinity,
+                      child: Wrap(
+                        alignment: WrapAlignment.center,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          InkWell(onTap: () => _showMarkdownDialog(context, isDark, langCtrl, 'about_us', 'about', Icons.info_outline, Colors.blueAccent), child: Text(langCtrl.tr('about_us'), style: TextStyle(color: _subText, fontSize: 12))),
+                          Text('   •   ', style: TextStyle(color: _subText, fontSize: 12)),
+                          InkWell(onTap: () => _showMarkdownDialog(context, isDark, langCtrl, 'disclaimer', 'disclaimer', Icons.gavel, Colors.redAccent), child: Text(langCtrl.tr('disclaimer'), style: TextStyle(color: _subText, fontSize: 12))),
+                          Text('   •   ', style: TextStyle(color: _subText, fontSize: 12)),
+                          InkWell(onTap: () => _showMarkdownDialog(context, isDark, langCtrl, 'privacy_policy', 'privacy', Icons.privacy_tip, Colors.amber), child: Text(langCtrl.tr('privacy_policy'), style: TextStyle(color: _subText, fontSize: 12))),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Center(child: Text('Version 1.0.0 (Build 1)', style: TextStyle(color: isDark ? const Color(0xFF3A3A3C) : Colors.grey[400], fontSize: 11, fontFamily: 'Inter', letterSpacing: 0.5))),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

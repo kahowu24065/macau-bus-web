@@ -16,7 +16,7 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application
-        android:label="macau_bus_app"
+        android:label="巴士預報-MBKa"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         
@@ -57,7 +57,7 @@
             
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-6616126137620427~2249641772"/>
+            android:value="ca-app-pub-7648913543953622~9721521812"/>
     </application>
     
     <!-- Required to query activities that can process text, see:

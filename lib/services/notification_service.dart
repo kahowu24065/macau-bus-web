@@ -1,8 +1,11 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io' show Platform;
 
 class NotificationService {
+  static const int arrivalNotificationId = 889;
+  static const String boardingAlarmSentKey = 'track_alarm_sent';
   static final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
 
   static Future<void> init() async {
@@ -21,7 +24,6 @@ class NotificationService {
         iOS: iosSettings,
       );
       
-      // 🛡️ 保留原版：使用 settings: 標籤
       await _plugin.initialize(settings: settings);
     }
   }
@@ -31,6 +33,15 @@ class NotificationService {
       final androidImpl = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
       if (androidImpl != null) await androidImpl.requestNotificationsPermission();
     }
+  }
+
+  /// Returns false if the foreground or background isolate already claimed this boarding alert.
+  static Future<bool> claimBoardingAlarm() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    if (prefs.getBool(boardingAlarmSentKey) == true) return false;
+    await prefs.setBool(boardingAlarmSentKey, true);
+    return true;
   }
 
   static Future<void> showAlarm(String title, String body) async {
@@ -44,6 +55,7 @@ class NotificationService {
       priority: Priority.high, 
       enableVibration: true,
       playSound: true,
+      onlyAlertOnce: true,
     );
     
     // 💡 結合新功能：加入 iOS 橫幅設定
@@ -58,10 +70,10 @@ class NotificationService {
       iOS: iosDetails,
     );
     
-    // 🛡️ 保留原版：使用 id:, title:, body:, notificationDetails: 標籤
-    // 💡 優化：將 id 設為毫秒時間戳，確保連續觸發多個站點時，通知唔會互相冚走
+    // Fixed ID so foreground + background monitors overwrite each other
+    // instead of stacking duplicate alerts. Must not be 888 (ongoing tracking).
     await _plugin.show(
-      id: DateTime.now().millisecond, 
+      id: arrivalNotificationId,
       title: title, 
       body: body, 
       notificationDetails: details

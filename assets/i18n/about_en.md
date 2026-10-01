@@ -1,0 +1,1 @@
+"Bus Forecast - MBKa" is dedicated to providing Macao citizens and tourists with an accurate and convenient public transport experience. This application combines real-time traffic data with intelligent route calculation technology, helping users easily plan their journeys and keep track of real-time bus statuses.

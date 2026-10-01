@@ -1,49 +1,15 @@
 import 'dart:async';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:latlong2/latlong.dart';
 import '../../controllers/location_controller.dart';
 import '../../controllers/navigation_controller.dart';
+import '../../controllers/language_controller.dart'; 
 import '../../services/places_service.dart';
+import '../../services/otp_service.dart'; // 🌟 正規化引入獨立嘅 Service
+import '../../services/local_timetable.dart';
 import '../../models/itinerary.dart';
-
-class OTPService {
-  static const String baseUrl = 'https://api.macaubus-kat1.com/otp/routers/default/index/graphql';
-  static Future<dynamic> getRoutePlan({required double fromLat, required double fromLng, required double toLat, required double toLng}) async {
-    try {
-      final now = DateTime.now();
-      final timeString = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
-      final dateString = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-      final String graphqlQuery = '''{ plan(from: {lat: $fromLat, lon: $fromLng} to: {lat: $toLat, lon: $toLng} date: "$dateString" time: "$timeString" numItineraries: 5 maxWalkDistance: 2000.0 walkReluctance: 8.0 transportModes: [{mode: WALK}, {mode: TRANSIT}]) { itineraries { duration legs { mode duration startTime endTime route { gtfsId, shortName } from { name, lat, lon } to { name, lat, lon } legGeometry { points } } } } }''';
-      
-      final response = await http.post(
-        Uri.parse(baseUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'query': graphqlQuery}),
-      ).timeout(const Duration(seconds: 15));
-      
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['errors'] != null) {
-          return "GraphQL 語法錯誤";
-        }
-        if (data['data'] != null && data['data']['plan'] != null) {
-          final itineraries = data['data']['plan']['itineraries'] as List;
-          if (itineraries.isNotEmpty) {
-            itineraries.sort((a, b) => (a['duration'] as num).compareTo(b['duration'] as num));
-            return itineraries;
-          }
-          return "大腦話呢個距離/時間搵唔到路線！(可能步行距離太遠)";
-        }
-      }
-      return "OTP 伺服器錯誤";
-    } catch (e) {
-      return "網絡連線失敗: $e";
-    }
-  }
-}
+import 'route_liquid_glass_nav.dart';
 
 class RoutingBottomSheet extends StatefulWidget {
   final LatLng? userLocation;
@@ -86,16 +52,19 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
   @override
   void initState() {
     super.initState();
-    final locCtrl = context.read<LocationController>();
-    
-    if (widget.customMapStart != null) {
-      _startController.text = '地圖自選起點 🟢';
-    } else if (locCtrl.userLocation != null && locCtrl.isFollowingUser) {
-      _startController.text = '目前位置 (GPS)';
-    }
-    if (widget.customMapEnd != null) {
-      _destController.text = '地圖自選終點 🔴';
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final locCtrl = context.read<LocationController>();
+      final langCtrl = context.read<LanguageController>();
+      
+      if (widget.customMapStart != null) {
+        _startController.text = langCtrl.tr('custom_start');
+      } else if (locCtrl.userLocation != null && locCtrl.isFollowingUser) {
+        _startController.text = langCtrl.tr('current_gps_location');
+      }
+      if (widget.customMapEnd != null) {
+        _destController.text = langCtrl.tr('custom_end');
+      }
+    });
   }
 
   @override
@@ -144,17 +113,57 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
     FocusScope.of(context).unfocus();
   }
 
+
+  bool _isServiceUnavailableEta(String eta, LanguageController langCtrl) {
+    if (eta.isEmpty) return false;
+    final t = eta.trim();
+    return t.contains('本日服務已結束') ||
+        t.contains('服務已結束') ||
+        t.contains('服务已结束') ||
+        t.contains('尾班車已過') ||
+        t.contains('本日不設服務') ||
+        t.contains('不設服務') ||
+        t.contains('不设服务') ||
+        t.contains('本日服務尚未開始') ||
+        t.contains('服務尚未開始') ||
+        t.contains('尚未開始') ||
+        t.contains('尚未开始') ||
+        t == langCtrl.tr('service_ended') ||
+        t == langCtrl.tr('no_service_today') ||
+        t == langCtrl.tr('service_not_started') ||
+        t == langCtrl.tr('last_bus_departed') ||
+        t.contains('Service ended') ||
+        t.contains('Service not started') ||
+        t.contains('No service today') ||
+        t.contains('Sem serviço hoje') ||
+        t.contains('Servico terminado') ||
+        t.contains('Serviço terminado') ||
+        t.contains('Serviço não iniciado');
+  }
+
+  bool _itineraryHasGhostBus(Itinerary it, LanguageController langCtrl) {
+    for (final leg in it.legs) {
+      if (leg.mode != 'BUS' && leg.mode != 'TRANSIT') continue;
+      if (LocalTimetable.unavailableForPlanning(leg.routeName)) return true;
+      final eta = leg.realtimeEta ?? '';
+      if (_isServiceUnavailableEta(eta, langCtrl)) return true;
+    }
+    return false;
+  }
+
   Future<void> _routeWithOTP() async {
     FocusManager.instance.primaryFocus?.unfocus();
+    final langCtrl = context.read<LanguageController>();
 
     final startText = _startController.text.trim();
     final destText = _destController.text.trim();
+    
     if (startText.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('請先輸入起點')));
+      ScaffoldMessenger.of(context).showSnackBar(RouteLiquidGlassNavStyle.snackBar(context: context, content: Text(langCtrl.tr('pls_enter_start'))));
       return;
     }
     if (destText.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('請先輸入目的地')));
+      ScaffoldMessenger.of(context).showSnackBar(RouteLiquidGlassNavStyle.snackBar(context: context, content: Text(langCtrl.tr('pls_enter_dest'))));
       return;
     }
     
@@ -163,36 +172,69 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
     
     final currentUserLoc = locCtrl.isFollowingUser ? locCtrl.userLocation : null;
 
-    if ((startText == '目前位置 (GPS)' || destText == '目前位置 (GPS)') && currentUserLoc == null) {
-       _showErrorDialog('GPS 定位中', '系統正在獲取您的實時位置，請確保已開啟定位權限，稍等幾秒後再重試。');
+    if ((startText.contains('GPS') || destText.contains('GPS')) && currentUserLoc == null) {
+       _showErrorDialog(langCtrl.tr('locating_gps_title'), langCtrl.tr('locating_gps_desc'), langCtrl);
        return;
     }
 
     setState(() => _isRoutingWithOTP = true);
     
     try {
-      final startLoc = await navCtrl.getCoordinate(startText, true, currentUserLoc, widget.customMapStart, widget.customMapEnd, _sessionToken, _startPlaceId);
+      unawaited(LocalTimetable.ensureLoaded());
+      final startFuture = navCtrl.getCoordinate(
+        startText,
+        true,
+        currentUserLoc,
+        widget.customMapStart,
+        widget.customMapEnd,
+        _sessionToken,
+        _startPlaceId,
+        langCtrl,
+      );
+      final destFuture = navCtrl.getCoordinate(
+        destText,
+        false,
+        currentUserLoc,
+        widget.customMapStart,
+        widget.customMapEnd,
+        _sessionToken,
+        _destPlaceId,
+        langCtrl,
+      );
+      final startLoc = await startFuture;
+      final destLoc = await destFuture;
       if (startLoc == null) {
-        if (mounted) _showErrorDialog('起點無效', '大腦搵唔到「$startText」嘅座標。');
+        String desc = langCtrl.tr('invalid_start_desc').replaceAll('@text', startText);
+        if (mounted) _showErrorDialog(langCtrl.tr('invalid_start_title'), desc, langCtrl);
         setState(() => _isRoutingWithOTP = false);
         return;
       }
-      
-      final destLoc = await navCtrl.getCoordinate(destText, false, currentUserLoc, widget.customMapStart, widget.customMapEnd, _sessionToken, _destPlaceId);
       if (destLoc == null) {
-        if (mounted) _showErrorDialog('目的地無效', '大腦搵唔到「$destText」嘅座標。');
+        String desc = langCtrl.tr('invalid_dest_desc').replaceAll('@text', destText);
+        if (mounted) _showErrorDialog(langCtrl.tr('invalid_dest_title'), desc, langCtrl);
         setState(() => _isRoutingWithOTP = false);
         return;
       }
-      
-      final result = await OTPService.getRoutePlan(fromLat: startLoc.latitude, fromLng: startLoc.longitude, toLat: destLoc.latitude, toLng: destLoc.longitude);
-      
+
+      final result = await OTPService.getRoutePlan(
+        fromLat: startLoc.latitude,
+        fromLng: startLoc.longitude,
+        toLat: destLoc.latitude,
+        toLng: destLoc.longitude,
+        langCtrl: langCtrl,
+      );
+
+      List<Itinerary> uniqueItineraries = [];
       if (result is List<dynamic>) {
-        List<Itinerary> uniqueItineraries = [];
         Set<String> seenPatterns = {};
-        
+        await LocalTimetable.ensureLoaded();
+
         for (var rawIt in result) {
           final itinerary = Itinerary.fromJson(rawIt as Map<String, dynamic>);
+          final hasNoServiceRoute = itinerary.legs.any((leg) =>
+              (leg.mode == 'BUS' || leg.mode == 'TRANSIT') &&
+              LocalTimetable.unavailableForPlanning(leg.routeName));
+          if (hasNoServiceRoute) continue;
           List<String> routeNames = [];
           for (var leg in itinerary.legs) {
             if (leg.mode == 'BUS' || leg.mode == 'TRANSIT') {
@@ -206,62 +248,180 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
             uniqueItineraries.add(itinerary);
           }
         }
-        
-        List<Future<void>> enrichmentTasks = [];
-        for (var itinerary in uniqueItineraries) {
-          for (var leg in itinerary.legs) {
-            if (leg.mode == 'BUS' || leg.mode == 'TRANSIT') {
-              enrichmentTasks.add(navCtrl.enrichLeg(leg));
-            }
-          }
+        if (uniqueItineraries.length > 5) {
+          uniqueItineraries = uniqueItineraries.sublist(0, 5);
         }
-        await Future.wait(enrichmentTasks);
-        
-        List<Itinerary> activeItineraries = [];
-        for (var it in uniqueItineraries) {
-          bool hasGhost = false;
-          for (var leg in it.legs) {
+      }
+
+      // Match official board/alight first. ETA is filled after results show.
+        final lang = langCtrl.currentLanguage;
+        final routesToPrefetch = <String>{};
+        for (final itinerary in uniqueItineraries) {
+          for (final leg in itinerary.legs) {
             if (leg.mode == 'BUS' || leg.mode == 'TRANSIT') {
-              final eta = leg.realtimeEta ?? '';
-              if (eta.contains('未有') || eta.contains('失敗') || eta == 'null' || 
-                  eta.contains('不設服務') || eta.contains('已結束') || eta.contains('尾班車已過')) {
-                hasGhost = true;
-                break;
+              final name = leg.routeName.trim();
+              if (name.isNotEmpty && !LocalTimetable.unavailableForPlanning(name)) {
+                routesToPrefetch.add(name);
               }
             }
           }
-          if (!hasGhost) activeItineraries.add(it);
+        }
+        if (routesToPrefetch.isNotEmpty) {
+          await Future.wait([
+            for (final route in routesToPrefetch)
+              navCtrl.prefetchRouteStops(route, lang),
+          ]);
         }
 
-        bool onlyGhostsLeft = false;
-        if (activeItineraries.isEmpty && uniqueItineraries.isNotEmpty) {
-          activeItineraries = uniqueItineraries; 
-          onlyGhostsLeft = true;
+        final List<Future<void>> matchTasks = [];
+        for (final itinerary in uniqueItineraries) {
+          for (final leg in itinerary.legs) {
+            if (leg.mode == 'BUS' || leg.mode == 'TRANSIT') {
+              matchTasks.add(navCtrl.enrichLeg(leg, langCtrl, includeEta: false));
+            }
+          }
+        }
+        if (matchTasks.isNotEmpty) {
+          await Future.wait(matchTasks);
+        }
+
+        // (1) Keep only itineraries whose bus legs mapped onto official stops
+        // and are actually running (not ended / no service today).
+        List<Itinerary> officialItineraries = [];
+        for (final it in uniqueItineraries) {
+          final busLegs = it.legs
+              .where((l) => l.mode == 'BUS' || l.mode == 'TRANSIT')
+              .toList();
+          if (busLegs.isEmpty) {
+            officialItineraries.add(it); // walk-only
+            continue;
+          }
+          if (_itineraryHasGhostBus(it, langCtrl)) continue;
+          final ok = busLegs.every(
+            (l) => l.boardingStopSeq != null && l.alightStopSeq != null,
+          );
+          if (ok) officialItineraries.add(it);
+        }
+
+        List<Itinerary> activeItineraries = [];
+        for (final it in officialItineraries) {
+          if (_itineraryHasGhostBus(it, langCtrl)) continue;
+          activeItineraries.add(it);
+        }
+
+        const onlyGhostsLeft = false;
+
+        int busLegsOf(Itinerary it) => it.legs
+            .where((l) => l.mode == 'BUS' || l.mode == 'TRANSIT')
+            .length;
+        String patternOf(Itinerary it) {
+          final names = <String>[];
+          for (final leg in it.legs) {
+            if (leg.mode == 'BUS' || leg.mode == 'TRANSIT') {
+              names.add(leg.routeName.isNotEmpty ? leg.routeName : 'BUS');
+            }
+          }
+          return names.isEmpty ? 'WALK_ONLY' : names.join('->');
+        }
+
+        // Official backup only if OTP left nothing usable — extra nearby/ETA
+        // is what made every plan wait on 8s/12s timeouts.
+        if (activeItineraries.isEmpty) {
+          final existingPatterns = <String>{};
+          for (final it in activeItineraries) {
+            existingPatterns.add(patternOf(it));
+          }
+
+          final fallback = await navCtrl.suggestOfficialDirectBuses(
+            fromLat: startLoc.latitude,
+            fromLng: startLoc.longitude,
+            toLat: destLoc.latitude,
+            toLng: destLoc.longitude,
+            langCtrl: langCtrl,
+            includeTwoTransfers: true,
+          );
+          for (final it in fallback) {
+            final pattern = patternOf(it);
+            if (existingPatterns.contains(pattern)) continue;
+            if (_itineraryHasGhostBus(it, langCtrl)) continue;
+            final busLegs = it.legs
+                .where((l) => l.mode == 'BUS' || l.mode == 'TRANSIT')
+                .toList();
+            if (busLegs.isNotEmpty &&
+                busLegs.any((l) => l.boardingStopSeq == null || l.alightStopSeq == null)) {
+              continue;
+            }
+            existingPatterns.add(pattern);
+            activeItineraries.add(it);
+          }
+        }
+
+        activeItineraries.sort((a, b) {
+          final cmp = busLegsOf(a).compareTo(busLegsOf(b));
+          if (cmp != 0) return cmp;
+          return a.duration.compareTo(b.duration);
+        });
+        final withBuses =
+            activeItineraries.where((it) => busLegsOf(it) > 0).toList();
+        final walks =
+            activeItineraries.where((it) => busLegsOf(it) == 0).toList();
+        if (withBuses.isNotEmpty) {
+          var minLegs = busLegsOf(withBuses.first);
+          for (final it in withBuses) {
+            final n = busLegsOf(it);
+            if (n < minLegs) minLegs = n;
+          }
+          final best =
+              withBuses.where((it) => busLegsOf(it) == minLegs).toList();
+          final more = withBuses
+              .where((it) => busLegsOf(it) == minLegs + 1)
+              .toList();
+          activeItineraries = [
+            ...best,
+            ...more.take(3),
+            ...walks,
+          ];
+        }
+        if (activeItineraries.length > 6) {
+          activeItineraries = activeItineraries.sublist(0, 6);
+        }
+
+        if (activeItineraries.isEmpty) {
+          final noValidTitle = langCtrl.currentLanguage == 'en'
+              ? 'No valid bus route'
+              : (langCtrl.currentLanguage == 'pt'
+                  ? 'Sem rota válida'
+                  : '沒有可用巴士方案');
+          final noValidDesc = langCtrl.currentLanguage == 'en'
+              ? 'No official bus links the stops near your start and end. Try another destination or time.'
+              : (langCtrl.currentLanguage == 'pt'
+                  ? 'Nenhuma carreira oficial liga as paragens perto do início e do fim. Tente outro destino ou horário.'
+                  : '起點同終點附近搵唔到官方站表對得通嘅巴士。請試其他目的地或時間。');
+          if (mounted) _showErrorDialog(noValidTitle, noValidDesc, langCtrl);
+          return;
         }
 
         if (mounted) {
-          navCtrl.clearNavigation(); 
-          widget.onRouteCalculated(activeItineraries, destText, onlyGhostsLeft); 
+          navCtrl.clearNavigation();
+          widget.onRouteCalculated(activeItineraries, destText, onlyGhostsLeft);
+          unawaited(navCtrl.fillItinerariesEta(activeItineraries, langCtrl));
         }
-      } else {
-        if (mounted) _showErrorDialog('OTP 大腦連線異常', result.toString());
-      }
     } catch (e) {
-      if (mounted) _showErrorDialog('App 內部發生崩潰', e.toString());
+      if (mounted) _showErrorDialog(langCtrl.tr('app_crash_title'), e.toString(), langCtrl);
     } finally {
       if (mounted) setState(() => _isRoutingWithOTP = false);
     }
   }
 
-  void _showErrorDialog(String title, String message) {
+  void _showErrorDialog(String title, String message, LanguageController langCtrl) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
-        title: Row(children: [const Icon(Icons.error_outline, color: Colors.redAccent), const SizedBox(width: 8), Text(title, style: const TextStyle(color: Colors.redAccent, fontSize: 18))]),
+        title: Row(children: [const Icon(Icons.error_outline, color: Colors.redAccent), const SizedBox(width: 8), Expanded(child: Text(title, style: const TextStyle(color: Colors.redAccent, fontSize: 18)))]),
         content: Text(message, style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 14)),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('收到', style: TextStyle(color: Colors.amber)))],
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(langCtrl.tr('received'), style: const TextStyle(color: Colors.amber)))],
       ),
     );
   }
@@ -308,6 +468,7 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final locCtrl = context.watch<LocationController>();
+    final langCtrl = context.watch<LanguageController>(); 
 
     return SafeArea(
       child: Container(
@@ -330,7 +491,7 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
                 margin: const EdgeInsets.only(bottom: 16),
                 decoration: BoxDecoration(color: Colors.grey[700], borderRadius: BorderRadius.circular(2)),
               ),
-              const Text('路線規劃', style: TextStyle(color: Colors.amber, fontSize: 18, fontWeight: FontWeight.bold)),
+              Text(langCtrl.tr('routing_title'), style: const TextStyle(color: Colors.amber, fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 20),
 
               Row(
@@ -344,7 +505,7 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
                       style: TextStyle(color: isDark ? Colors.white : Colors.black),
                       onChanged: (val) => _onSearchChanged(val, isStart: true),
                       decoration: InputDecoration(
-                        hintText: '輸入起點、選擇定位或地圖',
+                        hintText: langCtrl.tr('hint_start'),
                         hintStyle: const TextStyle(color: Colors.grey, fontSize: 13),
                         filled: true,
                         fillColor: isDark ? const Color(0xFF2A2A2A) : Colors.grey[200],
@@ -363,31 +524,30 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
                   ),
                   const SizedBox(width: 4),
                   IconButton(
-                    // 🌟 統一圖示：永遠顯示實心點嘅 Icons.my_location，色調同主畫面完全一致
                     icon: Icon(
                       Icons.my_location, 
                       color: locCtrl.isFollowingUser ? Colors.green : Colors.amber.shade700
                     ),
-                    tooltip: '用目前定位',
+                    tooltip: langCtrl.tr('locate_position'),
                     onPressed: () {
                       if (!locCtrl.isFollowingUser) {
                         locCtrl.toggleLocationTracking((_) {}); 
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('啟動實時 GPS 定位中...'), 
-                            duration: Duration(seconds: 2)
-                          )
+                          RouteLiquidGlassNavStyle.snackBar(
+                            context: context,
+                            content: Text(langCtrl.tr('start_gps_tracking')),
+                          ),
                         );
                       }
                       
-                      _startController.text = '目前位置 (GPS)';
+                      _startController.text = langCtrl.tr('current_gps_location');
                       _startPlaceId = null;
                       setState(() => _placeSuggestions = []);
                     },
                   ),
                   IconButton(
                     icon: const Icon(Icons.map, color: Colors.blueAccent),
-                    tooltip: '在地圖選起點',
+                    tooltip: langCtrl.tr('select_on_map_start'),
                     onPressed: widget.onPickOnMap,
                   ),
                 ],
@@ -414,7 +574,7 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
                       style: TextStyle(color: isDark ? Colors.white : Colors.black),
                       onChanged: (val) => _onSearchChanged(val, isStart: false),
                       decoration: InputDecoration(
-                        hintText: '輸入目的地 (例如：大三巴)',
+                        hintText: langCtrl.tr('hint_dest'),
                         hintStyle: const TextStyle(color: Colors.grey, fontSize: 13),
                         filled: true,
                         fillColor: isDark ? const Color(0xFF2A2A2A) : Colors.grey[200],
@@ -434,7 +594,7 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
                   const SizedBox(width: 4),
                   IconButton(
                     icon: const Icon(Icons.map, color: Colors.blueAccent),
-                    tooltip: '在地圖選終點',
+                    tooltip: langCtrl.tr('select_on_map_end'),
                     onPressed: widget.onPickEndOnMap,
                   ),
                 ],
@@ -459,7 +619,7 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
                       ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
                       : const Icon(Icons.assistant_direction, color: Colors.black),
                   label: Text(
-                    _isRoutingWithOTP ? '大腦運算中...' : '使用 專屬大腦 導航 (首選)',
+                    _isRoutingWithOTP ? langCtrl.tr('brain_computing') : langCtrl.tr('brain_nav'),
                     style: const TextStyle(color: Colors.black, fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   onPressed: _isRoutingWithOTP ? null : _routeWithOTP,
@@ -475,7 +635,7 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
                   icon: const Icon(Icons.navigation, color: Colors.blueAccent),
-                  label: Text('打開 高德地圖', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 16)),
+                  label: Text(langCtrl.tr('open_amap'), style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 16)),
                   onPressed: () async {
                     final navCtrl = context.read<NavigationController>();
                     final currentUserLoc = locCtrl.isFollowingUser ? locCtrl.userLocation : null;
@@ -490,10 +650,11 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
                       _sessionToken,
                       _startPlaceId,
                       _destPlaceId,
+                      langCtrl,
                     );
                     if (!context.mounted) return;
                     if (errorMsg != null) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMsg)));
+                      ScaffoldMessenger.of(context).showSnackBar(RouteLiquidGlassNavStyle.snackBar(context: context, content: Text(errorMsg)));
                     } else {
                       Navigator.pop(context);
                     }
@@ -510,7 +671,7 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
                   icon: const Icon(Icons.location_on, color: Colors.redAccent),
-                  label: Text('打開 Google Maps', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 16)),
+                  label: Text(langCtrl.tr('open_gmap'), style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 16)),
                   onPressed: () async {
                     final navCtrl = context.read<NavigationController>();
                     final currentUserLoc = locCtrl.isFollowingUser ? locCtrl.userLocation : null;
@@ -525,10 +686,11 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
                       _sessionToken,
                       _startPlaceId,
                       _destPlaceId,
+                      langCtrl,
                     );
                     if (!context.mounted) return;
                     if (errorMsg != null) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMsg)));
+                      ScaffoldMessenger.of(context).showSnackBar(RouteLiquidGlassNavStyle.snackBar(context: context, content: Text(errorMsg)));
                     } else {
                       Navigator.pop(context);
                     }

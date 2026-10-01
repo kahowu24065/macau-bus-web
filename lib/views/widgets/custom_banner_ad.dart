@@ -1,64 +1,127 @@
-import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
-// 🌟 引入 kReleaseMode 用於判斷是否為正式發布版本
-import 'package:flutter/foundation.dart' show kIsWeb, kReleaseMode;
+import 'package:flutter/foundation.dart' show kIsWeb, kReleaseMode, defaultTargetPlatform, TargetPlatform;
 import 'package:provider/provider.dart';
 import '../../controllers/purchase_controller.dart';
 
-class CustomBannerAd extends StatefulWidget {
-  const CustomBannerAd({super.key});
+class CustomBannerAd extends StatelessWidget {
+  final bool visible;
+  final ValueChanged<double>? onOccupiedHeight;
+
+  const CustomBannerAd({
+    super.key,
+    this.visible = true,
+    this.onOccupiedHeight,
+  });
 
   @override
-  State<CustomBannerAd> createState() => _CustomBannerAdState();
+  Widget build(BuildContext context) {
+    if (kIsWeb) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        onOccupiedHeight?.call(0);
+      });
+      return const SizedBox.shrink();
+    }
+    final isPro = context.select<PurchaseController, bool>((c) => c.isPro);
+    return _BannerAdHost(
+      show: visible && !isPro,
+      onOccupiedHeight: onOccupiedHeight,
+    );
+  }
 }
 
-class _CustomBannerAdState extends State<CustomBannerAd> {
+class _BannerAdHost extends StatefulWidget {
+  final bool show;
+  final ValueChanged<double>? onOccupiedHeight;
+
+  const _BannerAdHost({required this.show, this.onOccupiedHeight});
+
+  @override
+  State<_BannerAdHost> createState() => _BannerAdHostState();
+}
+
+class _BannerAdHostState extends State<_BannerAdHost> {
   BannerAd? _bannerAd;
   bool _isAdLoaded = false;
+  final GlobalKey _adViewKey = GlobalKey();
 
-  // 🌟 新增：智能獲取廣告 ID 嘅函數
   String get _bannerAdUnitId {
     if (kReleaseMode) {
-      // 🚨 正式上線環境：請喺度填入你真實嘅「廣告單元 ID (Ad Unit ID)」
-      if (Platform.isAndroid) {
-        return 'ca-app-pub-6616126137620427/7395875873'; // 👈 替換為真實 Android 廣告單元 ID
-      } else if (Platform.isIOS) {
-        return 'ca-app-pub-xxxxxxxxxxxxxxxx/wwwwwwwwww'; // 👈 替換為真實 iOS 廣告單元 ID
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        return 'ca-app-pub-7648913543953622/2476533170';
+      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+        return 'ca-app-pub-xxxxxxxxxxxxxxxx/wwwwwwwwww';
       }
     } else {
-      // 🛠️ 開發除錯環境：繼續使用 Google 官方的測試 ID，保證帳號安全
-      if (Platform.isAndroid) {
+      if (defaultTargetPlatform == TargetPlatform.android) {
         return 'ca-app-pub-3940256099942544/6300978111';
-      } else if (Platform.isIOS) {
+      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
         return 'ca-app-pub-3940256099942544/2934735716';
       }
     }
-    throw UnsupportedError("Unsupported platform");
+    return '';
+  }
+
+  bool get _isMobile {
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+  }
+
+  double get _occupiedHeight {
+    if (!widget.show || !_isAdLoaded || _bannerAd == null) return 0;
+    return _bannerAd!.size.height.toDouble();
+  }
+
+  void _emitOccupiedHeight() {
+    widget.onOccupiedHeight?.call(_occupiedHeight);
   }
 
   @override
   void initState() {
     super.initState();
-    _loadBannerAd();
+    if (!kIsWeb) _loadBannerAd();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _emitOccupiedHeight());
+  }
+
+  @override
+  void didUpdateWidget(covariant _BannerAdHost oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.show && _bannerAd == null) {
+      _loadBannerAd();
+    }
+    if (oldWidget.show != widget.show) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _emitOccupiedHeight());
+    }
   }
 
   void _loadBannerAd() {
-    // 🛡️ Web 及平台防護機制
-    if (kIsWeb) return;
-    if (!Platform.isAndroid && !Platform.isIOS) return;
+    if (!_isMobile || _bannerAd != null) return;
 
     _bannerAd = BannerAd(
-      adUnitId: _bannerAdUnitId, // 🌟 自動根據環境派發測試或真實 ID
+      adUnitId: _bannerAdUnitId,
       size: AdSize.banner,
       request: const AdRequest(),
       listener: BannerAdListener(
         onAdLoaded: (ad) {
-          if (mounted) setState(() => _isAdLoaded = true);
+          if (mounted) {
+            setState(() => _isAdLoaded = true);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _emitOccupiedHeight();
+            });
+          }
         },
         onAdFailedToLoad: (ad, error) {
           debugPrint('廣告載入失敗: $error');
           ad.dispose();
+          if (mounted) {
+            setState(() {
+              _bannerAd = null;
+              _isAdLoaded = false;
+            });
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _emitOccupiedHeight();
+            });
+          }
         },
       ),
     )..load();
@@ -66,34 +129,29 @@ class _CustomBannerAdState extends State<CustomBannerAd> {
 
   @override
   void dispose() {
-    _bannerAd?.dispose(); // 🛡️ 確保離開頁面時釋放記憶體
+    _bannerAd?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final isPro = context.watch<PurchaseController>().isPro;
-    // 🌟 若已訂閱 Pro，直接返回空組件，不載入亦不佔用螢幕空間
-    if (isPro) {
-      return const SizedBox.shrink();
-    }
-    // 若廣告未載入，回傳 SizedBox.shrink() 隱藏自己，不佔空間
-    if (!_isAdLoaded || _bannerAd == null) {
+    if (!widget.show || !_isAdLoaded || _bannerAd == null) {
       return const SizedBox.shrink();
     }
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final adHeight = _bannerAd!.size.height.toDouble();
+    final adWidth = _bannerAd!.size.width.toDouble();
 
-    // 🛡️ 防白屏/崩潰嘅安全外殼
     return Container(
       color: isDark ? Colors.black : Colors.white,
       width: double.infinity,
-      height: _bannerAd!.size.height.toDouble(),
+      height: adHeight,
       alignment: Alignment.center,
       child: SizedBox(
-        width: _bannerAd!.size.width.toDouble(),
-        height: _bannerAd!.size.height.toDouble(),
-        child: AdWidget(ad: _bannerAd!),
+        width: adWidth,
+        height: adHeight,
+        child: AdWidget(key: _adViewKey, ad: _bannerAd!),
       ),
     );
   }

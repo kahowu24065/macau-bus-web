@@ -1,9 +1,10 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
+import '../config/api_config.dart';
 
 class PlacesService {
-  static const String baseUrl = 'https://api.macaubus-kat1.com/api/places';
+  static String get baseUrl => '${ApiConfig.api}/places';
 
   static Future<List<dynamic>> autocomplete(String query, String sessionToken) async {
     try {

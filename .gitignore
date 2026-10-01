@@ -43,3 +43,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Private / local-only files
+*.eml
+*.bak*
+/flutter_0*.png
+
