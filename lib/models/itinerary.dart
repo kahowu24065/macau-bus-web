@@ -2,10 +2,30 @@ class Itinerary {
   final int duration;
   final List<RouteLeg> legs;
 
+  /// When the plan was requested (epoch ms). Not persisted.
+  int? requestedAtMs;
+
   Itinerary({
     required this.duration,
     required this.legs,
+    this.requestedAtMs,
   });
+
+  /// Walking + riding only (sum of legs, excludes any waiting).
+  int get movingSeconds => legs.fold(0, (sum, l) => sum + l.duration);
+
+  /// Door-to-door time from the request until arrival, so the initial wait
+  /// for the bus and transfer waits are included. Falls back to OTP's
+  /// itinerary duration (which already includes transfer waits).
+  int get totalSecondsInclWait {
+    final end = legs.isEmpty ? null : legs.last.endTime;
+    final req = requestedAtMs;
+    if (end != null && req != null && end > req) {
+      final total = ((end - req) / 1000).round();
+      return total > duration ? total : duration;
+    }
+    return duration > movingSeconds ? duration : movingSeconds;
+  }
 
   factory Itinerary.fromJson(Map<String, dynamic> json) {
     var legsList = json['legs'] as List? ?? [];
@@ -49,6 +69,11 @@ class RouteLeg {
   final String routeName;
   final double? distance;
 
+  /// OTP scheduled start/end (epoch ms). Used to check service windows at
+  /// boarding time instead of "now" (e.g. N2 boarding at 00:11).
+  final int? startTime;
+  final int? endTime;
+
   // 導航附加資訊 (Enriched Fields)
   int? bestDir;
   int? boardingStopSeq;
@@ -79,6 +104,8 @@ class RouteLeg {
     required this.geometry,
     required this.routeName,
     this.distance,
+    this.startTime,
+    this.endTime,
     this.bestDir,
     this.boardingStopSeq,
     this.alightStopSeq,
@@ -138,6 +165,8 @@ class RouteLeg {
       geometry: geom,
       routeName: rName,
       distance: json['distance']?.toDouble(),
+      startTime: (json['startTime'] as num?)?.toInt(),
+      endTime: (json['endTime'] as num?)?.toInt(),
       bestDir: json['bestDir']?.toInt(),
       boardingStopSeq: json['boardingStopSeq']?.toInt(),
       alightStopSeq: json['alightStopSeq']?.toInt(),
@@ -163,12 +192,20 @@ class RouteLeg {
       'geometry': geometry,
       'routeName': routeName,
       'distance': distance,
+      'startTime': startTime,
+      'endTime': endTime,
       'bestDir': bestDir,
       'boardingStopSeq': boardingStopSeq,
       'alightStopSeq': alightStopSeq,
       'realtimeEta': realtimeEta,
     };
   }
+
+  /// Boarding time as Macau wall-clock (UTC+8), independent of device zone.
+  DateTime? get boardingTimeMacau => startTime == null
+      ? null
+      : DateTime.fromMillisecondsSinceEpoch(startTime!, isUtc: true)
+          .add(const Duration(hours: 8));
 
   // 🌟 封裝翻譯函數：起點（優先官方站名）
   String getLocalizedFromName(String lang) {

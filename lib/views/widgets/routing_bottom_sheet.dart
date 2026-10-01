@@ -144,11 +144,85 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
   bool _itineraryHasGhostBus(Itinerary it, LanguageController langCtrl) {
     for (final leg in it.legs) {
       if (leg.mode != 'BUS' && leg.mode != 'TRANSIT') continue;
-      if (LocalTimetable.unavailableForPlanning(leg.routeName)) return true;
+      if (LocalTimetable.unavailableForPlanning(
+        leg.routeName,
+        at: leg.boardingTimeMacau,
+      )) {
+        return true;
+      }
       final eta = leg.realtimeEta ?? '';
       if (_isServiceUnavailableEta(eta, langCtrl)) return true;
     }
     return false;
+  }
+
+  // ---- Plan ranking -------------------------------------------------------
+  // score = total time incl. waiting + extra weight on walking + a penalty per
+  // transfer. Long walks / ultra-short transfer rides are dropped when a
+  // better bus option exists.
+  static const int _walkWeightPercent = 100; // each walk second counts 2x
+  static const int _transferPenaltySec = 300;
+  static const int _maxWalkLegSec = 12 * 60;
+  static const int _minTransferRideSec = 3 * 60;
+  static const int _maxPlansToMatch = 8;
+  static const int _maxPlansShown = 6;
+
+  static bool _isBusLeg(RouteLeg l) => l.mode == 'BUS' || l.mode == 'TRANSIT';
+
+  static int _busLegCount(Itinerary it) => it.legs.where(_isBusLeg).length;
+
+  static int _planScore(Itinerary it) {
+    var walkSec = 0;
+    for (final l in it.legs) {
+      if (l.mode == 'WALK') walkSec += l.duration;
+    }
+    final transfers = _busLegCount(it) > 1 ? _busLegCount(it) - 1 : 0;
+    return it.totalSecondsInclWait +
+        walkSec * _walkWeightPercent ~/ 100 +
+        transfers * _transferPenaltySec;
+  }
+
+  static bool _hasLongWalk(Itinerary it) =>
+      it.legs.any((l) => l.mode == 'WALK' && l.duration > _maxWalkLegSec);
+
+  static bool _hasShortTransferRide(Itinerary it) {
+    final bus = it.legs.where(_isBusLeg).toList();
+    return bus.length > 1 && bus.any((l) => l.duration < _minTransferRideSec);
+  }
+
+  static String _patternOf(Itinerary it) {
+    final names = <String>[
+      for (final l in it.legs.where(_isBusLeg))
+        l.routeName.isNotEmpty ? l.routeName : 'BUS',
+    ];
+    return names.isEmpty ? 'WALK_ONLY' : names.join('->');
+  }
+
+  /// Filter, score-sort and dedupe (best plan per bus pattern).
+  static List<Itinerary> _rankPlans(List<Itinerary> plans) {
+    final bus = plans.where((it) => _busLegCount(it) > 0).toList();
+    var keep = plans;
+    if (bus.isNotEmpty) {
+      final good = bus
+          .where((it) => !_hasLongWalk(it) && !_hasShortTransferRide(it))
+          .toList();
+      if (good.isNotEmpty) {
+        // Any bus option exists → drop long-walk plans (incl. long walk-only)
+        // and plans with a < 3 min transfer ride.
+        keep = plans.where((it) => !_hasLongWalk(it) && !_hasShortTransferRide(it)).toList();
+      } else {
+        final noShort = plans.where((it) => !_hasShortTransferRide(it)).toList();
+        if (noShort.any((it) => _busLegCount(it) > 0)) keep = noShort;
+      }
+    }
+    final scored = [for (final it in keep) (it: it, score: _planScore(it))]
+      ..sort((a, b) => a.score.compareTo(b.score));
+    final seen = <String>{};
+    final out = <Itinerary>[];
+    for (final e in scored) {
+      if (seen.add(_patternOf(e.it))) out.add(e.it);
+    }
+    return out;
   }
 
   Future<void> _routeWithOTP() async {
@@ -216,6 +290,7 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
         return;
       }
 
+      final requestedAtMs = DateTime.now().millisecondsSinceEpoch;
       final result = await OTPService.getRoutePlan(
         fromLat: startLoc.latitude,
         fromLng: startLoc.longitude,
@@ -226,30 +301,27 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
 
       List<Itinerary> uniqueItineraries = [];
       if (result is List<dynamic>) {
-        Set<String> seenPatterns = {};
         await LocalTimetable.ensureLoaded();
-
+        final parsed = <Itinerary>[];
         for (var rawIt in result) {
-          final itinerary = Itinerary.fromJson(rawIt as Map<String, dynamic>);
+          final itinerary = Itinerary.fromJson(rawIt as Map<String, dynamic>)
+            ..requestedAtMs = requestedAtMs;
+          // Service window is checked at each leg's boarding time, so a
+          // night bus boarding after midnight (N2 00:11) is kept at 23:30.
           final hasNoServiceRoute = itinerary.legs.any((leg) =>
-              (leg.mode == 'BUS' || leg.mode == 'TRANSIT') &&
-              LocalTimetable.unavailableForPlanning(leg.routeName));
+              _isBusLeg(leg) &&
+              LocalTimetable.unavailableForPlanning(
+                leg.routeName,
+                at: leg.boardingTimeMacau,
+              ));
           if (hasNoServiceRoute) continue;
-          List<String> routeNames = [];
-          for (var leg in itinerary.legs) {
-            if (leg.mode == 'BUS' || leg.mode == 'TRANSIT') {
-              routeNames.add(leg.routeName.isNotEmpty ? leg.routeName : 'BUS');
-            }
-          }
-          String pattern = routeNames.join('->');
-          if (pattern.isEmpty) pattern = 'WALK_ONLY';
-          if (!seenPatterns.contains(pattern)) {
-            seenPatterns.add(pattern);
-            uniqueItineraries.add(itinerary);
-          }
+          parsed.add(itinerary);
         }
-        if (uniqueItineraries.length > 5) {
-          uniqueItineraries = uniqueItineraries.sublist(0, 5);
+        // Rank on OTP data before matching so only the best few patterns
+        // need official stop lists (keeps the pipeline as fast as before).
+        uniqueItineraries = _rankPlans(parsed);
+        if (uniqueItineraries.length > _maxPlansToMatch) {
+          uniqueItineraries = uniqueItineraries.sublist(0, _maxPlansToMatch);
         }
       }
 
@@ -260,7 +332,11 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
           for (final leg in itinerary.legs) {
             if (leg.mode == 'BUS' || leg.mode == 'TRANSIT') {
               final name = leg.routeName.trim();
-              if (name.isNotEmpty && !LocalTimetable.unavailableForPlanning(name)) {
+              if (name.isNotEmpty &&
+                  !LocalTimetable.unavailableForPlanning(
+                    name,
+                    at: leg.boardingTimeMacau,
+                  )) {
                 routesToPrefetch.add(name);
               }
             }
@@ -311,18 +387,7 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
 
         const onlyGhostsLeft = false;
 
-        int busLegsOf(Itinerary it) => it.legs
-            .where((l) => l.mode == 'BUS' || l.mode == 'TRANSIT')
-            .length;
-        String patternOf(Itinerary it) {
-          final names = <String>[];
-          for (final leg in it.legs) {
-            if (leg.mode == 'BUS' || leg.mode == 'TRANSIT') {
-              names.add(leg.routeName.isNotEmpty ? leg.routeName : 'BUS');
-            }
-          }
-          return names.isEmpty ? 'WALK_ONLY' : names.join('->');
-        }
+        String patternOf(Itinerary it) => _patternOf(it);
 
         // Official backup only if OTP left nothing usable — extra nearby/ETA
         // is what made every plan wait on 8s/12s timeouts.
@@ -356,34 +421,12 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
           }
         }
 
-        activeItineraries.sort((a, b) {
-          final cmp = busLegsOf(a).compareTo(busLegsOf(b));
-          if (cmp != 0) return cmp;
-          return a.duration.compareTo(b.duration);
-        });
-        final withBuses =
-            activeItineraries.where((it) => busLegsOf(it) > 0).toList();
-        final walks =
-            activeItineraries.where((it) => busLegsOf(it) == 0).toList();
-        if (withBuses.isNotEmpty) {
-          var minLegs = busLegsOf(withBuses.first);
-          for (final it in withBuses) {
-            final n = busLegsOf(it);
-            if (n < minLegs) minLegs = n;
-          }
-          final best =
-              withBuses.where((it) => busLegsOf(it) == minLegs).toList();
-          final more = withBuses
-              .where((it) => busLegsOf(it) == minLegs + 1)
-              .toList();
-          activeItineraries = [
-            ...best,
-            ...more.take(3),
-            ...walks,
-          ];
+        for (final it in activeItineraries) {
+          it.requestedAtMs ??= requestedAtMs;
         }
-        if (activeItineraries.length > 6) {
-          activeItineraries = activeItineraries.sublist(0, 6);
+        activeItineraries = _rankPlans(activeItineraries);
+        if (activeItineraries.length > _maxPlansShown) {
+          activeItineraries = activeItineraries.sublist(0, _maxPlansShown);
         }
 
         if (activeItineraries.isEmpty) {

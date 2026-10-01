@@ -115,9 +115,10 @@ class RouteResultHelper {
 
     return StatefulBuilder(
       builder: (ctx, setPagerState) {
-        int activeSeconds = 0;
-        for (var leg in itineraries[currentPage].legs) { activeSeconds += leg.duration; }
-        final activeMinutes = (activeSeconds / 60).round();
+        final activeIt = itineraries[currentPage];
+        // Total includes waiting (initial + transfers); moving time shown too.
+        final activeMinutes = (activeIt.totalSecondsInclWait / 60).round();
+        final movingMinutes = (activeIt.movingSeconds / 60).round();
 
         // 🌟 獲取翻譯後嘅時間字眼 (例如: "(約 23 分鐘)")
         final totalTimeStr = langCtrl.tr('approx_mins_brackets').replaceAll('@mins', activeMinutes.toString());
@@ -145,7 +146,7 @@ class RouteResultHelper {
                             text: '${langCtrl.tr('plan_num')}${currentPage + 1} / ${itineraries.length} $totalTimeStr\n', // 加咗 \n 稍作排版優化
                             style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontSize: 13) // 字體微調
                           ),
-                          TextSpan(text: langCtrl.tr('no_wait_time_calc'), style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.normal)),
+                          TextSpan(text: langCtrl.tr('incl_wait_time_calc').replaceAll('@mins', movingMinutes.toString()), style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.normal)),
                         ],
                       ),
                     ),

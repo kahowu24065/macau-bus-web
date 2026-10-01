@@ -361,6 +361,9 @@ class NavigationController extends ChangeNotifier {
 
   static const double _officialStopMatchMeters = 800;
 
+  /// OTP leg endpoints → nearest official stop within this radius.
+  static const double otpLegStopMatchMeters = 150;
+
   String _normStopName(String raw) =>
       raw.replaceAll(RegExp(r'[\s\u3000]'), '').replaceAll(RegExp(r'[\(（].*?[\)）]'), '').trim();
 
@@ -457,10 +460,12 @@ class NavigationController extends ChangeNotifier {
     required String lang,
     String? otpFromName,
     String? otpToName,
+    double? nearestWithinMeters,
+    DateTime? at,
   }) async {
     if (route.isEmpty) return null;
     await LocalTimetable.ensureLoaded();
-    if (LocalTimetable.unavailableForPlanning(route)) return null;
+    if (LocalTimetable.unavailableForPlanning(route, at: at)) return null;
     await _ensureRouteStopsCached(route, lang);
 
     const distanceCalc = Distance();
@@ -468,6 +473,14 @@ class NavigationController extends ChangeNotifier {
     BusStop? bestBoard;
     BusStop? bestAlight;
     double bestScore = double.infinity;
+
+    // Nearest-stop pass for OTP legs: OTP already chose real board/alight
+    // points, so take the official stops closest to them (within
+    // [nearestWithinMeters]) instead of the fewest-hops stop up to 800 m away.
+    int? nearDir;
+    BusStop? nearBoard;
+    BusStop? nearAlight;
+    double nearScore = double.infinity;
 
     final fromNameKey = otpFromName == null ? '' : _normStopName(otpFromName);
     final toNameKey = otpToName == null ? '' : _normStopName(otpToName);
@@ -526,6 +539,41 @@ class NavigationController extends ChangeNotifier {
         }
         if (dTo <= _officialStopMatchMeters || nameHitTo) {
           alightCands.add(i);
+        }
+      }
+
+      if (nearestWithinMeters != null) {
+        final nearB = <int>[];
+        final nearA = <int>[];
+        for (int i = 0; i < stops.length; i++) {
+          if (fromDists[i] <= nearestWithinMeters) nearB.add(i);
+          if (toDists[i] <= nearestWithinMeters) nearA.add(i);
+        }
+        for (final b in nearB) {
+          for (final a in nearA) {
+            final scored = _scoreForwardRide(
+              stops: stops,
+              boardIdx: b,
+              alightIdx: a,
+              circular: circular,
+              boardDist: fromDists[b],
+              alightDist: toDists[a],
+              distanceCalc: distanceCalc,
+              maxEndpointDist: nearestWithinMeters,
+            );
+            if (scored == null) continue;
+            final hops =
+                ((scored - fromDists[b] - toDists[a]) / 100000).round();
+            // Distance first; 1 m per hop only breaks ties between duplicate
+            // stops (out-and-back routes visiting the same stop twice).
+            final score = fromDists[b] + toDists[a] + hops;
+            if (score < nearScore) {
+              nearScore = score;
+              nearDir = dir;
+              nearBoard = stops[b];
+              nearAlight = stops[a];
+            }
+          }
         }
       }
 
@@ -596,6 +644,9 @@ class NavigationController extends ChangeNotifier {
       }
     }
 
+    if (nearDir != null && nearBoard != null && nearAlight != null) {
+      return (dir: nearDir, board: nearBoard, alight: nearAlight);
+    }
     if (bestDir == null || bestBoard == null || bestAlight == null) return null;
     return (dir: bestDir, board: bestBoard, alight: bestAlight);
   }
@@ -618,6 +669,8 @@ class NavigationController extends ChangeNotifier {
         lang: langCtrl.currentLanguage,
         otpFromName: leg.fromName,
         otpToName: leg.toName,
+        nearestWithinMeters: otpLegStopMatchMeters,
+        at: leg.boardingTimeMacau,
       );
       if (matched == null) return false;
 
@@ -1359,15 +1412,16 @@ class NavigationController extends ChangeNotifier {
 
     final lang = langCtrl.currentLanguage;
     await LocalTimetable.ensureLoaded();
-    if (LocalTimetable.noServiceToday(route)) {
+    final at = leg.boardingTimeMacau;
+    if (LocalTimetable.noServiceToday(route, at: at)) {
       leg.realtimeEta = langCtrl.tr('no_service_today');
       return;
     }
-    if (LocalTimetable.serviceNotStarted(route)) {
+    if (LocalTimetable.serviceNotStarted(route, at: at)) {
       leg.realtimeEta = langCtrl.tr('service_not_started');
       return;
     }
-    if (LocalTimetable.serviceEnded(route)) {
+    if (LocalTimetable.serviceEnded(route, at: at)) {
       leg.realtimeEta = langCtrl.tr('service_ended');
       return;
     }
@@ -1382,6 +1436,8 @@ class NavigationController extends ChangeNotifier {
         lang: lang,
         otpFromName: leg.fromName,
         otpToName: leg.toName,
+        nearestWithinMeters: otpLegStopMatchMeters,
+        at: at,
       );
 
       if (matched == null) {

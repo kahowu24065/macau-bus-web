@@ -29,24 +29,38 @@ class LocalTimetable {
     _loaded = _map.isNotEmpty;
   }
 
-  static bool noServiceToday(String route) {
+  /// Seasonal routes whose dates come from the OTP GTFS calendar (e.g. 21AT
+  /// runs 1-7 Oct). The bundled snapshot says 不設服務, so for OTP legs (which
+  /// pass a boarding time) the OTP schedule is trusted instead.
+  static const Set<String> _calendarGoverned = {'21AT', '26AT'};
+
+  static bool noServiceToday(String route, {DateTime? at}) {
+    if (at != null && _calendarGoverned.contains(normalizeRoute(route))) {
+      return false;
+    }
     final rows = _rowsFor(route);
     if (rows.isEmpty) {
       final r = normalizeRoute(route);
-      return r == '15T' || r == '21AT' || r == '26AT';
+      // 21AT/26AT now come from the OTP calendar (date-range services), so
+      // only 15T is still assumed out of service when not in the timetable.
+      return r == '15T';
     }
     return rows.any(_rowIsNoService);
   }
 
   /// First bus of every direction is still in the future.
-  static bool serviceNotStarted(String route) =>
-      _windowState(route) == _Win.notStarted;
+  /// [at] is a Macau wall-clock time (e.g. the leg's boarding time); defaults
+  /// to now. Only hour/minute are used, so times past midnight work with
+  /// overnight windows (N2 00:11 is inside 23:xx-06:xx).
+  static bool serviceNotStarted(String route, {DateTime? at}) =>
+      _windowState(route, at) == _Win.notStarted;
 
-  static bool serviceEnded(String route) => _windowState(route) == _Win.ended;
+  static bool serviceEnded(String route, {DateTime? at}) =>
+      _windowState(route, at) == _Win.ended;
 
-  static bool unavailableForPlanning(String route) {
-    if (noServiceToday(route)) return true;
-    final win = _windowState(route);
+  static bool unavailableForPlanning(String route, {DateTime? at}) {
+    if (noServiceToday(route, at: at)) return true;
+    final win = _windowState(route, at);
     return win == _Win.notStarted || win == _Win.ended;
   }
 
@@ -83,8 +97,8 @@ class LocalTimetable {
     return h * 60 + min;
   }
 
-  static _Win _windowState(String route) {
-    final now = DateTime.now();
+  static _Win _windowState(String route, [DateTime? at]) {
+    final now = at ?? DateTime.now();
     final nowMins = now.hour * 60 + now.minute;
     var anyRunning = false;
     var anyNotStarted = false;

@@ -155,8 +155,8 @@ class BusApiService {
         final json = jsonDecode(res.body);
         if (json['success'] == true && json['alerts'] is List) {
           return (json['alerts'] as List)
-              .where((e) => e is Map)
-              .map((e) => Map<String, dynamic>.from(e as Map))
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
               .toList();
         }
       }

@@ -7,6 +7,12 @@ import '../config/api_config.dart';
 
 class OTPService {
   static String get baseUrl => '${ApiConfig.api}/otp-graphql';
+
+  // Tuned against server latency (see bench): more candidates for the app's
+  // own ranking, a bounded search window so OTP time does not regress.
+  static const int numItineraries = 20;
+  static const int searchWindowSeconds = 3600;
+  static const int transferPenaltySeconds = 300;
   
   static Future<dynamic> getRoutePlan({
     required double fromLat, 
@@ -21,7 +27,7 @@ class OTPService {
       final dateString = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
       String graphqlQuery(bool withMinTransfer) {
         final extra = withMinTransfer ? ' minTransferTime: 60' : '';
-        return '''{ plan(from: {lat: $fromLat, lon: $fromLng} to: {lat: $toLat, lon: $toLng} date: "$dateString" time: "$timeString" numItineraries: 6 maxWalkDistance: 2500.0 walkReluctance: 3.0$extra transportModes: [{mode: WALK}, {mode: TRANSIT}]) { itineraries { duration legs { mode duration startTime endTime route { gtfsId, shortName } from { name, lat, lon } to { name, lat, lon } legGeometry { points } } } } }''';
+        return '''{ plan(from: {lat: $fromLat, lon: $fromLng} to: {lat: $toLat, lon: $toLng} date: "$dateString" time: "$timeString" numItineraries: ${OTPService.numItineraries} searchWindow: ${OTPService.searchWindowSeconds} transferPenalty: ${OTPService.transferPenaltySeconds} walkReluctance: 3.0$extra transportModes: [{mode: WALK}, {mode: TRANSIT}]) { itineraries { duration legs { mode duration startTime endTime route { gtfsId, shortName } from { name, lat, lon } to { name, lat, lon } legGeometry { points } } } } }''';
       }
 
       Future<http.Response> postQuery(bool withMinTransfer) {
