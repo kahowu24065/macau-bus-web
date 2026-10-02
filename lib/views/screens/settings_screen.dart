@@ -6,6 +6,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/gps_service.dart';
 import '../../controllers/purchase_controller.dart';
@@ -224,6 +225,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  static const String _eulaUrl = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
+
+  String get _storeName =>
+      (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) ? 'App Store' : 'Google Play';
+
+  Future<void> _openTerms() async {
+    try {
+      await launchUrl(Uri.parse(_eulaUrl), mode: LaunchMode.externalApplication);
+    } catch (_) {}
+  }
+
+  String _planInfo(LanguageController langCtrl, String? price) {
+    final hasPrice = price != null && price.isNotEmpty;
+    return langCtrl
+        .tr(hasPrice ? 'sub_plan_info_priced' : 'sub_plan_info')
+        .replaceAll('{title}', langCtrl.tr('pro_title'))
+        .replaceAll('{price}', price ?? '');
+  }
+
+  Widget _legalLinks(BuildContext context, bool isDark, LanguageController langCtrl) {
+    final style = TextStyle(
+      color: _subText,
+      fontSize: 12,
+      decoration: TextDecoration.underline,
+      decorationColor: _subText,
+      fontFamily: 'Inter',
+    );
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        InkWell(onTap: _openTerms, child: Text(langCtrl.tr('terms_of_use'), style: style)),
+        Text('   •   ', style: TextStyle(color: _subText, fontSize: 12)),
+        InkWell(
+          onTap: () => _showMarkdownDialog(context, isDark, langCtrl, 'privacy_policy', 'privacy', Icons.privacy_tip, Colors.amber),
+          child: Text(langCtrl.tr('privacy_policy'), style: style),
+        ),
+      ],
+    );
+  }
+
   String _buyLabel(LanguageController langCtrl, String? price) {
     if (price == null || price.isEmpty) return langCtrl.tr('buy_coffee');
     return langCtrl.tr('buy_coffee_priced').replaceAll('{price}', price);
@@ -358,7 +400,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  Text(
+                    _planInfo(langCtrl, purchaseCtrl.removeAdsPrice),
+                    style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black87,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      height: 1.45,
+                      fontFamily: 'Inter',
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    langCtrl.tr('sub_renew_note').replaceAll('{store}', _storeName),
+                    style: TextStyle(
+                      color: _subText,
+                      fontSize: 11.5,
+                      height: 1.45,
+                      fontFamily: 'Inter',
+                    ),
+                  ),
                 ],
+                const SizedBox(height: 12),
+                _legalLinks(context, isDark, langCtrl),
               ],
             ),
           ),
@@ -596,6 +661,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           InkWell(onTap: () => _showMarkdownDialog(context, isDark, langCtrl, 'disclaimer', 'disclaimer', Icons.gavel, Colors.redAccent), child: Text(langCtrl.tr('disclaimer'), style: TextStyle(color: _subText, fontSize: 12))),
                           Text('   •   ', style: TextStyle(color: _subText, fontSize: 12)),
                           InkWell(onTap: () => _showMarkdownDialog(context, isDark, langCtrl, 'privacy_policy', 'privacy', Icons.privacy_tip, Colors.amber), child: Text(langCtrl.tr('privacy_policy'), style: TextStyle(color: _subText, fontSize: 12))),
+                          Text('   •   ', style: TextStyle(color: _subText, fontSize: 12)),
+                          InkWell(onTap: _openTerms, child: Text(langCtrl.tr('terms_of_use'), style: TextStyle(color: _subText, fontSize: 12))),
                         ],
                       ),
                     ),

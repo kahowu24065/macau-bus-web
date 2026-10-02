@@ -140,7 +140,7 @@ class AppTranslations {
       'default_page': '設定預設主頁', 'default_page_desc': '選擇開啟 App 時顯示的第一個頁面', 'default_page_changed': '已將預設主頁更改為 ',
       'custom_bg': '自訂全域背景', 'custom_bg_default': '目前使用系統預設背景', 'custom_bg_applied': '已套用自訂圖片',
       'bg_blur': '背景模糊度', 'test_ad_free': '測試開關：免廣告狀態', 'test_ad_free_desc': '供測試環境手動模擬 Pro 用戶狀態',
-      'about_us': '關於我們', 'disclaimer': '免責聲明', 'privacy_policy': '隱私權政策',
+      'about_us': '關於我們', 'disclaimer': '免責聲明', 'privacy_policy': '隱私權政策', 'terms_of_use': '使用條款 (EULA)', 'sub_plan_info': '訂閱項目：{title}（移除廣告）・訂閱期限：1 個月', 'sub_plan_info_priced': '訂閱項目：{title}（移除廣告）・訂閱期限：1 個月・價格：每月 {price}', 'sub_renew_note': '每月自動續訂，可隨時於 {store} 帳戶設定取消；取消後會於當期完結時停止。',
     },
     'zhHans': {
       'service_warning': '服务警告', 'stop_warning_body': '@stop 目前有服务警告或暂停停靠，请留意最新交通消息或考虑改用其他相近站点。', 'err_server_blocked': '服务器响应超时或被阻挡，请再试一次', 'err_no_stops': '查无此路线之站点 / 此乃循环路线', 'err_query_failed': '查询失败', 'badge_board': '上', 'badge_alight': '下', 'unknown_stop': '未知车站', 'no_valid_route': '没有可用巴士方案', 'no_valid_route_desc': '起点和终点附近找不到官方站表相连的巴士。请尝试其他目的地或时间。',
@@ -265,7 +265,7 @@ class AppTranslations {
       'default_page': '设置默认主页', 'default_page_desc': '选择开启 App 时显示的第一个页面', 'default_page_changed': '已将默认主页更改为 ',
       'custom_bg': '自定义全局背景', 'custom_bg_default': '目前使用系统默认背景', 'custom_bg_applied': '已套用自定义图片',
       'bg_blur': '背景模糊度', 'test_ad_free': '测试开关：免广告状态', 'test_ad_free_desc': '供测试环境手动模拟 Pro 用户状态',
-      'about_us': '关于我们', 'disclaimer': '免责声明', 'privacy_policy': '隐私权政策',
+      'about_us': '关于我们', 'disclaimer': '免责声明', 'privacy_policy': '隐私权政策', 'terms_of_use': '使用条款 (EULA)', 'sub_plan_info': '订阅项目：{title}（移除广告）・订阅期限：1 个月', 'sub_plan_info_priced': '订阅项目：{title}（移除广告）・订阅期限：1 个月・价格：每月 {price}', 'sub_renew_note': '每月自动续订，可随时在 {store} 账户设置中取消；取消后将于当期结束时停止。',
     },
     'pt': {
       'service_warning': 'Aviso de serviço', 'stop_warning_body': '@stop tem atualmente um aviso de serviço ou paragem suspensa. Consulte as últimas notícias de trânsito ou use uma paragem próxima.', 'err_server_blocked': 'O servidor não respondeu ou bloqueou o pedido. Tente novamente.', 'err_no_stops': 'Sem paragens para esta rota / rota circular', 'err_query_failed': 'Falha na consulta', 'badge_board': 'S', 'badge_alight': 'D', 'unknown_stop': 'Paragem desconhecida', 'no_valid_route': 'Sem rota válida', 'no_valid_route_desc': 'Nenhuma carreira oficial liga as paragens perto do início e do fim. Tente outro destino ou horário.',
@@ -390,7 +390,7 @@ class AppTranslations {
       'default_page': 'Página Inicial', 'default_page_desc': 'Página inicial ao abrir a App', 'default_page_changed': 'Página alterada para ',
       'custom_bg': 'Fundo Personalizado', 'custom_bg_default': 'Fundo do sistema padrão', 'custom_bg_applied': 'Imagem personalizada aplicada',
       'bg_blur': 'Desfoque de Fundo', 'test_ad_free': 'Modo Teste: Sem anúncios', 'test_ad_free_desc': 'Simular status Pro no teste',
-      'about_us': 'Sobre Nós', 'disclaimer': 'Isenção de responsabilidade', 'privacy_policy': 'Política de Privacidade',
+      'about_us': 'Sobre Nós', 'disclaimer': 'Isenção de responsabilidade', 'privacy_policy': 'Política de Privacidade', 'terms_of_use': 'Termos de Uso (EULA)', 'sub_plan_info': 'Subscrição: {title} (remover anúncios) · Duração: 1 mês', 'sub_plan_info_priced': 'Subscrição: {title} (remover anúncios) · Duração: 1 mês · Preço: {price} por mês', 'sub_renew_note': 'Renova automaticamente todos os meses. Pode cancelar a qualquer momento nas definições da sua conta {store}; após o cancelamento, a subscrição termina no fim do período atual.',
     },
     'en': {
       'service_warning': 'Service warning', 'stop_warning_body': '@stop currently has a service warning or suspended stop. Check the latest traffic news or consider a nearby stop.', 'err_server_blocked': 'The server timed out or blocked the request. Please try again.', 'err_no_stops': 'No stops found for this route / circular route', 'err_query_failed': 'Query failed', 'badge_board': 'On', 'badge_alight': 'Off', 'unknown_stop': 'Unknown stop', 'no_valid_route': 'No valid bus route', 'no_valid_route_desc': 'No official bus links the stops near your start and end. Try another destination or time.',
@@ -515,7 +515,7 @@ class AppTranslations {
       'default_page': 'Default Page', 'default_page_desc': 'Startup page when app opens', 'default_page_changed': 'Default page changed to ',
       'custom_bg': 'Custom Background', 'custom_bg_default': 'System default background', 'custom_bg_applied': 'Custom image applied',
       'bg_blur': 'Background Blur', 'test_ad_free': 'Test Mode: Ad-free', 'test_ad_free_desc': 'Simulate Pro status for testing',
-      'about_us': 'About Us', 'disclaimer': 'Disclaimer', 'privacy_policy': 'Privacy Policy',
+      'about_us': 'About Us', 'disclaimer': 'Disclaimer', 'privacy_policy': 'Privacy Policy', 'terms_of_use': 'Terms of Use (EULA)', 'sub_plan_info': 'Subscription: {title} (Remove Ads) · Length: 1 month', 'sub_plan_info_priced': 'Subscription: {title} (Remove Ads) · Length: 1 month · Price: {price} per month', 'sub_renew_note': 'Auto-renews monthly. Cancel anytime in your {store} account settings; after cancelling, the subscription stops at the end of the current period.',
     },
   };
 
