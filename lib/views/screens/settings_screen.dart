@@ -354,7 +354,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Text(
                   isPro ? langCtrl.tr('pro_subtitle_active') : _upgradeDesc(langCtrl, purchaseCtrl.removeAdsPrice),
                   style: TextStyle(
-                    color: _subText,
+                    color: isDark ? Colors.white : Colors.black87,
                     fontSize: 13,
                     height: 1.5,
                     fontFamily: 'Inter',
@@ -404,7 +404,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Text(
                     _planInfo(langCtrl, purchaseCtrl.removeAdsPrice),
                     style: TextStyle(
-                      color: isDark ? Colors.white : Colors.black87,
+                      color: _subText,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       height: 1.45,
