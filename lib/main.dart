@@ -52,6 +52,13 @@ void main() async {
       child: const MacauBusApp(),
     ),
   );
+
+  // iOS：先顯示畫面，再問通知權限（Android 照舊喺上面處理）
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      NotificationService.requestIosPermission();
+    });
+  }
 }
 
 class MacauBusApp extends StatelessWidget {

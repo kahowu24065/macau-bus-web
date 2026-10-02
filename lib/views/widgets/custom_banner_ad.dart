@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, kReleaseMode, defaultTargetPlatform, TargetPlatform;
@@ -44,6 +45,8 @@ class _BannerAdHostState extends State<_BannerAdHost> {
   BannerAd? _bannerAd;
   bool _isAdLoaded = false;
   final GlobalKey _adViewKey = GlobalKey();
+  Timer? _retryTimer;
+  int _failCount = 0;
 
   String get _bannerAdUnitId {
     if (kReleaseMode) {
@@ -86,8 +89,14 @@ class _BannerAdHostState extends State<_BannerAdHost> {
   @override
   void didUpdateWidget(covariant _BannerAdHost oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.show && _bannerAd == null) {
+    // Respect the retry back-off; don't reload on every parent rebuild.
+    if (widget.show && _bannerAd == null && !(_retryTimer?.isActive ?? false)) {
       _loadBannerAd();
+    }
+    if (!widget.show) {
+      // Pro / hidden: no retries
+      _retryTimer?.cancel();
+      _retryTimer = null;
     }
     if (oldWidget.show != widget.show) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _emitOccupiedHeight());
@@ -103,6 +112,7 @@ class _BannerAdHostState extends State<_BannerAdHost> {
       request: const AdRequest(),
       listener: BannerAdListener(
         onAdLoaded: (ad) {
+          _failCount = 0;
           if (mounted) {
             setState(() => _isAdLoaded = true);
             WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -111,8 +121,12 @@ class _BannerAdHostState extends State<_BannerAdHost> {
           }
         },
         onAdFailedToLoad: (ad, error) {
-          debugPrint('廣告載入失敗: $error');
+          debugPrint('廣告載入失敗: $error (refresh=${_isAdLoaded && identical(ad, _bannerAd)})');
+          // Auto-refresh failures also arrive here. Keep showing the banner that
+          // already loaded; the SDK tries again at the next refresh.
+          if (_isAdLoaded && identical(ad, _bannerAd)) return;
           ad.dispose();
+          _scheduleRetry();
           if (mounted) {
             setState(() {
               _bannerAd = null;
@@ -127,8 +141,21 @@ class _BannerAdHostState extends State<_BannerAdHost> {
     )..load();
   }
 
+  // First load failed (timeout / no fill): retry 30 s, 60 s, 120 s ... up to 5 min.
+  void _scheduleRetry() {
+    _retryTimer?.cancel();
+    if (!mounted || !widget.show) return; // e.g. active Pro user
+    _failCount++;
+    final seconds = (30 * (1 << (_failCount - 1).clamp(0, 4))).clamp(30, 300);
+    _retryTimer = Timer(Duration(seconds: seconds), () {
+      debugPrint('廣告重試 #$_failCount (等咗 ${seconds}s)');
+      if (mounted && widget.show && _bannerAd == null) _loadBannerAd();
+    });
+  }
+
   @override
   void dispose() {
+    _retryTimer?.cancel();
     _bannerAd?.dispose();
     super.dispose();
   }

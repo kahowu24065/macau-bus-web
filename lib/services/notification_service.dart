@@ -1,5 +1,5 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io' show Platform;
 
@@ -12,11 +12,12 @@ class NotificationService {
     if (!kIsWeb && !Platform.isWindows) {
       const androidSettings = AndroidInitializationSettings('ic_bg_service_small');
       
-      // 💡 結合新功能：加入 iOS 的通知權限設定
+      // 💡 iOS：初始化時唔即刻問通知權限（會阻住第一個畫面），
+      // 改為第一個畫面出咗之後由 requestIosPermission() 再問。
       const iosSettings = DarwinInitializationSettings(
-        requestAlertPermission: true,
-        requestBadgePermission: true,
-        requestSoundPermission: true,
+        requestAlertPermission: false,
+        requestBadgePermission: false,
+        requestSoundPermission: false,
       );
       
       const settings = InitializationSettings(
@@ -32,6 +33,17 @@ class NotificationService {
     if (!kIsWeb && !Platform.isWindows) {
       final androidImpl = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
       if (androidImpl != null) await androidImpl.requestNotificationsPermission();
+    }
+  }
+
+  /// iOS only: ask for notification permission after the first frame is shown.
+  static Future<void> requestIosPermission() async {
+    if (kIsWeb || !Platform.isIOS) return;
+    try {
+      final iosImpl = _plugin.resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>();
+      await iosImpl?.requestPermissions(alert: true, badge: true, sound: true);
+    } catch (e) {
+      debugPrint('iOS notification permission request failed: $e');
     }
   }
 
