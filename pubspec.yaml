@@ -2,7 +2,7 @@ name: macau_bus_app
 description: "A new Flutter project."
 publish_to: 'none'
 
-version: 1.0.11+12
+version: 1.0.12+13
 
 environment:
   sdk: ^3.12.2
@@ -48,6 +48,7 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: true
+  remove_alpha_ios: true
   image_path: "assets/app_icon.png"
   min_sdk_android: 21
   web:

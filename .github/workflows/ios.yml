@@ -1,0 +1,148 @@
+name: iOS
+
+# - build-check: compiles the iOS app without code signing. Needs no secrets;
+#   runs on pushes that touch the app and on manual dispatch.
+# - testflight: signed archive + upload to App Store Connect / TestFlight.
+#   Runs on manual dispatch (upload_testflight = true) or on tags ios-v*.
+#   Uses Xcode automatic signing with an App Store Connect API key
+#   (no Mac, no fastlane match, no certificates in the repo).
+#
+# Required repository secrets for the testflight job:
+#   APP_STORE_CONNECT_KEY_ID       Key ID of the App Store Connect API key
+#   APP_STORE_CONNECT_ISSUER_ID    Issuer ID (Users and Access > Integrations)
+#   APP_STORE_CONNECT_PRIVATE_KEY  contents of AuthKey_<KEY_ID>.p8 (raw PEM or base64)
+#   APPLE_TEAM_ID                  10-character Apple Developer Team ID
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_testflight:
+        description: "Build, sign and upload to TestFlight (needs App Store Connect secrets)"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    tags: ['ios-v*']
+    paths:
+      - 'ios/**'
+      - 'lib/**'
+      - 'assets/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/ios.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.44.8'
+
+jobs:
+  build-check:
+    name: iOS build (no codesign)
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && !inputs.upload_testflight }}
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          flutter --version
+      - run: flutter pub get
+      - name: flutter build ios --no-codesign
+        run: flutter build ios --release --no-codesign
+      - name: Check bundle
+        run: |
+          APP=build/ios/iphoneos/Runner.app
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :GADApplicationIdentifier' "$APP/Info.plist"
+          test -f "$APP/PrivacyInfo.xcprivacy" && echo "PrivacyInfo.xcprivacy bundled"
+          ls "$APP" | grep -i lproj || true
+
+  testflight:
+    name: Signed build + TestFlight upload
+    if: ${{ startsWith(github.ref, 'refs/tags/ios-v') || inputs.upload_testflight }}
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Check secrets
+        run: |
+          for v in KEY_ID ISSUER_ID TEAM_ID; do
+            if [ -z "${!v}" ]; then echo "::error::missing secret for $v"; exit 1; fi
+          done
+      - name: Install App Store Connect API key
+        env:
+          P8: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8"
+          if printf '%s' "$P8" | grep -q 'BEGIN PRIVATE KEY'; then
+            printf '%s\n' "$P8" > "$KEY_PATH"
+          else
+            printf '%s' "$P8" | base64 --decode > "$KEY_PATH"
+          fi
+          chmod 600 "$KEY_PATH"
+          grep -q 'BEGIN PRIVATE KEY' "$KEY_PATH" || { echo "::error::APP_STORE_CONNECT_PRIVATE_KEY is not a valid .p8"; exit 1; }
+          echo "KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+      - run: flutter pub get
+      - name: Flutter build (prepares Xcode project)
+        run: flutter build ios --release --no-codesign
+      - name: Archive (automatic signing)
+        run: |
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Runner.xcarchive" archive \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$KEY_PATH" \
+            -authenticationKeyID "$KEY_ID" \
+            -authenticationKeyIssuerID "$ISSUER_ID" \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic
+      - name: Export + upload to App Store Connect
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>${TEAM_ID}</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$KEY_PATH" \
+            -authenticationKeyID "$KEY_ID" \
+            -authenticationKeyIssuerID "$ISSUER_ID"
+      - name: Remove API key
+        if: always()
+        run: rm -rf ~/.appstoreconnect

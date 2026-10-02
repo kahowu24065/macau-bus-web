@@ -50,7 +50,7 @@ class _BannerAdHostState extends State<_BannerAdHost> {
       if (defaultTargetPlatform == TargetPlatform.android) {
         return 'ca-app-pub-7648913543953622/2476533170';
       } else if (defaultTargetPlatform == TargetPlatform.iOS) {
-        return 'ca-app-pub-xxxxxxxxxxxxxxxx/wwwwwwwwww';
+        return 'ca-app-pub-7648913543953622/3201994319';
       }
     } else {
       if (defaultTargetPlatform == TargetPlatform.android) {

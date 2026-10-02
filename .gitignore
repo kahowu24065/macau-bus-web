@@ -49,3 +49,14 @@ app.*.map.json
 *.bak*
 /flutter_0*.png
 
+
+# Signing material - never commit
+*.p8
+AuthKey_*.p8
+*.p12
+*.cer
+*.mobileprovision
+*.jks
+*.keystore
+android/key.properties
+
