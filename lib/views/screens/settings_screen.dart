@@ -2,7 +2,7 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart'; 
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart' show rootBundle, Clipboard, ClipboardData;
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -229,6 +229,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   String get _storeName =>
       (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) ? 'App Store' : 'Google Play';
+
+  static const String _contactEmail = 'akar.554426@gmail.com';
+
+  Future<void> _copyContactEmail(BuildContext context, LanguageController langCtrl) async {
+    await Clipboard.setData(const ClipboardData(text: _contactEmail));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(langCtrl.tr('email_copied')), duration: const Duration(seconds: 2)));
+  }
+
+  Future<void> _openContactEmail(BuildContext context, LanguageController langCtrl) async {
+    final uri = Uri(
+      scheme: 'mailto',
+      path: _contactEmail,
+      query: 'subject=${Uri.encodeComponent(langCtrl.tr('contact_subject'))}',
+    );
+    var opened = false;
+    try {
+      opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {}
+    // 冇郵件 App 就改為複製電郵地址
+    if (!opened && context.mounted) await _copyContactEmail(context, langCtrl);
+  }
 
   Future<void> _openTerms() async {
     try {
@@ -646,6 +668,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               thumbColor: isDark ? Colors.black : Colors.white,
                             ),
                           ),
+                      ]
+                    ),
+
+                    // --- 4. CONTACT ---
+                    _buildSectionHeader(langCtrl.tr('section_contact')),
+                    _buildCard(
+                      isDark: isDark,
+                      children: [
+                        GestureDetector(
+                          onLongPress: () => _copyContactEmail(context, langCtrl),
+                          child: _buildTile(
+                            icon: Icons.mail_outline, title: langCtrl.tr('contact_email_title'), subtitle: '$_contactEmail\n${langCtrl.tr('contact_hint')}', isDark: isDark,
+                            onTap: () => _openContactEmail(context, langCtrl),
+                            trailing: IconButton(
+                              icon: Icon(Icons.copy_rounded, color: _subText, size: 18),
+                              tooltip: langCtrl.tr('copy_email'),
+                              onPressed: () => _copyContactEmail(context, langCtrl),
+                            ),
+                          ),
+                        ),
                       ]
                     ),
 
