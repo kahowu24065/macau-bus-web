@@ -3,7 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:text_scroll/text_scroll.dart'; // 🌟 引入走馬燈套件
+import '../widgets/fit_marquee_text.dart'; // 🌟 走馬燈（只在超出寬度時滾動）
 
 import '../../controllers/bus_controller.dart';
 import '../../controllers/location_controller.dart';
@@ -832,16 +832,9 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                 style: const TextStyle(color: Colors.grey, fontSize: 15),
                               ),
                               Expanded(
-                                child: TextScroll(
-                                  currentTerminal, 
-                                  mode: TextScrollMode.endless, 
-                                  velocity: const Velocity(pixelsPerSecond: Offset(35, 0)), 
-                                  delayBefore: const Duration(seconds: 2), 
-                                  pauseBetween: const Duration(seconds: 2), 
-                                  fadedBorder: true,
-                                  fadedBorderWidth: 0.05, 
+                                child: FitMarqueeText(
+                                  currentTerminal,
                                   style: const TextStyle(color: Colors.grey, fontSize: 15),
-                                  selectable: false,
                                 ),
                               ),
                             ],

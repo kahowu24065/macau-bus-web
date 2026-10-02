@@ -16,7 +16,7 @@ import '../../services/gps_service.dart';
 import '../../utils/route_result_helper.dart'; // 🌟 引入共用工具
 import '../widgets/routing_bottom_sheet.dart';
 import '../widgets/route_liquid_glass_nav.dart';
-import 'package:text_scroll/text_scroll.dart';
+import '../widgets/fit_marquee_text.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key, this.onClose});
@@ -582,16 +582,9 @@ class _MapScreenState extends State<MapScreen> {
                                 style: const TextStyle(color: Colors.amber, fontSize: 18, fontWeight: FontWeight.bold),
                               ),
                               Expanded(
-                                child: TextScroll(
+                                child: FitMarqueeText(
                                   ' $currentTerminal',
-                                  mode: TextScrollMode.endless, 
-                                  velocity: const Velocity(pixelsPerSecond: Offset(35, 0)), 
-                                  delayBefore: const Duration(seconds: 2), 
-                                  pauseBetween: const Duration(seconds: 2), 
-                                  fadedBorder: true, 
-                                  fadedBorderWidth: 0.05,
                                   style: const TextStyle(color: Colors.amber, fontSize: 18, fontWeight: FontWeight.bold),
-                                  selectable: false, 
                                 ),
                               ),
                             ],
