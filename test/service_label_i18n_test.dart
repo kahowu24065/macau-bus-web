@@ -19,5 +19,15 @@ void main() {
     expect(ServiceLabelI18n.translate('2026年10月1-7日', 'en'), '1–7 Oct 2026');
     expect(ServiceLabelI18n.translate('奇怪的標題', 'en'), '奇怪的標題');
     expect(ServiceLabelI18n.translate('星期日及公眾假期', 'zh'), '星期日及公眾假期');
+    const multi = '2026年9月12日、19日、25日2026年10月1日及4日';
+    expect(ServiceLabelI18n.translate(multi, 'zh'), '2026年9月12日、19日、25日\n2026年10月1日及4日');
+    expect(ServiceLabelI18n.translate(multi, 'en'), '12, 19 & 25 Sep 2026\n1 & 4 Oct 2026');
+    expect(ServiceLabelI18n.translate(multi, 'pt'), '12, 19 e 25 set. 2026\n1 e 4 out. 2026');
+    expect(ServiceLabelI18n.translate('2026年9月12日、10月1日', 'zh'), '2026年9月12日\n10月1日');
+    expect(ServiceLabelI18n.translate('2026年9月12日、10月1日', 'en'), '12 Sep 2026\n1 Oct 2026');
+    expect(ServiceLabelI18n.translate('星期一至五（公眾假期及澳門大學休假日除外）', 'zh'), '星期一至五\n（公眾假期及澳門大學休假日除外）');
+    expect(ServiceLabelI18n.translate('星期一至五（公眾假期及澳門大學休假日除外）', 'en'), 'Mon–Fri\n(except public holidays & UM vacation days)');
+    expect(ServiceLabelI18n.translate('星期一至五（公眾假期除外）', 'zh'), '星期一至五（公眾假期除外）');
+    expect(ServiceLabelI18n.translate('星期六、日及公眾假期', 'zhHans'), '星期六、日及公众假期');
   });
 }

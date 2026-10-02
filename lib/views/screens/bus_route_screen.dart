@@ -395,7 +395,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     }
     return Column(
       children: [
-        Container(width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 8), color: isDark ? const Color(0xFF2A2A2A) : Colors.grey[300], child: Center(child: Text(title, style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13, fontWeight: FontWeight.bold)))),
+        Container(width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12), color: isDark ? const Color(0xFF2A2A2A) : Colors.grey[300], child: Text(title, textAlign: TextAlign.center, softWrap: true, style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13, fontWeight: FontWeight.bold, height: 1.35))),
         ...uniqueData.asMap().entries.map((entry) {
           int idx = entry.key; var item = entry.value; bool isLast = idx == uniqueData.length - 1;
           return Container(

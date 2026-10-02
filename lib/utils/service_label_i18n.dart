@@ -42,13 +42,20 @@ class ServiceLabelI18n {
 
   static final _cjk = RegExp(r'[\u3400-\u9fff]');
 
+  /// Max characters per header line before a long exception goes on its own
+  /// line (CJK chars are ~2x as wide as Latin ones).
+  static const int _maxCjkLine = 14;
+  static const int _maxLatinLine = 36;
+
   static String translate(String raw, String lang) {
     final s = raw.trim();
-    if (s.isEmpty || lang == 'zh' || !_cjk.hasMatch(s)) return raw;
-    if (lang == 'zhHans') {
-      var out = s;
-      for (final e in _hans.entries) {
-        out = out.replaceAll(e.key, e.value);
+    if (s.isEmpty || !_cjk.hasMatch(s)) return raw;
+    if (lang == 'zh' || lang == 'zhHans') {
+      var out = _wrapZh(s);
+      if (lang == 'zhHans') {
+        for (final e in _hans.entries) {
+          out = out.replaceAll(e.key, e.value);
+        }
       }
       return out;
     }
@@ -62,6 +69,25 @@ class ServiceLabelI18n {
     }
   }
 
+  /// Line breaks for the raw Chinese label: a new line where a new year or
+  /// month group starts ("…25日2026年10月1日…", "…25日、10月1日…"), and
+  /// before a long （…除外） part.
+  static String _wrapZh(String s) {
+    var out = s
+        // "…日2026年…" or "…日、2026年…": new year group.
+        .replaceAllMapped(RegExp(r'(日|號|号)\s*(?:、|，|,|及|和)?\s*(?=\d{4}\s*年)'), (m) => '${m[1]}\n')
+        // "…日、10月…": new month group in the same year.
+        .replaceAllMapped(RegExp(r'(日|號|号)\s*(?:、|，|,|及|和)\s*(?=\d{1,2}\s*月)'), (m) => '${m[1]}\n');
+    final ex = RegExp(r'^(.+?)\s*([（(].+除外\s*[)）])$').firstMatch(out);
+    if (!out.contains('\n') && ex != null && out.length > _maxCjkLine) {
+      out = '${ex[1]}\n${ex[2]}';
+    }
+    return out;
+  }
+
+  static String _wrapLatin(String head, String tail) =>
+      head.length + tail.length + 1 > _maxLatinLine ? '$head\n$tail' : '$head $tail';
+
   static String? _label(String s, bool en) {
     // "X（Y除外）" / "X(Y除外)"
     final ex = RegExp(r'^(.*?)\s*[（(]\s*(.+?)\s*除外\s*[)）]\s*$').firstMatch(s);
@@ -69,7 +95,7 @@ class ServiceLabelI18n {
       final head = _list(ex.group(1)!, en, capitalize: true);
       final exc = _list(ex.group(2)!, en);
       if (head == null || exc == null) return null;
-      return en ? '$head (except $exc)' : '$head (exceto $exc)';
+      return _wrapLatin(head, en ? '(except $exc)' : '(exceto $exc)');
     }
     // "Y除外" without brackets
     final ex2 = RegExp(r'^(.*?)\s*[，,]?\s*(.+?)除外$').firstMatch(s);
@@ -77,7 +103,7 @@ class ServiceLabelI18n {
       final head = _list(ex2.group(1)!, en, capitalize: true);
       final exc = _list(ex2.group(2)!, en);
       if (head == null || exc == null) return null;
-      return en ? '$head (except $exc)' : '$head (exceto $exc)';
+      return _wrapLatin(head, en ? '(except $exc)' : '(exceto $exc)');
     }
     final dates = _dates(s, en);
     if (dates != null) return dates;
@@ -159,7 +185,6 @@ class ServiceLabelI18n {
     // Group by (year, month of the end of the item).
     final groups = <String>[];
     var i = 0;
-    final years = items.map((e) => e[0]).toSet();
     while (i < items.length) {
       final gy = items[i][0], gm = items[i][3];
       final ds = <String>[];
@@ -168,11 +193,10 @@ class ServiceLabelI18n {
         i++;
       }
       var g = '${joinList(ds)} ${mon[gm]}';
-      if (years.length > 1 && gy > 0) g += ' $gy';
+      if (gy > 0) g += ' $gy';
       groups.add(g);
     }
-    var out = groups.join('; ');
-    if (years.length == 1 && years.first > 0) out += ' ${years.first}';
-    return out;
+    // One line per month/year group.
+    return groups.join('\n');
   }
 }
