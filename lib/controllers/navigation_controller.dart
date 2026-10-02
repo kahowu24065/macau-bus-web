@@ -1515,6 +1515,7 @@ class NavigationController extends ChangeNotifier {
       );
       if (etaRes['success'] == true && etaRes['etaData'] != null) {
         leg.realtimeEta = etaRes['etaData']['status'];
+        _applyScheduledCheck(leg, etaRes);
         _applyLastTripCheck(leg, etaRes, langCtrl);
       } else {
         leg.realtimeEta = langCtrl.tr('no_eta');
@@ -1524,6 +1525,24 @@ class NavigationController extends ChangeNotifier {
     }
   }
 
+
+  /// Planned boarding much later than the next live bus (e.g. a 13:30 trip
+  /// while the next bus is 10 min away): the live ETA is about another bus,
+  /// so the UI shows the scheduled departure instead.
+  static const int _scheduledGapMinutes = 10;
+
+  void _applyScheduledCheck(RouteLeg leg, Map<String, dynamic> etaRes) {
+    leg.showScheduledDeparture = false;
+    final start = leg.startTime;
+    if (start == null) return;
+    final plannedMins =
+        (start - DateTime.now().millisecondsSinceEpoch) / 60000.0;
+    final data = etaRes['etaData'];
+    final liveMins = data is Map ? (data['etaMinutes'] as num?)?.toDouble() : null;
+    // Unknown live ETA (e.g. waiting at terminal): compare with now.
+    leg.showScheduledDeparture =
+        plannedMins - (liveMins ?? 0) > _scheduledGapMinutes;
+  }
 
   /// Near a route's last trip, use the same live ETA response to confirm a
   /// bus is still on the way to the boarding stop, or warn that the last bus

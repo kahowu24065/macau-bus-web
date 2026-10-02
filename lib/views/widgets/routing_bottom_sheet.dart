@@ -199,6 +199,31 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
     return names.isEmpty ? 'WALK_ONLY' : names.join('->');
   }
 
+  /// Bus plans arriving more than max(15 min, 30% of the best total) after
+  /// the earliest bus arrival are dominated (e.g. a 102→H2 plan on a much
+  /// later 102 trip). Walk-only plans are not affected. Never empties.
+  static const int _lateMinSec = 15 * 60;
+  static const int _latePercent = 30;
+
+  static List<Itinerary> _dropLateBusPlans(List<Itinerary> plans) {
+    Itinerary? best;
+    for (final it in plans) {
+      if (_busLegCount(it) == 0 || it.arriveAtMs == null) continue;
+      if (best == null || it.arriveAtMs! < best.arriveAtMs!) best = it;
+    }
+    if (best == null) return plans;
+    final pct = best.totalSecondsInclWait * _latePercent ~/ 100;
+    final slackMs = (pct > _lateMinSec ? pct : _lateMinSec) * 1000;
+    final limit = best.arriveAtMs! + slackMs;
+    final out = plans
+        .where((it) =>
+            _busLegCount(it) == 0 ||
+            it.arriveAtMs == null ||
+            it.arriveAtMs! <= limit)
+        .toList();
+    return out.isEmpty ? plans : out;
+  }
+
   /// Filter, score-sort and dedupe (best plan per bus pattern).
   static List<Itinerary> _rankPlans(List<Itinerary> plans) {
     final bus = plans.where((it) => _busLegCount(it) > 0).toList();
@@ -216,6 +241,7 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
         if (noShort.any((it) => _busLegCount(it) > 0)) keep = noShort;
       }
     }
+    keep = _dropLateBusPlans(keep);
     final scored = [for (final it in keep) (it: it, score: _planScore(it))]
       ..sort((a, b) => a.score.compareTo(b.score));
     final seen = <String>{};

@@ -121,7 +121,20 @@ class RouteResultHelper {
         final movingMinutes = (activeIt.movingSeconds / 60).round();
 
         // 🌟 獲取翻譯後嘅時間字眼 (例如: "(約 23 分鐘)")
-        final totalTimeStr = langCtrl.tr('approx_mins_brackets').replaceAll('@mins', activeMinutes.toString());
+        final waitMinutes = activeMinutes - movingMinutes;
+        final totalTimeStr = langCtrl.tr('plan_total_mins').replaceAll('@total', activeMinutes.toString());
+        final breakdownStr = waitMinutes < 1
+            ? langCtrl.tr('plan_no_wait').replaceAll('@move', movingMinutes.toString())
+            : langCtrl.tr('plan_wait_breakdown')
+                .replaceAll('@wait', waitMinutes.toString())
+                .replaceAll('@move', movingMinutes.toString());
+        final depMs = activeIt.departAtMs;
+        final arrMs = activeIt.arriveAtMs;
+        final timesStr = (depMs != null && arrMs != null)
+            ? langCtrl.tr('plan_depart_arrive')
+                .replaceAll('@dep', Itinerary.macauHm(depMs))
+                .replaceAll('@arr', Itinerary.macauHm(arrMs))
+            : null;
 
         return Column(
           children: [
@@ -143,10 +156,12 @@ class RouteResultHelper {
                       text: TextSpan(
                         children: [
                           TextSpan(
-                            text: '${langCtrl.tr('plan_num')}${currentPage + 1} / ${itineraries.length} $totalTimeStr\n', // 加咗 \n 稍作排版優化
+                            text: '${langCtrl.tr('plan_num')}${currentPage + 1} / ${itineraries.length} · $totalTimeStr\n',
                             style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontSize: 13) // 字體微調
                           ),
-                          TextSpan(text: langCtrl.tr('incl_wait_time_calc').replaceAll('@mins', movingMinutes.toString()), style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.normal)),
+                          TextSpan(text: timesStr == null ? breakdownStr : '$breakdownStr\n', style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.normal)),
+                          if (timesStr != null)
+                            TextSpan(text: timesStr, style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.normal)),
                         ],
                       ),
                     ),
@@ -246,11 +261,15 @@ class RouteResultHelper {
                                 Text(
                                   isNoService
                                       ? langCtrl.tr('no_service_ghost')
-                                      : '${langCtrl.tr('realtime_eta')}${etaPending ? langCtrl.tr('eta_updating') : etaStr}',
+                                      : (leg.showScheduledDeparture && !maybeEnded && leg.startTime != null)
+                                          ? langCtrl.tr('eta_scheduled_depart').replaceAll('@time', Itinerary.macauHm(leg.startTime!))
+                                          : '${langCtrl.tr('realtime_eta')}${etaPending ? langCtrl.tr('eta_updating') : etaStr}',
                                   style: TextStyle(
                                     color: isNoService
                                         ? Colors.redAccent
-                                        : (maybeEnded ? Colors.orangeAccent[700] : Colors.greenAccent[700]),
+                                        : (maybeEnded
+                                            ? Colors.orangeAccent[700]
+                                            : (leg.showScheduledDeparture ? Colors.lightBlueAccent[700] : Colors.greenAccent[700])),
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
                                   ),

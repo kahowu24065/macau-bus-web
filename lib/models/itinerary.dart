@@ -27,6 +27,17 @@ class Itinerary {
     return duration > movingSeconds ? duration : movingSeconds;
   }
 
+  /// Leave time (first leg start) and arrival (last leg end), epoch ms.
+  int? get departAtMs => legs.isEmpty ? null : legs.first.startTime;
+  int? get arriveAtMs => legs.isEmpty ? null : legs.last.endTime;
+
+  /// HH:MM in Macau time (UTC+8), independent of the device time zone.
+  static String macauHm(int epochMs) {
+    final t = DateTime.fromMillisecondsSinceEpoch(epochMs, isUtc: true)
+        .add(const Duration(hours: 8));
+    return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+  }
+
   factory Itinerary.fromJson(Map<String, dynamic> json) {
     var legsList = json['legs'] as List? ?? [];
     List<RouteLeg> legs = legsList.map((i) => RouteLeg.fromJson(i as Map<String, dynamic>)).toList();
@@ -84,6 +95,10 @@ class RouteLeg {
   /// 'confirmed' = a bus is still before the boarding stop,
   /// 'maybe_ended' = no bus before the stop and the service window is over.
   String? liveCheck;
+
+  /// True when the planned trip leaves well after the next live bus, so the
+  /// UI shows the scheduled departure instead of the next bus's ETA.
+  bool showScheduledDeparture = false;
 
   /// Official DSAT names after match (override OTP phantom names in UI).
   String? displayFromName;
