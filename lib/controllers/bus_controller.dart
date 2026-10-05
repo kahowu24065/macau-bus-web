@@ -81,6 +81,11 @@ class BusController extends ChangeNotifier {
   static const Duration _gpxDiskTtl = Duration(days: 30);
   static const Duration _routesDiskTtl = Duration(days: 1);
 
+  /// v2: bridge decks stay in the polyline. v1 (`cache_route_shape_$route_$dir`)
+  /// stored the pre-1.0.27 split, which dropped Lotus Bridge and Ponte Macau.
+  /// Those entries are left unread so a 30-day cache cannot redraw the gap.
+  static const String _gpxCacheKeyPrefix = 'cache_route_shape_v2';
+
   bool _isDiskCacheFresh(SharedPreferences prefs, String key, Duration ttl) {
     final ts = prefs.getInt('${key}_ts');
     if (ts == null) return false;
@@ -490,7 +495,7 @@ class BusController extends ChangeNotifier {
     if (currentRoute.isEmpty) return;
 
     final prefs = await SharedPreferences.getInstance();
-    final String cacheKey = 'cache_route_shape_${currentRoute}_$currentDirection';
+    final String cacheKey = '${_gpxCacheKeyPrefix}_${currentRoute}_$currentDirection';
     final String? cachedGpx = prefs.getString(cacheKey);
     final bool gpxFresh = cachedGpx != null && _isDiskCacheFresh(prefs, cacheKey, _gpxDiskTtl);
 

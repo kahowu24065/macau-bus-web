@@ -115,7 +115,9 @@ class GPXService {
 
   /// Same rule as the server. Steps that reverse across a short connector,
   /// or that leave a teleport with no road continuation, are not stroked.
-  /// Colinear bridge spans stay.
+  /// Colinear bridge spans stay, including a deck drawn as one straight
+  /// step up to 2.5 km when both sides stay within 15° of its bearing
+  /// (Lotus Bridge link on 102, Ponte Macau on 103).
   static List<List<LatLng>> splitDiscontinuous(List<LatLng> points) {
     if (points.length < 2) return [];
     const cap = 600.0;
@@ -126,6 +128,8 @@ class GPXService {
     const maxConn = 400.0;
     const isolateMin = 250.0;
     const contBar = 80.0;
+    const bridgeTurn = 15.0;
+    const bridgeMax = 2500.0;
     final ds = <double>[];
     final bs = <double>[];
     for (var i = 1; i < points.length; i++) {
@@ -151,7 +155,15 @@ class GPXService {
       final badN = next != null && _angleDiff(bs[i], next.bearing) > maxTurn;
       final shortP = prev != null && prev.dist < cap * 0.5;
       final shortN = next != null && next.dist < cap * 0.5;
-      if (badP || badN || (shortP && shortN)) breakAfter[i] = true;
+      // A straight bridge deck drawn as one long step between short road
+      // vertices (Lotus Bridge on 102, Ponte Macau on 103) is still a road
+      // edge when both sides carry on its bearing.
+      final straight = prev != null &&
+          next != null &&
+          _angleDiff(bs[i], prev.bearing) <= bridgeTurn &&
+          _angleDiff(bs[i], next.bearing) <= bridgeTurn &&
+          d <= bridgeMax;
+      if (badP || badN || (shortP && shortN && !straight)) breakAfter[i] = true;
     }
     final longs = <int>[
       for (var i = 0; i < ds.length; i++)
