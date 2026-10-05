@@ -90,52 +90,43 @@ class GPXBreadcrumbService {
         }
       }
 
-      final gpxRes = await http.get(Uri.parse('${ApiConfig.api}/bus-gpx?route=$route&dir=$dir'));
-      if (gpxRes.statusCode == 200) {
-        final json = jsonDecode(gpxRes.body);
-        if (json['success'] == true && json['points'] != null) {
-          List<LatLng> allGpx = (json['points'] as List)
-              .map((p) => LatLng(_parseDouble(p['lat']), _parseDouble(p['lng'])))
-              .where((l) => l.latitude != 0)
-              .toList();
-          if (allGpx.isEmpty) return [];
-          if (guideStops.isEmpty) guideStops = [fromPt, toPt];
+      final allGpx = await GPXService.fetchFullGpx(route, dir);
+      if (allGpx.isEmpty) return [];
+      if (guideStops.isEmpty) guideStops = [fromPt, toPt];
 
-          List<LatLng> resultLine = [];
-          int currentGpxIdx = 0;
-          double minD = double.infinity;
-          for (int i = 0; i < allGpx.length; i++) {
-            double d = const Distance().as(LengthUnit.Meter, guideStops.first, allGpx[i]);
-            if (d < minD) {
-              minD = d;
-              currentGpxIdx = i;
-            }
-          }
-          resultLine.add(allGpx[currentGpxIdx]);
-
-          for (int i = 1; i < guideStops.length; i++) {
-            LatLng target = guideStops[i];
-            int bestIdx = currentGpxIdx;
-            double bestDist = const Distance().as(LengthUnit.Meter, target, allGpx[currentGpxIdx]);
-            for (int step = 1; step < allGpx.length; step++) {
-              int checkIdx = (currentGpxIdx + step) % allGpx.length;
-              double d = const Distance().as(LengthUnit.Meter, target, allGpx[checkIdx]);
-              if (d < bestDist) {
-                bestDist = d;
-                bestIdx = checkIdx;
-              }
-              if (bestDist < 50 && d > bestDist + 100) break;
-            }
-            int curr = currentGpxIdx;
-            while (curr != bestIdx) {
-              curr = (curr + 1) % allGpx.length;
-              resultLine.add(allGpx[curr]);
-            }
-            currentGpxIdx = bestIdx;
-          }
-          return resultLine;
+      List<LatLng> resultLine = [];
+      int currentGpxIdx = 0;
+      double minD = double.infinity;
+      for (int i = 0; i < allGpx.length; i++) {
+        double d = const Distance().as(LengthUnit.Meter, guideStops.first, allGpx[i]);
+        if (d < minD) {
+          minD = d;
+          currentGpxIdx = i;
         }
       }
+      resultLine.add(allGpx[currentGpxIdx]);
+
+      for (int i = 1; i < guideStops.length; i++) {
+        LatLng target = guideStops[i];
+        int bestIdx = currentGpxIdx;
+        double bestDist = const Distance().as(LengthUnit.Meter, target, allGpx[currentGpxIdx]);
+        for (int step = 1; step < allGpx.length; step++) {
+          int checkIdx = (currentGpxIdx + step) % allGpx.length;
+          double d = const Distance().as(LengthUnit.Meter, target, allGpx[checkIdx]);
+          if (d < bestDist) {
+            bestDist = d;
+            bestIdx = checkIdx;
+          }
+          if (bestDist < 50 && d > bestDist + 100) break;
+        }
+        int curr = currentGpxIdx;
+        while (curr != bestIdx) {
+          curr = (curr + 1) % allGpx.length;
+          resultLine.add(allGpx[curr]);
+        }
+        currentGpxIdx = bestIdx;
+      }
+      return resultLine;
     } catch (_) {}
     return [];
   }

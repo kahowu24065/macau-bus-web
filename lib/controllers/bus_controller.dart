@@ -488,7 +488,7 @@ class BusController extends ChangeNotifier {
     if (currentRoute.isEmpty) return;
 
     final prefs = await SharedPreferences.getInstance();
-    final String cacheKey = 'cache_gpx_${currentRoute}_$currentDirection';
+    final String cacheKey = 'cache_route_shape_${currentRoute}_$currentDirection';
     final String? cachedGpx = prefs.getString(cacheKey);
     final bool gpxFresh = cachedGpx != null && _isDiskCacheFresh(prefs, cacheKey, _gpxDiskTtl);
 

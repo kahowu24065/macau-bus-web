@@ -16,9 +16,9 @@ import '../widgets/glowing_badge.dart';
 import '../widgets/blinking_warning_icon.dart';
 import '../../controllers/language_controller.dart';
 import '../widgets/route_liquid_glass_nav.dart';
-import '../../utils/service_label_i18n.dart';
 import '../../constants/app_translations.dart';
 import '../../constants/feature_flags.dart';
+import '../widgets/timetable_dialog.dart';
 
 class BusRouteScreen extends StatefulWidget {
   const BusRouteScreen({super.key});
@@ -333,80 +333,12 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     );
   }
 
-  void _showTimetableDialog(BusController busCtrl) {
-    if (!FeatureFlags.showTimetable) return;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final langCtrl = context.read<LanguageController>();
-    final currentRoute = busCtrl.currentRoute;
-    List<dynamic> sections = [];
-    
-    if (busCtrl.timetableDetails != null) {
-      if (busCtrl.timetableDetails is List) {
-        sections = busCtrl.timetableDetails as List<dynamic>;
-      } else if (busCtrl.timetableDetails is Map) {
-        final details = busCtrl.timetableDetails as Map<String, dynamic>;
-        if (details['sections'] is List) {
-          sections = details['sections'];
-        } else if (details['weekday'] != null || details['holiday'] != null) {
-          if (details['weekday'] != null && (details['weekday'] as List).isNotEmpty) {
-            sections.add({'title': langCtrl.tr('mon_to_sat'), 'items': details['weekday']});
-          }
-          if (details['holiday'] != null && (details['holiday'] as List).isNotEmpty) {
-            sections.add({'title': langCtrl.tr('sun_and_holidays'), 'items': details['holiday']});
-          }
-        }
-      }
-    }
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-          contentPadding: EdgeInsets.zero, clipBehavior: Clip.antiAlias,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          title: Row(children: [const Icon(Icons.schedule, color: Colors.amber), const SizedBox(width: 8), Text('$currentRoute ${langCtrl.tr('timetable')}', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontSize: 18))]),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: sections.isEmpty
-                ? Padding(padding: const EdgeInsets.all(30.0), child: Center(child: Text(langCtrl.tr('no_timetable'), style: const TextStyle(color: Colors.grey))))
-                : Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const SizedBox(height: 10),
-                      Container(width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 12), color: Colors.green[700], child: Row(children: [Expanded(child: Center(child: Text(langCtrl.tr('service_hours'), style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)))), Expanded(child: Center(child: Text(langCtrl.tr('frequency_mins'), style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold))))])),
-                      Flexible(child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: sections.map((sec) => _buildTimetableSection(ServiceLabelI18n.translate(sec['title']?.toString() ?? '', langCtrl.currentLanguage), sec['items'], isDark, langCtrl.currentLanguage)).toList()))),
-                    ],
-                  ),
-          ),
-          actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text(langCtrl.tr('btn_close'), style: const TextStyle(color: Colors.amber)))],
-        );
-      },
-    );
-  }
-
-  Widget _buildTimetableSection(String title, dynamic dataDynamic, bool isDark, String lang) {
-    if (dataDynamic == null) return const SizedBox();
-    final List<dynamic> data = dataDynamic as List<dynamic>;
-    if (data.isEmpty) return const SizedBox();
-    final Set<String> seen = {};
-    final List<dynamic> uniqueData = [];
-    for (var item in data) {
-      final key = '${item['time']}_${item['freq']}';
-      if (!seen.contains(key)) { seen.add(key); uniqueData.add(item); }
-    }
-    return Column(
-      children: [
-        Container(width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12), color: isDark ? const Color(0xFF2A2A2A) : Colors.grey[300], child: Text(title, textAlign: TextAlign.center, softWrap: true, style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13, fontWeight: FontWeight.bold, height: 1.35))),
-        ...uniqueData.asMap().entries.map((entry) {
-          int idx = entry.key; var item = entry.value; bool isLast = idx == uniqueData.length - 1;
-          return Container(
-            decoration: BoxDecoration(color: isDark ? const Color(0xFF1E1E1E) : Colors.white, border: isLast ? null : Border(bottom: BorderSide(color: isDark ? const Color(0xFF333333) : Colors.grey.shade300, width: 1))),
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Row(children: [Expanded(child: Center(child: Text(ServiceLabelI18n.translate(item['time']?.toString() ?? '', lang), style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 14)))), Expanded(child: Center(child: Text(ServiceLabelI18n.translate(item['freq']?.toString() ?? '', lang), style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 14))))]),
-          );
-        })
-      ],
+  Future<void> _showTimetableDialog(BusController busCtrl) {
+    if (!FeatureFlags.showTimetable) return Future.value();
+    return TimetableDialog.show(
+      context,
+      route: busCtrl.currentRoute,
+      direction: busCtrl.currentDirection,
     );
   }
 
@@ -875,7 +807,12 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                               ),
                               if (FeatureFlags.showTimetable)
                                 Expanded(
-                                  child: _buildHeaderIcon(Icons.schedule, langCtrl.tr('timetable'), isDark, () => _showTimetableDialog(busCtrl)),
+                                  child: _buildHeaderIcon(
+                                    Icons.schedule,
+                                    langCtrl.tr('timetable'),
+                                    isDark,
+                                    () => unawaited(_showTimetableDialog(busCtrl)),
+                                  ),
                                 ),
                               if (!isSimpleMode && FeatureFlags.showRouteTrajectory)
                                 Expanded(
