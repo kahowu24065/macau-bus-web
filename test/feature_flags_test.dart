@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -137,6 +138,79 @@ void main() {
         expect(jump, lessThan(0.003));
       }
     }
+  });
+
+  test('a bridge deck between short colinear vertices stays one line', () {
+    final cos = math.cos(22.14 * math.pi / 180);
+    double deg(double meters) => meters / 111320;
+
+    // Lotus Bridge link on 102: ~995 m single step, short colinear road both sides.
+    final deck = <LatLng>[];
+    var lng = 113.5600;
+    for (var i = 0; i < 6; i++) {
+      deck.add(LatLng(22.1394, lng));
+      lng -= deg(20) / cos;
+    }
+    lng -= deg(995) / cos;
+    for (var i = 0; i < 6; i++) {
+      deck.add(LatLng(22.1394, lng));
+      lng -= deg(20) / cos;
+    }
+    expect(GPXService.splitDiscontinuous(deck), hasLength(1));
+
+    // Ponte Macau on 103: ~1.77 km northbound step.
+    final ponte = <LatLng>[];
+    var lat = 22.1700;
+    for (var i = 0; i < 4; i++) {
+      ponte.add(LatLng(lat, 113.5730));
+      lat += deg(60);
+    }
+    lat += deg(1766);
+    for (var i = 0; i < 4; i++) {
+      ponte.add(LatLng(lat, 113.5730));
+      lat += deg(60);
+    }
+    expect(GPXService.splitDiscontinuous(ponte), hasLength(1));
+
+    // Same long step, but the road beyond it bends 20°: still split.
+    final bent = <LatLng>[];
+    lat = 22.1700;
+    for (var i = 0; i < 4; i++) {
+      bent.add(LatLng(lat, 113.5730));
+      lat += deg(60);
+    }
+    lat += deg(1766);
+    var blng = 113.5730;
+    const turn = 20 * math.pi / 180;
+    for (var i = 0; i < 4; i++) {
+      bent.add(LatLng(lat, blng));
+      lat += deg(60) * math.cos(turn);
+      blng += deg(60) * math.sin(turn) / math.cos(lat * math.pi / 180);
+    }
+    expect(GPXService.splitDiscontinuous(bent), hasLength(2));
+
+    // Longer than any Macau deck step: still a teleport.
+    final far = <LatLng>[];
+    lat = 22.1700;
+    for (var i = 0; i < 4; i++) {
+      far.add(LatLng(lat, 113.5730));
+      lat += deg(60);
+    }
+    lat += deg(4000);
+    for (var i = 0; i < 4; i++) {
+      far.add(LatLng(lat, 113.5730));
+      lat += deg(60);
+    }
+    expect(GPXService.splitDiscontinuous(far), hasLength(2));
+  });
+
+  test('route-shape disk cache key drops the pre-bridge split', () {
+    final text = File('lib/controllers/bus_controller.dart').readAsStringSync();
+    expect(text, contains('cache_route_shape_v2'));
+    expect(
+      text,
+      isNot(contains(r"'cache_route_shape_${currentRoute}_$currentDirection'")),
+    );
   });
 
   test('102X with no shape is requested as route 102', () async {
