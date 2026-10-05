@@ -696,29 +696,6 @@ class _MapScreenState extends State<MapScreen> {
                   MarkerLayer(markers: [...stopMarkers, ...busMarkers, ...extraMarkers]),
                 ],
               ),
-              if (FeatureFlags.showRouteTrajectory &&
-                  (busCtrl.currentRoute.isNotEmpty ||
-                      busCtrl.gpxRoutePoints.isNotEmpty ||
-                      navCtrl.otpNavigationPolylines.isNotEmpty))
-                Positioned(
-                  left: 10,
-                  right: 10,
-                  bottom: RouteLiquidGlassNavStyle.bottomReserve(context) + 4,
-                  child: IgnorePointer(
-                    child: Text(
-                      langCtrl.tr('route_shape_source_note'),
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: isDark ? Colors.white70 : const Color(0xFF1A1A1A),
-                        fontSize: 10,
-                        height: 1.25,
-                        shadows: const [
-                          Shadow(color: Colors.black54, blurRadius: 3),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
               if (busCtrl.isPickingMapStart || busCtrl.isPickingMapEnd)
                 Positioned(
                   top: 16, left: 16, right: 16,
@@ -820,14 +797,32 @@ class _MapScreenState extends State<MapScreen> {
                       child: Container(
                         // ... 保持你原本嘅 Container 設定唔變 ...
                         decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: isDark ? [Colors.black.withValues(alpha: 0.7), Colors.black.withValues(alpha: 0.5)] : [Colors.white.withValues(alpha: 0.6), Colors.white.withValues(alpha: 0.4)]), border: Border(top: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.8), width: 1.0))),
-                        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(stopsDisplay, style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13, fontWeight: FontWeight.bold)),
-                            Text('${langCtrl.tr('operating_buses')}${busCtrl.allBusesList.length}${langCtrl.tr('map_showing')}$actualMapBusCount)', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
-                            if (busCtrl.stopsList.isEmpty && !busCtrl.isLoadingStops)
-                              InkWell(onTap: () => busCtrl.fetchStops(), child: Text(langCtrl.tr('click_retry'), style: const TextStyle(color: Colors.amber, decoration: TextDecoration.underline))),
+                            if (FeatureFlags.showRouteTrajectory)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 4),
+                                child: Text(
+                                  langCtrl.tr('route_shape_source_note'),
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: isDark ? Colors.white70 : Colors.black54,
+                                    fontSize: 10,
+                                    height: 1.2,
+                                  ),
+                                ),
+                              ),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceAround,
+                              children: [
+                                Text(stopsDisplay, style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13, fontWeight: FontWeight.bold)),
+                                Text('${langCtrl.tr('operating_buses')}${busCtrl.allBusesList.length}${langCtrl.tr('map_showing')}$actualMapBusCount)', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
+                                if (busCtrl.stopsList.isEmpty && !busCtrl.isLoadingStops)
+                                  InkWell(onTap: () => busCtrl.fetchStops(), child: Text(langCtrl.tr('click_retry'), style: const TextStyle(color: Colors.amber, decoration: TextDecoration.underline))),
+                              ],
+                            ),
                           ],
                         ),
                       ),
