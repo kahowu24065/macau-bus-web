@@ -5,64 +5,55 @@ import '../constants/feature_flags.dart';
 import '../utils/parse_utils.dart';
 import '../config/api_config.dart';
 
+/// Loads a route polyline from the same-origin open-data endpoint.
+///
+/// The Oracle server reads DSAT `ROUTE_NETWORK` geometries ordered by
+/// `BUS_ROUTE_SEQ` (`ROUTE_NOS` + `NETWORK_ID`). This client only requests
+/// `/api/route-shape` on the app origin.
 class GPXService {
   static String get baseUrl => ApiConfig.origin;
-  static const String _upstreamGpx = 'https://motransportinfo.com/gpx';
   static const Map<String, String> _headers = {
     'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-    'Accept': 'application/json, application/gpx+xml, application/xml, text/xml, */*',
+    'Accept': 'application/json',
   };
+
+  /// Test hook. Production leaves this null and uses [http.get].
+  static Future<http.Response> Function(Uri uri)? debugFetch;
+
+  static Uri routeShapeUri(String route, int dir) {
+    return Uri.parse('$baseUrl/api/route-shape').replace(
+      queryParameters: {'route': route, 'dir': '$dir'},
+    );
+  }
 
   static Future<List<LatLng>> fetchFullGpx(String route, int dir) async {
     if (!FeatureFlags.showRouteTrajectory) return [];
-    final points = await _fetchFromBackend(route, dir);
-    if (points.isNotEmpty) return points;
-    return _fetchFromMoTransport(route, dir);
-  }
-
-  static Future<List<LatLng>> _fetchFromBackend(String route, int dir) async {
     try {
-      final res = await http.get(
-        Uri.parse('$baseUrl/api/bus-gpx?route=$route&dir=$dir'),
-        headers: _headers,
-      ).timeout(const Duration(seconds: 5));
-      if (res.statusCode == 200) {
-        final json = jsonDecode(res.body);
-        if (json['success'] == true && json['points'] != null) {
-          return (json['points'] as List)
-              .map((p) => LatLng(ParseUtils.parseDbl(p['lat']), ParseUtils.parseDbl(p['lng'])))
-              .where((l) => l.latitude != 0)
-              .toList();
-        }
-      }
-    } catch (_) {}
-    return [];
-  }
-
-  /// Official shape file: https://motransportinfo.com/gpx/{ROUTE}_Forward.gpx
-  static Future<List<LatLng>> _fetchFromMoTransport(String route, int dir) async {
-    final dirName = dir == 1 ? 'Backward' : 'Forward';
-    final code = route.trim().toUpperCase();
-    try {
-      final res = await http.get(
-        Uri.parse('$_upstreamGpx/${Uri.encodeComponent(code)}_$dirName.gpx'),
-        headers: {
-          'User-Agent': _headers['User-Agent']!,
-          'Accept': 'application/gpx+xml,application/xml,text/xml,*/*',
-        },
-      ).timeout(const Duration(seconds: 5));
+      final res = await _fetch(routeShapeUri(route, dir));
       if (res.statusCode != 200 || res.body.isEmpty) return [];
-      return _pointsFromGpxXml(res.body);
+      return pointsFromShapeBody(res.body);
     } catch (_) {
       return [];
     }
   }
 
-  static List<LatLng> _pointsFromGpxXml(String xml) {
-    final re = RegExp(r'<trkpt\s+lat="([^"]+)"\s+lon="([^"]+)"', caseSensitive: false);
+  static Future<http.Response> _fetch(Uri uri) {
+    final override = debugFetch;
+    if (override != null) return override(uri);
+    return http.get(uri, headers: _headers).timeout(const Duration(seconds: 12));
+  }
+
+  static List<LatLng> pointsFromShapeBody(String body) {
+    final decoded = jsonDecode(body);
+    if (decoded is! Map) return [];
+    if (decoded['success'] != true || decoded['points'] is! List) return [];
     return [
-      for (final m in re.allMatches(xml))
-        LatLng(ParseUtils.parseDbl(m.group(1)), ParseUtils.parseDbl(m.group(2))),
+      for (final p in decoded['points'] as List)
+        if (p is Map)
+          LatLng(
+            ParseUtils.parseDbl(p['lat']),
+            ParseUtils.parseDbl(p['lng']),
+          ),
     ].where((l) => l.latitude != 0 && l.longitude != 0).toList();
   }
 

@@ -696,6 +696,29 @@ class _MapScreenState extends State<MapScreen> {
                   MarkerLayer(markers: [...stopMarkers, ...busMarkers, ...extraMarkers]),
                 ],
               ),
+              if (FeatureFlags.showRouteTrajectory &&
+                  (busCtrl.currentRoute.isNotEmpty ||
+                      busCtrl.gpxRoutePoints.isNotEmpty ||
+                      navCtrl.otpNavigationPolylines.isNotEmpty))
+                Positioned(
+                  left: 10,
+                  right: 10,
+                  bottom: RouteLiquidGlassNavStyle.bottomReserve(context) + 4,
+                  child: IgnorePointer(
+                    child: Text(
+                      langCtrl.tr('route_shape_source_note'),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: isDark ? Colors.white70 : const Color(0xFF1A1A1A),
+                        fontSize: 10,
+                        height: 1.25,
+                        shadows: const [
+                          Shadow(color: Colors.black54, blurRadius: 3),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               if (busCtrl.isPickingMapStart || busCtrl.isPickingMapEnd)
                 Positioned(
                   top: 16, left: 16, right: 16,
