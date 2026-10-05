@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
+import '../constants/feature_flags.dart';
 import '../utils/parse_utils.dart';
 import '../config/api_config.dart';
 
@@ -13,6 +14,7 @@ class GPXService {
   };
 
   static Future<List<LatLng>> fetchFullGpx(String route, int dir) async {
+    if (!FeatureFlags.showRouteTrajectory) return [];
     final points = await _fetchFromBackend(route, dir);
     if (points.isNotEmpty) return points;
     return _fetchFromMoTransport(route, dir);

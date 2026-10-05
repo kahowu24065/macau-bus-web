@@ -14,6 +14,7 @@ import '../models/itinerary.dart';
 import '../models/bus_stop.dart';
 import '../services/otp_service.dart';
 import '../config/api_config.dart';
+import '../constants/feature_flags.dart';
 import '../services/gpx_service.dart';
 import '../services/local_timetable.dart';
 import 'bus_controller.dart';
@@ -57,6 +58,7 @@ class GPXBreadcrumbService {
   }
 
   static Future<List<LatLng>> getPreciseRoute(String route, int dir, LatLng fromPt, LatLng toPt) async {
+    if (!FeatureFlags.showRouteTrajectory) return [];
     try {
       final stopsRes = await http.get(Uri.parse('${ApiConfig.api}/bus-stops?route=$route&dir=$dir'));
       List<LatLng> guideStops = [];
@@ -1807,7 +1809,7 @@ class NavigationController extends ChangeNotifier {
     try {
     LatLng? centerPt;
     final busLegs = List<RouteLeg>.from(navBusLegsInfo);
-    final gpxResults = busLegs.isEmpty
+    final gpxResults = !FeatureFlags.showRouteTrajectory || busLegs.isEmpty
         ? <List<LatLng>>[]
         : await Future.wait([
             for (final leg in busLegs)
@@ -1835,6 +1837,11 @@ class NavigationController extends ChangeNotifier {
         continue;
       }
       if (leg.mode != 'BUS' && leg.mode != 'TRANSIT') continue;
+
+      if (!FeatureFlags.showRouteTrajectory) {
+        busIdx++;
+        continue;
+      }
 
       final color = busColors[busIdx % busColors.length];
       List<LatLng> pts = const [];
