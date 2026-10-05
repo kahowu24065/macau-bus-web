@@ -43,8 +43,10 @@ mountRouteShape(app, {
 - Keep `BUS_ROUTE_SEQ` rows whose `ROUTE_NOS` equals the requested route (also splits combined values such as `1A,3`).
 - If a direction column exists (`DIR`, `DIRECTION`, …) and has two values, `dir=0` is the lower/outbound value and `dir=1` the other. A single direction (circular routes) is returned for both.
 - Order by `SEQ` (or `SEQUENCE` / `ROUTE_SEQ` when that is the column name).
-- Look up each `NETWORK_ID` on `ROUTE_NETWORK` and concatenate the polyline, flipping an edge when its far end is the one that touches the previous vertex.
-- Respond with `{ success, points: [{ lat, lng }], source: "ROUTE_NETWORK", attribution, dataDate }`.
+- Look up each `NETWORK_ID` on `ROUTE_NETWORK` and chain polylines, flipping an edge when its far end is the one that touches the previous vertex. An edge that does not meet the previous vertex starts another line. Those gaps are not drawn.
+- If that chain shatters (many pieces) and some other two-valued column separates the rows into directions that reconnect, `dir=0` / `dir=1` follow that column. A route that already chains, such as N3, is not split.
+- A code like `102X` with no rows is served from `102`.
+- Respond with `{ success, lines: [[{ lat, lng }, ...], ...], points, source: "ROUTE_NETWORK", attribution, dataDate }`. `points` is the longest line. `lines` is every piece. The app draws `lines`.
 - `ROUTE_NETWORK` coordinates are Macau Grid meters (a sample vertex is about x=19956, y=19416), not WGS84. The module projects them with the same `proj4` definition and offsets as `BUS_POLE` in `server.js` (`MACAU_LAT_OFFSET` 0.00034, `MACAU_LNG_OFFSET` 0.00048). Vertices that are already longitude/latitude around Macau are left unchanged. Anything else still returns `crs_not_wgs84`.
 
 If the DBF uses different column names, `node route_shape.js --shape-dir ~/macau-bus --inspect` prints the names it found and the ones it selected. A missing `ROUTE_NOS` or `NETWORK_ID` returns HTTP 503 `unexpected_fields` plus the real column list.

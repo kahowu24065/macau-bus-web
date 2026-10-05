@@ -312,6 +312,7 @@ class RouteResultHelper {
                     navCtrl.captureRouteForRestore(busCtrl.currentRoute);
                     busCtrl.stopsList.clear();
                     busCtrl.gpxRoutePoints.clear();
+                    busCtrl.gpxRouteLines.clear();
 
                     nav.pop();
                     final drawFuture = navCtrl.buildPolylinesFromLegs(selectedLegs);

@@ -49,6 +49,7 @@ class BusController extends ChangeNotifier {
   bool isLoadingAllRoutes = false;
 
   List<LatLng> gpxRoutePoints = [];
+  List<List<LatLng>> gpxRouteLines = [];
   List<LatLng> cachedEstimatedCoords = [];
   final Set<int> _stopsMissingOfficialCoords = {};
   final Map<String, _BusLegMotion> _legMotion = {};
@@ -477,8 +478,9 @@ class BusController extends ChangeNotifier {
 
   Future<void> fetchGPXRoute() async {
     if (!FeatureFlags.showRouteTrajectory) {
-      if (gpxRoutePoints.isNotEmpty || cachedEstimatedCoords.isNotEmpty) {
+      if (gpxRoutePoints.isNotEmpty || gpxRouteLines.isNotEmpty || cachedEstimatedCoords.isNotEmpty) {
         gpxRoutePoints = [];
+        gpxRouteLines = [];
         cachedEstimatedCoords = [];
         _stopGpxIndex = null;
         notifyListeners();
@@ -494,8 +496,7 @@ class BusController extends ChangeNotifier {
 
     if (gpxFresh) {
       try {
-        final List<dynamic> decoded = jsonDecode(cachedGpx);
-        gpxRoutePoints = decoded.map((e) => LatLng(e['lat'], e['lng'])).toList();
+        _applyRouteLines(GPXService.linesFromCached(jsonDecode(cachedGpx)));
         _updateEstimatedCoords();
         notifyListeners();
       } catch (e) {
@@ -503,28 +504,45 @@ class BusController extends ChangeNotifier {
       }
     }
 
-    var points = await GPXService.fetchFullGpx(currentRoute, currentDirection);
-    if (points.isNotEmpty) {
-      gpxRoutePoints = points;
+    final lines = await GPXService.fetchRouteLines(currentRoute, currentDirection);
+    if (lines.isNotEmpty) {
+      _applyRouteLines(lines);
       _updateEstimatedCoords();
       notifyListeners();
 
       try {
-        final jsonList = points.map((p) => {'lat': p.latitude, 'lng': p.longitude}).toList();
+        final jsonList = [
+          for (final line in gpxRouteLines)
+            [
+              for (final p in line) {'lat': p.latitude, 'lng': p.longitude},
+            ],
+        ];
         await _writeDiskCache(prefs, cacheKey, jsonEncode(jsonList));
       } catch (e) {
         debugPrint('寫入GPX快取失敗: $e');
       }
     } else if (!gpxFresh && cachedGpx != null) {
       try {
-        final List<dynamic> decoded = jsonDecode(cachedGpx);
-        gpxRoutePoints = decoded.map((e) => LatLng(e['lat'], e['lng'])).toList();
+        _applyRouteLines(GPXService.linesFromCached(jsonDecode(cachedGpx)));
         _updateEstimatedCoords();
         notifyListeners();
       } catch (e) {
         debugPrint('讀取過期GPX快取失敗: $e');
       }
     }
+  }
+
+  void _applyRouteLines(List<List<LatLng>> lines) {
+    final drawable = [
+      for (final line in lines)
+        if (line.length >= 2) line,
+    ];
+    gpxRouteLines = drawable;
+    if (drawable.isEmpty) {
+      gpxRoutePoints = [];
+      return;
+    }
+    gpxRoutePoints = drawable.reduce((a, b) => a.length >= b.length ? a : b);
   }
 
   void _updateEstimatedCoords() {
@@ -858,6 +876,7 @@ class BusController extends ChangeNotifier {
     isLoadingStops = !hasCache; 
     
     gpxRoutePoints = [];
+    gpxRouteLines = [];
     _stopGpxIndex = null;
     cachedEstimatedCoords = [];
     if (!hasCache) {

@@ -11,10 +11,12 @@ const {
   MACAU_LAT_OFFSET,
   MACAU_LNG_OFFSET,
   RouteShapeIndex,
+  assembleRoute,
   mountDisabledBusGpx,
   readDbf,
   readShpRings,
   routeMatches,
+  splitDiscontinuous,
   toLatLngPoints,
 } = require('./route_shape');
 
@@ -214,6 +216,110 @@ test('bus-gpx is disabled and route-shape is served from the shapefile', async (
   });
   assert.strictEqual(gone.code, 410);
   assert.match(gone.body.error, /route-shape/);
+});
+
+function seqRow(route, id, seq, extra = {}) {
+  return { deleted: false, rings: [], fields: { ROUTE_NOS: route, NETWORK_ID: id, SEQ: seq, ...extra } };
+}
+
+function networkIndex(edges) {
+  const byField = new Map();
+  for (const [id, ring] of edges) {
+    byField.set(String(id), { rings: [ring], deleted: false, fields: { NETWORK_ID: id } });
+  }
+  return { byField, byRecord: new Map() };
+}
+
+const fields = { route: 'ROUTE_NOS', networkId: 'NETWORK_ID', seq: 'SEQ', dir: null };
+
+test('edges that do not meet are separate lines, not one jumped polyline', () => {
+  const index = networkIndex([
+    [1, [[113.540, 22.190], [113.541, 22.191]]],
+    [2, [[113.620, 22.250], [113.621, 22.251]]],
+  ]);
+  const body = assembleRoute([
+    seqRow('102', 1, 1),
+    seqRow('102', 2, 2),
+  ], index, '102', 0, fields);
+  assert.strictEqual(body.success, true);
+  assert.strictEqual(body.lines.length, 2);
+  assert.strictEqual(body.points.length, 2);
+  const jump = Math.hypot(body.points[1].lat - body.points[0].lat, body.points[1].lng - body.points[0].lng);
+  assert.ok(jump < 0.01);
+});
+
+test('a two-valued column reconnects an interleaved route and 102X falls back to 102', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'route-shape-102-'));
+  const edges = [];
+  const rows = [];
+  for (let i = 0; i < 14; i++) {
+    const y0 = 22.19 + i * 0.0004;
+    const y1 = y0 + 0.0004;
+    edges.push([[113.54, y0], [113.54, y1]]);
+    rows.push({ ROUTE_NOS: '102', NETWORK_ID: i + 1, SEQ: i + 1, RUNDIR: 0 });
+  }
+  for (let i = 0; i < 14; i++) {
+    const y0 = 22.25 + i * 0.0004;
+    const y1 = y0 + 0.0004;
+    edges.push([[113.62, y0], [113.62, y1]]);
+    rows.push({ ROUTE_NOS: '102', NETWORK_ID: 100 + i, SEQ: i + 1, RUNDIR: 1 });
+  }
+  writePolylineShp(path.join(dir, 'ROUTE_NETWORK.shp'), edges);
+  writeDbf(path.join(dir, 'ROUTE_NETWORK.dbf'), [
+    { name: 'NETWORK_ID', type: 'N', size: 8, dec: 0 },
+  ], edges.map((_, i) => ({ NETWORK_ID: i < 14 ? i + 1 : 100 + (i - 14) })));
+  writeDbf(path.join(dir, 'BUS_ROUTE_SEQ.dbf'), [
+    { name: 'ROUTE_NOS', type: 'C', size: 12, dec: 0 },
+    { name: 'NETWORK_ID', type: 'N', size: 8, dec: 0 },
+    { name: 'SEQ', type: 'N', size: 4, dec: 0 },
+    { name: 'RUNDIR', type: 'N', size: 2, dec: 0 },
+  ], rows);
+
+  const index = new RouteShapeIndex(dir, { dataDate: '2026-09-25' });
+  const forward = index.shape('102', 0);
+  assert.strictEqual(forward.success, true);
+  assert.strictEqual(forward.lines.length, 1);
+  assert.ok(forward.points.length > 10);
+  const back = index.shape('102', 1);
+  assert.strictEqual(back.lines.length, 1);
+  assert.notStrictEqual(back.points[0].lat, forward.points[0].lat);
+
+  const express = index.shape('102X', 0);
+  assert.strictEqual(express.success, true);
+  assert.strictEqual(express.route, '102X');
+  assert.strictEqual(express.matchedRoute, '102');
+  assert.deepStrictEqual(express.points, forward.points);
+  assert.strictEqual(index.shape('99X', 0).error, 'no_shape');
+});
+
+test('projected teleports split and a straight bridge span does not', () => {
+  const bridge = [];
+  let lng = 113.54;
+  for (let i = 0; i < 8; i++) {
+    lng += 0.0001;
+    bridge.push({ lat: 22.19, lng });
+  }
+  for (let i = 0; i < 3; i++) {
+    lng += 0.008;
+    bridge.push({ lat: 22.19, lng });
+  }
+  for (let i = 0; i < 8; i++) {
+    lng += 0.0001;
+    bridge.push({ lat: 22.19, lng });
+  }
+  assert.strictEqual(splitDiscontinuous(bridge).length, 1);
+
+  const teleport = [];
+  for (let i = 0; i < 6; i++) teleport.push({ lat: 22.2015, lng: 113.5740 + i * 0.0001 });
+  for (let i = 0; i < 6; i++) teleport.push({ lat: 22.1413, lng: 113.5460 + i * 0.0001 });
+  const parts = splitDiscontinuous(teleport);
+  assert.strictEqual(parts.length, 2);
+  for (const part of parts) {
+    for (let i = 1; i < part.length; i++) {
+      const jump = Math.hypot(part[i].lat - part[i - 1].lat, part[i].lng - part[i - 1].lng);
+      assert.ok(jump < 0.02);
+    }
+  }
 });
 
 test('missing shapefiles are reported and not invented', () => {

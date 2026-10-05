@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
-import 'package:macau_bus_app/constants/app_translations.dart';
 import 'package:macau_bus_app/constants/feature_flags.dart';
 import 'package:macau_bus_app/services/gpx_service.dart';
 
@@ -73,12 +72,59 @@ void main() {
     }
   });
 
-  test('map attribution names the open-data platform and export date', () {
-    for (final lang in ['zh', 'zhHans', 'en', 'pt']) {
-      final note = AppTranslations.data[lang]!['route_shape_source_note'];
-      expect(note, isNotNull, reason: lang);
-      expect(note, contains('澳門特別行政區政府數據開放平台'));
-      expect(note, contains('2026-09-25'));
+  test('the map footer does not show the route-shape attribution', () {
+    final map = File('lib/views/screens/map_screen.dart').readAsStringSync();
+    expect(map, isNot(contains('route_shape_source_note')));
+    expect(map, isNot(contains('路線形狀')));
+  });
+
+  test('a teleport splits and a straight bridge span stays one line', () {
+    final bridge = <LatLng>[];
+    var lng = 113.54;
+    for (var i = 0; i < 8; i++) {
+      lng += 0.0001;
+      bridge.add(LatLng(22.19, lng));
     }
+    for (var i = 0; i < 3; i++) {
+      lng += 0.008;
+      bridge.add(LatLng(22.19, lng));
+    }
+    for (var i = 0; i < 8; i++) {
+      lng += 0.0001;
+      bridge.add(LatLng(22.19, lng));
+    }
+    expect(GPXService.splitDiscontinuous(bridge), hasLength(1));
+
+    final teleport = <LatLng>[
+      for (var i = 0; i < 6; i++) LatLng(22.2015, 113.5740 + i * 0.0001),
+      for (var i = 0; i < 6; i++) LatLng(22.1413, 113.5460 + i * 0.0001),
+    ];
+    final parts = GPXService.splitDiscontinuous(teleport);
+    expect(parts, hasLength(2));
+    for (final part in parts) {
+      for (var i = 1; i < part.length; i++) {
+        final jump = (part[i].latitude - part[i - 1].latitude).abs()
+            + (part[i].longitude - part[i - 1].longitude).abs();
+        expect(jump, lessThan(0.02));
+      }
+    }
+  });
+
+  test('102X with no shape is requested as route 102', () async {
+    final uris = <Uri>[];
+    GPXService.debugFetch = (uri) async {
+      uris.add(uri);
+      if (uri.queryParameters['route'] == '102X') {
+        return http.Response('{"success":false,"points":[],"error":"no_shape"}', 404);
+      }
+      return http.Response(
+        '{"success":true,"lines":[[{"lat":22.14,"lng":113.58},{"lat":22.15,"lng":113.57}]]}',
+        200,
+      );
+    };
+    final lines = await GPXService.fetchRouteLines('102X', 0);
+    expect(lines, hasLength(1));
+    expect(lines.single, hasLength(2));
+    expect(uris.map((u) => u.queryParameters['route']).toList(), ['102X', '102']);
   });
 }
