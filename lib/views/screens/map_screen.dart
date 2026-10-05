@@ -6,6 +6,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
+import '../../constants/feature_flags.dart';
 import '../../controllers/bus_controller.dart';
 import '../../controllers/location_controller.dart';
 import '../../controllers/navigation_controller.dart';
@@ -685,12 +686,13 @@ class _MapScreenState extends State<MapScreen> {
                         child: ColoredBox(color: Color(0x73000000)),
                       ),
                     ),
-                  PolylineLayer(
-                    polylines: [
-                      if (navCtrl.otpNavigationPolylines.isNotEmpty) ...navCtrl.otpNavigationPolylines
-                      else if (!shouldHideOriginalRoute && busCtrl.gpxRoutePoints.isNotEmpty) Polyline(points: busCtrl.gpxRoutePoints, strokeWidth: 5.0, color: const Color.fromARGB(255, 114, 0, 162)),
-                    ],
-                  ),
+                  if (FeatureFlags.showRouteTrajectory)
+                    PolylineLayer(
+                      polylines: [
+                        if (navCtrl.otpNavigationPolylines.isNotEmpty) ...navCtrl.otpNavigationPolylines
+                        else if (!shouldHideOriginalRoute && busCtrl.gpxRoutePoints.isNotEmpty) Polyline(points: busCtrl.gpxRoutePoints, strokeWidth: 5.0, color: const Color.fromARGB(255, 114, 0, 162)),
+                      ],
+                    ),
                   MarkerLayer(markers: [...stopMarkers, ...busMarkers, ...extraMarkers]),
                 ],
               ),

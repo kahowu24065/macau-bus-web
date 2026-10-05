@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/bus_stop.dart';
 import '../models/bus.dart';
 import '../services/bus_api_service.dart';
+import '../constants/feature_flags.dart';
 import '../services/gpx_service.dart';
 import '../services/notification_service.dart';
 import '../services/background_tracker_service.dart';
@@ -475,6 +476,15 @@ class BusController extends ChangeNotifier {
   }
 
   Future<void> fetchGPXRoute() async {
+    if (!FeatureFlags.showRouteTrajectory) {
+      if (gpxRoutePoints.isNotEmpty || cachedEstimatedCoords.isNotEmpty) {
+        gpxRoutePoints = [];
+        cachedEstimatedCoords = [];
+        _stopGpxIndex = null;
+        notifyListeners();
+      }
+      return;
+    }
     if (currentRoute.isEmpty) return;
 
     final prefs = await SharedPreferences.getInstance();

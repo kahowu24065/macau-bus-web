@@ -18,6 +18,7 @@ import '../../controllers/language_controller.dart';
 import '../widgets/route_liquid_glass_nav.dart';
 import '../../utils/service_label_i18n.dart';
 import '../../constants/app_translations.dart';
+import '../../constants/feature_flags.dart';
 
 class BusRouteScreen extends StatefulWidget {
   const BusRouteScreen({super.key});
@@ -333,6 +334,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
   }
 
   void _showTimetableDialog(BusController busCtrl) {
+    if (!FeatureFlags.showTimetable) return;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final langCtrl = context.read<LanguageController>();
     final currentRoute = busCtrl.currentRoute;
@@ -871,10 +873,11 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                   color: locCtrl.isFollowingUser ? Colors.green : (isDark ? Colors.white : Colors.black87)
                                 ),
                               ),
-                              Expanded(
-                                child: _buildHeaderIcon(Icons.schedule, langCtrl.tr('timetable'), isDark, () => _showTimetableDialog(busCtrl)),
-                              ),
-                              if (!isSimpleMode)
+                              if (FeatureFlags.showTimetable)
+                                Expanded(
+                                  child: _buildHeaderIcon(Icons.schedule, langCtrl.tr('timetable'), isDark, () => _showTimetableDialog(busCtrl)),
+                                ),
+                              if (!isSimpleMode && FeatureFlags.showRouteTrajectory)
                                 Expanded(
                                   child: _buildHeaderIcon(
                                     Icons.map,

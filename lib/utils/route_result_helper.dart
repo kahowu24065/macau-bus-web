@@ -5,6 +5,7 @@ import '../../controllers/bus_controller.dart';
 import '../../controllers/navigation_controller.dart';
 import '../../controllers/language_controller.dart';
 import '../../constants/app_translations.dart';
+import '../../constants/feature_flags.dart';
 
 class RouteResultHelper {
   static void showOTPResultBottomSheet(
@@ -294,7 +295,7 @@ class RouteResultHelper {
                 },
               ),
             ),
-            if (!context.read<BusController>().isSimpleMode)
+            if (FeatureFlags.showRouteTrajectory && !context.read<BusController>().isSimpleMode)
             Padding(
               padding: const EdgeInsets.all(16),
               child: SizedBox(
