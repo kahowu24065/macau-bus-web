@@ -325,7 +325,9 @@ function angleDiff(a, b) {
  * Drop steps that are not road edges so the map never strokes them.
  * A step ≥ 600 m breaks when it turns off the local bearing or sits
  * between two short neighbors. Colinear bridge spans (N3's ~800 m
- * steps) stay. A step ≥ 160 m that reverses within 400 m is a landfill
+ * steps) stay, and so does a bridge deck drawn as one straight step
+ * up to 2.5 km between short road vertices when both sides stay within
+ * 15° of its bearing (Lotus Bridge link on 102, Ponte Macau on 103). A step ≥ 160 m that reverses within 400 m is a landfill
  * zigzag and both legs are dropped. A step ≥ 250 m with a teleport on
  * one side and no long colinear continuation is a chord across a gap
  * (the westbound water stroke on route 102) and is dropped. A lone
@@ -343,6 +345,8 @@ function splitDiscontinuous(points) {
   const maxConn = 400;
   const isolateMin = 250;
   const contBar = 80;
+  const bridgeTurn = 15;
+  const bridgeMax = 2500;
   const ds = [];
   const bs = [];
   for (let i = 1; i < points.length; i++) {
@@ -368,7 +372,14 @@ function splitDiscontinuous(points) {
     const badN = next ? angleDiff(bs[i], next.bearing) > maxTurn : false;
     const shortP = Boolean(prev) && prev.dist < cap * 0.5;
     const shortN = Boolean(next) && next.dist < cap * 0.5;
-    if (badP || badN || (shortP && shortN)) breakAfter[i] = true;
+    // A straight bridge deck drawn as one long step between short road
+    // vertices (Lotus Bridge on 102, Ponte Macau on 103) is still a road
+    // edge when both sides carry on its bearing.
+    const straight = Boolean(prev) && Boolean(next)
+      && angleDiff(bs[i], prev.bearing) <= bridgeTurn
+      && angleDiff(bs[i], next.bearing) <= bridgeTurn
+      && d <= bridgeMax;
+    if (badP || badN || (shortP && shortN && !straight)) breakAfter[i] = true;
   }
   const longs = [];
   for (let i = 0; i < ds.length; i++) if (ds[i] >= reverseMin) longs.push(i);
