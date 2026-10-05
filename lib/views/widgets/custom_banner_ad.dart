@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, kReleaseMode, defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import '../../constants/admob_ids.dart';
 import 'package:provider/provider.dart';
 import '../../controllers/purchase_controller.dart';
 
@@ -48,22 +49,7 @@ class _BannerAdHostState extends State<_BannerAdHost> {
   Timer? _retryTimer;
   int _failCount = 0;
 
-  String get _bannerAdUnitId {
-    if (kReleaseMode) {
-      if (defaultTargetPlatform == TargetPlatform.android) {
-        return 'ca-app-pub-7648913543953622/2476533170';
-      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
-        return 'ca-app-pub-7648913543953622/3201994319';
-      }
-    } else {
-      if (defaultTargetPlatform == TargetPlatform.android) {
-        return 'ca-app-pub-3940256099942544/6300978111';
-      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
-        return 'ca-app-pub-3940256099942544/2934735716';
-      }
-    }
-    return '';
-  }
+  String get _bannerAdUnitId => AdMobIds.bannerAdUnitId;
 
   bool get _isMobile {
     return defaultTargetPlatform == TargetPlatform.android ||
