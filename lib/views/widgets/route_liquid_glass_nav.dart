@@ -4,6 +4,7 @@
 // Tint plate (no BackdropFilter — that blurs the photo before the lens)
 // + Impeller refractive capsule on top.
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 
@@ -21,23 +22,49 @@ abstract final class RouteLiquidGlassNavStyle {
   static const double barHeight = 68;
   /// Rounder end caps now that the bar is taller.
   static const double kSharedCornerRadius = 32;
-  /// Lift the floating bar off the home indicator.
-  static const double barMarginBottom = 18;
 
-  /// Bar + float gap only (no safe area).
-  static const double barFootprint = barHeight + barMarginBottom;
+  /// Slim gap under the capsule on iOS. The home indicator stays visible
+  /// on the bottom rim (Apple Music) instead of a floating black strip.
+  static const double homeIndicatorClearance = 8;
 
   /// Standard AdMob [AdSize.banner] height (logical px).
   static const double bannerAdHeight = 50;
 
-  /// Space from the physical screen bottom to the top of the floating bar
+  static bool isIos(BuildContext context) {
+    if (kIsWeb) return false;
+    return Theme.of(context).platform == TargetPlatform.iOS;
+  }
+
+  /// Distance from the physical bottom to the capsule.
+  ///
+  /// iOS: a slim clearance so the home indicator is not covered.
+  /// Other platforms: the full system inset (3-button nav must stay clear).
+  static double barBottomOffset(double safeBottom, {required bool ios}) {
+    if (safeBottom <= 0) return 0;
+    if (ios) return homeIndicatorClearance;
+    return safeBottom;
+  }
+
+  /// [LiquidGlassTabBar] adds [paddingBottom] on top of `margin.bottom`.
+  /// Subtract it so the capsule lands on [barBottomOffset].
+  static double tabBarMarginBottom({
+    required double paddingBottom,
+    required double viewPaddingBottom,
+    required bool ios,
+  }) =>
+      barBottomOffset(viewPaddingBottom, ios: ios) - paddingBottom;
+
+  /// Space from the physical screen bottom to the top of the docked bar
   /// (and optional banner sitting above it).
   static double bottomReserve(
     BuildContext context, {
     double bannerHeight = 0,
   }) =>
-      barFootprint +
-      MediaQuery.viewPaddingOf(context).bottom +
+      barHeight +
+      barBottomOffset(
+        MediaQuery.viewPaddingOf(context).bottom,
+        ios: isIos(context),
+      ) +
       bannerHeight;
 
   /// Bottom inset so a floating SnackBar sits flush on the nav (or ad) top.
@@ -294,9 +321,6 @@ class RouteLiquidGlassNav extends StatelessWidget {
     this.selectedColor = kRouteLgAccent,
     this.unselectedColor = Colors.white,
     this.isDark = true,
-    this.margin = const EdgeInsets.only(
-      bottom: RouteLiquidGlassNavStyle.barMarginBottom,
-    ),
   });
 
   final List<RouteLiquidGlassNavItem> items;
@@ -308,7 +332,6 @@ class RouteLiquidGlassNav extends StatelessWidget {
   final Color selectedColor;
   final Color unselectedColor;
   final bool isDark;
-  final EdgeInsets margin;
 
   @override
   Widget build(BuildContext context) {
@@ -316,9 +339,21 @@ class RouteLiquidGlassNav extends StatelessWidget {
     final w = width ??
         (MediaQuery.sizeOf(context).width - 20).clamp(300.0, 520.0);
     final h = RouteLiquidGlassNavStyle.barHeight;
-    // Match LiquidGlassTabBar: margin.bottom + home-indicator inset.
-    final bottom =
-        margin.bottom + MediaQuery.viewPaddingOf(context).bottom;
+    final ios = RouteLiquidGlassNavStyle.isIos(context);
+    // Dock the capsule. The package adds padding.bottom on top of
+    // margin.bottom; cancel that so we don't stack a second inset
+    // (that stack was the empty black gap under the pill).
+    final bottom = RouteLiquidGlassNavStyle.barBottomOffset(
+      MediaQuery.viewPaddingOf(context).bottom,
+      ios: ios,
+    );
+    final barMargin = EdgeInsets.only(
+      bottom: RouteLiquidGlassNavStyle.tabBarMarginBottom(
+        paddingBottom: MediaQuery.paddingOf(context).bottom,
+        viewPaddingBottom: MediaQuery.viewPaddingOf(context).bottom,
+        ios: ios,
+      ),
+    );
     final fill = isDark
         ? RouteLiquidGlassNavStyle.kDarkGlassFill
         : RouteLiquidGlassNavStyle.kLightGlassFill;
@@ -341,7 +376,7 @@ class RouteLiquidGlassNav extends StatelessWidget {
           onChanged: onChanged,
           width: w,
           height: h,
-          margin: margin,
+          margin: barMargin,
           itemPadding: 7,
           style: RouteLiquidGlassNavStyle.clearBarStyle(isDark: isDark),
           itemStyle: RouteLiquidGlassNavStyle.itemStyle(
