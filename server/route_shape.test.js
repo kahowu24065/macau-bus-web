@@ -322,6 +322,48 @@ test('projected teleports split and a straight bridge span does not', () => {
   }
 });
 
+test('a reversal across a landfill and a chord off a teleport are not stroked', () => {
+  const zigzag = [
+    { lat: 22.1560, lng: 113.5560 },
+    { lat: 22.1600, lng: 113.5600 },
+    { lat: 22.1601, lng: 113.5601 },
+    { lat: 22.1561, lng: 113.5561 },
+  ];
+  const zigParts = splitDiscontinuous(zigzag);
+  for (const part of zigParts) {
+    for (let i = 1; i < part.length; i++) {
+      const jump = Math.hypot(part[i].lat - part[i - 1].lat, (part[i].lng - part[i - 1].lng) * Math.cos(22.16 * Math.PI / 180));
+      assert.ok(jump < 0.001, `zigzag chord survived (${jump})`);
+    }
+  }
+
+  const chord = [
+    { lat: 22.2100, lng: 113.5590 },
+    { lat: 22.1425, lng: 113.5621 },
+    { lat: 22.1427, lng: 113.5582 },
+    { lat: 22.1427, lng: 113.5581 },
+    { lat: 22.2102, lng: 113.5570 },
+  ];
+  const chordParts = splitDiscontinuous(chord);
+  for (const part of chordParts) {
+    for (let i = 1; i < part.length; i++) {
+      const jump = Math.hypot(part[i].lat - part[i - 1].lat, (part[i].lng - part[i - 1].lng) * Math.cos(22.14 * Math.PI / 180));
+      assert.ok(jump < 0.002, `water chord survived (${jump})`);
+    }
+  }
+
+  const straight = [];
+  let lat = 22.13;
+  straight.push({ lat, lng: 113.56 });
+  lat += 0.0004;
+  straight.push({ lat, lng: 113.56 });
+  lat += 0.003;
+  straight.push({ lat, lng: 113.56 });
+  lat += 0.0004;
+  straight.push({ lat, lng: 113.56 });
+  assert.strictEqual(splitDiscontinuous(straight).length, 1);
+});
+
 test('missing shapefiles are reported and not invented', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'route-shape-empty-'));
   const index = new RouteShapeIndex(dir);

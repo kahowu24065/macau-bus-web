@@ -108,6 +108,35 @@ void main() {
         expect(jump, lessThan(0.02));
       }
     }
+
+    final zigzag = [
+      const LatLng(22.1560, 113.5560),
+      const LatLng(22.1600, 113.5600),
+      const LatLng(22.1601, 113.5601),
+      const LatLng(22.1561, 113.5561),
+    ];
+    for (final part in GPXService.splitDiscontinuous(zigzag)) {
+      for (var i = 1; i < part.length; i++) {
+        final jump = (part[i].latitude - part[i - 1].latitude).abs()
+            + (part[i].longitude - part[i - 1].longitude).abs();
+        expect(jump, lessThan(0.001));
+      }
+    }
+
+    final chord = [
+      const LatLng(22.2100, 113.5590),
+      const LatLng(22.1425, 113.5621),
+      const LatLng(22.1427, 113.5582),
+      const LatLng(22.1427, 113.5581),
+      const LatLng(22.2102, 113.5570),
+    ];
+    for (final part in GPXService.splitDiscontinuous(chord)) {
+      for (var i = 1; i < part.length; i++) {
+        final jump = (part[i].latitude - part[i - 1].latitude).abs()
+            + (part[i].longitude - part[i - 1].longitude).abs();
+        expect(jump, lessThan(0.003));
+      }
+    }
   });
 
   test('102X with no shape is requested as route 102', () async {

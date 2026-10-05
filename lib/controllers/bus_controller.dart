@@ -582,10 +582,14 @@ class BusController extends ChangeNotifier {
     while (estimated.length < numStops) { estimated.add(gpxRoutePoints.last); }
     cachedEstimatedCoords = estimated;
     _fillMissingStopCoordinates();
-    _snapTerminalStopsToRouteEnds();
+    // 暫時關閉：頭尾站唔再 snap 去路線端點
+    // _snapTerminalStopsToRouteEnds();
+    _rebuildStopGpxIndex();
   }
 
+  /*
   /// 每條線嘅第一站同最後一站固定放喺紫色路線嘅起點同終點。
+  /// 暫時關閉：頭尾站唔再 snap 去路線端點
   void _snapTerminalStopsToRouteEnds() {
     if (gpxRoutePoints.length < 2 || stopsList.length < 2) return;
     final start = gpxRoutePoints.first;
@@ -597,6 +601,7 @@ class BusController extends ChangeNotifier {
     _segmentMetersCache.clear();
     _rebuildStopGpxIndex();
   }
+  */
 
   /// 每一站都鎖喺上一站之後：1→2→3→4→5…直到最後一站。唔准跳去更後嘅回程。
   void _rebuildStopGpxIndex() {
@@ -983,15 +988,16 @@ class BusController extends ChangeNotifier {
     double lat = stopsList[stopIdx].lat;
     double lng = stopsList[stopIdx].lng;
 
-    if (gpxRoutePoints.isNotEmpty) {
-      if (stopIdx == 0) {
-        lat = gpxRoutePoints.first.latitude;
-        lng = gpxRoutePoints.first.longitude;
-      } else if (stopIdx == stopsList.length - 1) {
-        lat = gpxRoutePoints.last.latitude;
-        lng = gpxRoutePoints.last.longitude;
-      }
-    }
+    // 暫時關閉：頭尾站唔再 snap 去路線端點
+    // if (gpxRoutePoints.isNotEmpty) {
+    //   if (stopIdx == 0) {
+    //     lat = gpxRoutePoints.first.latitude;
+    //     lng = gpxRoutePoints.first.longitude;
+    //   } else if (stopIdx == stopsList.length - 1) {
+    //     lat = gpxRoutePoints.last.latitude;
+    //     lng = gpxRoutePoints.last.longitude;
+    //   }
+    // }
 
     if ((lat == 0.0 || lng == 0.0 || lat < 10) && cachedEstimatedCoords.isNotEmpty && stopIdx < cachedEstimatedCoords.length) {
       lat = cachedEstimatedCoords[stopIdx].latitude;
@@ -1095,10 +1101,11 @@ class BusController extends ChangeNotifier {
 
     for (int i = 0; i < stopsList.length; i++) {
       var stop = stopsList[i]; double lat = stop.lat; double lng = stop.lng;
-      if (gpxRoutePoints.isNotEmpty) {
-        if (i == 0) { lat = gpxRoutePoints.first.latitude; lng = gpxRoutePoints.first.longitude; } 
-        else if (i == stopsList.length - 1) { lat = gpxRoutePoints.last.latitude; lng = gpxRoutePoints.last.longitude; }
-      }
+      // 暫時關閉：頭尾站唔再 snap 去路線端點
+      // if (gpxRoutePoints.isNotEmpty) {
+      //   if (i == 0) { lat = gpxRoutePoints.first.latitude; lng = gpxRoutePoints.first.longitude; }
+      //   else if (i == stopsList.length - 1) { lat = gpxRoutePoints.last.latitude; lng = gpxRoutePoints.last.longitude; }
+      // }
       if ((lat == 0.0 || lng == 0.0 || lat < 10) && cachedEstimatedCoords.isNotEmpty && i < cachedEstimatedCoords.length) {
         lat = cachedEstimatedCoords[i].latitude; lng = cachedEstimatedCoords[i].longitude;
       }
@@ -1117,10 +1124,11 @@ class BusController extends ChangeNotifier {
     if (targetIndex == -1) return null;
     
     double lat = stopsList[targetIndex].lat; double lng = stopsList[targetIndex].lng;
-    if (gpxRoutePoints.isNotEmpty) {
-      if (targetIndex == 0) { lat = gpxRoutePoints.first.latitude; lng = gpxRoutePoints.first.longitude; } 
-      else if (targetIndex == stopsList.length - 1) { lat = gpxRoutePoints.last.latitude; lng = gpxRoutePoints.last.longitude; }
-    }
+    // 暫時關閉：頭尾站唔再 snap 去路線端點
+    // if (gpxRoutePoints.isNotEmpty) {
+    //   if (targetIndex == 0) { lat = gpxRoutePoints.first.latitude; lng = gpxRoutePoints.first.longitude; }
+    //   else if (targetIndex == stopsList.length - 1) { lat = gpxRoutePoints.last.latitude; lng = gpxRoutePoints.last.longitude; }
+    // }
     if ((lat == 0.0 || lng == 0.0 || lat < 10) && cachedEstimatedCoords.isNotEmpty && targetIndex < cachedEstimatedCoords.length) {
       lat = cachedEstimatedCoords[targetIndex].latitude; lng = cachedEstimatedCoords[targetIndex].longitude;
     }
