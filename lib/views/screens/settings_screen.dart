@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart'; 
 import 'package:flutter/services.dart' show rootBundle, Clipboard, ClipboardData;
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -26,6 +27,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   int _defaultTabIndex = 0;
+  String? _versionLabel;
 
   // 🌟 UI 顏色定義
   final Color _darkBase = const Color(0xFF0A0A0B);
@@ -37,6 +39,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _loadDefaultTab();
+    _loadPackageVersion();
+  }
+
+  Future<void> _loadPackageVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      final version = info.version.split('+').first.trim();
+      if (version.isEmpty) return;
+      setState(() => _versionLabel = 'Version $version');
+    } catch (_) {}
   }
 
   Future<void> _loadDefaultTab() async {
@@ -708,8 +721,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    Center(child: Text('Version 1.0.0 (Build 1)', style: TextStyle(color: isDark ? const Color(0xFF3A3A3C) : Colors.grey[400], fontSize: 11, fontFamily: 'Inter', letterSpacing: 0.5))),
+                    if (_versionLabel != null) ...[
+                      const SizedBox(height: 12),
+                      Center(child: Text(_versionLabel!, style: TextStyle(color: isDark ? const Color(0xFF3A3A3C) : Colors.grey[400], fontSize: 11, fontFamily: 'Inter', letterSpacing: 0.5))),
+                    ],
                   ],
                 ),
               ),

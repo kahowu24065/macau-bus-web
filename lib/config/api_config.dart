@@ -2,6 +2,9 @@ import 'package:http/http.dart' as http;
 
 /// All traffic goes through Cloudflare (TLS, cache, DDoS protection).
 /// The origin server's IP is intentionally not shipped in the app.
+///
+/// This host is the bus API only. Store marketing, support, and privacy
+/// URLs live in store_links.dart and are not served from here.
 class ApiConfig {
   static const String origin = 'https://macaubus-kat1.com';
 

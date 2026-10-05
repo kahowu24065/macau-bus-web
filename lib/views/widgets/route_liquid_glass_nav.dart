@@ -23,8 +23,10 @@ abstract final class RouteLiquidGlassNavStyle {
   /// Rounder end caps now that the bar is taller.
   static const double kSharedCornerRadius = 32;
 
-  /// Slim gap under the capsule on iOS. The home indicator stays visible
-  /// on the bottom rim (Apple Music) instead of a floating black strip.
+  /// Extra lift used before 1.0.20, added on top of the safe-area inset.
+  static const double legacyFloatMargin = 18;
+
+  /// Flush-bottom clearance used in 1.0.20 (too low on TestFlight).
   static const double homeIndicatorClearance = 8;
 
   /// Standard AdMob [AdSize.banner] height (logical px).
@@ -37,11 +39,15 @@ abstract final class RouteLiquidGlassNavStyle {
 
   /// Distance from the physical bottom to the capsule.
   ///
-  /// iOS: a slim clearance so the home indicator is not covered.
-  /// Other platforms: the full system inset (3-button nav must stay clear).
+  /// iOS: halfway between the old float (`legacyFloatMargin` + safe area)
+  /// and the 1.0.20 flush clearance. Other platforms keep the full system
+  /// inset so a 3-button navigation bar stays clear.
   static double barBottomOffset(double safeBottom, {required bool ios}) {
     if (safeBottom <= 0) return 0;
-    if (ios) return homeIndicatorClearance;
+    if (ios) {
+      final floating = legacyFloatMargin + safeBottom;
+      return (floating + homeIndicatorClearance) / 2;
+    }
     return safeBottom;
   }
 
