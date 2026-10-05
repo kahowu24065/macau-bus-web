@@ -4,9 +4,9 @@ import 'package:macau_bus_app/constants/feature_flags.dart';
 import 'package:macau_bus_app/services/gpx_service.dart';
 
 void main() {
-  test('route trajectory and timetable stay hidden', () {
+  test('timetable is shown and route trajectory stays hidden', () {
+    expect(FeatureFlags.showTimetable, isTrue);
     expect(FeatureFlags.showRouteTrajectory, isFalse);
-    expect(FeatureFlags.showTimetable, isFalse);
   });
 
   test('GPX fetch does not run while the trajectory is hidden', () async {

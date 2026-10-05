@@ -1,0 +1,600 @@
+{
+  "schema": "dsat-frequency-bands-v1",
+  "source": "DSAT",
+  "source_note": "Frequency bands transcribed from official DSAT route PDFs (download_route.aspx). Headway ranges, not exact departure times. Routes absent from this file have no published timetable in the app yet.",
+  "routes": {
+    "1A": {
+      "source_url": "https://www.dsat.gov.mo/dsat/download_route.aspx?route=busroute_1A",
+      "pdf_date": "2025-10-25",
+      "directions": {
+        "0": {
+          "label_pt": "PARA NAPE / RUA DE COIMBRA",
+          "sections": [
+            {
+              "title": "星期一至六（公眾假期除外）",
+              "items": [
+                {
+                  "time": "06:00-07:00",
+                  "freq": "9 - 11"
+                },
+                {
+                  "time": "07:00-10:00",
+                  "freq": "7 - 9"
+                },
+                {
+                  "time": "10:00-15:00",
+                  "freq": "10 - 12"
+                },
+                {
+                  "time": "15:00-20:00",
+                  "freq": "7 - 9"
+                },
+                {
+                  "time": "20:00-00:10",
+                  "freq": "12 - 15"
+                }
+              ]
+            },
+            {
+              "title": "星期日及公眾假期",
+              "items": [
+                {
+                  "time": "06:00-20:00",
+                  "freq": "10 - 12"
+                },
+                {
+                  "time": "20:00-00:10",
+                  "freq": "12 - 15"
+                }
+              ]
+            }
+          ]
+        },
+        "1": {
+          "label_pt": "PARA RUA DE FÁI CHI KEI",
+          "sections": [
+            {
+              "title": "星期一至六（公眾假期除外）",
+              "items": [
+                {
+                  "time": "06:00-07:00",
+                  "freq": "9 - 11"
+                },
+                {
+                  "time": "07:00-10:00",
+                  "freq": "7 - 9"
+                },
+                {
+                  "time": "10:00-15:00",
+                  "freq": "10 - 12"
+                },
+                {
+                  "time": "15:00-20:00",
+                  "freq": "7 - 9"
+                },
+                {
+                  "time": "20:00-00:10",
+                  "freq": "12 - 15"
+                }
+              ]
+            },
+            {
+              "title": "星期日及公眾假期",
+              "items": [
+                {
+                  "time": "06:00-20:00",
+                  "freq": "10 - 12"
+                },
+                {
+                  "time": "20:00-00:10",
+                  "freq": "12 - 15"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "1": {
+      "source_url": "https://www.dsat.gov.mo/dsat/download_route.aspx?route=busroute_1",
+      "pdf_date": "2025-12-27",
+      "directions": {
+        "0": {
+          "label_pt": "PARA BARRA",
+          "sections": [
+            {
+              "title": "星期一至六（公眾假期除外）",
+              "items": [
+                {
+                  "time": "06:00-10:00",
+                  "freq": "4 - 8"
+                },
+                {
+                  "time": "10:00-15:00",
+                  "freq": "10 - 12"
+                },
+                {
+                  "time": "15:00-20:00",
+                  "freq": "4 - 8"
+                },
+                {
+                  "time": "20:00-01:15",
+                  "freq": "10 - 12"
+                }
+              ]
+            },
+            {
+              "title": "星期日及公眾假期",
+              "items": [
+                {
+                  "time": "06:00-09:00",
+                  "freq": "8 - 12"
+                },
+                {
+                  "time": "09:00-20:00",
+                  "freq": "4 - 9"
+                },
+                {
+                  "time": "20:00-01:15",
+                  "freq": "10 - 12"
+                }
+              ]
+            }
+          ]
+        },
+        "1": {
+          "label_pt": "PARA PORTAS DO CERCO",
+          "sections": [
+            {
+              "title": "星期一至六（公眾假期除外）",
+              "items": [
+                {
+                  "time": "05:45-10:00",
+                  "freq": "4 - 8"
+                },
+                {
+                  "time": "10:00-15:00",
+                  "freq": "10 - 12"
+                },
+                {
+                  "time": "15:00-20:00",
+                  "freq": "4 - 8"
+                },
+                {
+                  "time": "20:00-00:45",
+                  "freq": "10 - 12"
+                }
+              ]
+            },
+            {
+              "title": "星期日及公眾假期",
+              "items": [
+                {
+                  "time": "05:45-09:00",
+                  "freq": "8 - 12"
+                },
+                {
+                  "time": "09:00-20:00",
+                  "freq": "4 - 9"
+                },
+                {
+                  "time": "20:00-00:45",
+                  "freq": "10 - 12"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "3": {
+      "source_url": "https://www.dsat.gov.mo/dsat/download_route.aspx?route=busroute_3",
+      "pdf_date": "2025-12-27",
+      "directions": {
+        "0": {
+          "label_pt": "PARA TERMINAL MARÍTIMO DE PASSAGEIROS DO PORTO EXTERIOR",
+          "sections": [
+            {
+              "title": "星期一至六（公眾假期除外）",
+              "items": [
+                {
+                  "time": "06:00-10:00",
+                  "freq": "4 - 7"
+                },
+                {
+                  "time": "10:00-15:00",
+                  "freq": "5 - 8"
+                },
+                {
+                  "time": "15:00-20:00",
+                  "freq": "4 - 7"
+                },
+                {
+                  "time": "20:00-01:15",
+                  "freq": "5 - 8"
+                }
+              ]
+            },
+            {
+              "title": "星期日及公眾假期",
+              "items": [
+                {
+                  "time": "06:00-09:00",
+                  "freq": "5 - 8"
+                },
+                {
+                  "time": "09:00-20:00",
+                  "freq": "4 - 7"
+                },
+                {
+                  "time": "20:00-01:15",
+                  "freq": "4 - 8"
+                }
+              ]
+            }
+          ]
+        },
+        "1": {
+          "label_pt": "PARA PORTAS DO CERCO",
+          "sections": [
+            {
+              "title": "星期一至六（公眾假期除外）",
+              "items": [
+                {
+                  "time": "05:45-10:00",
+                  "freq": "4 - 7"
+                },
+                {
+                  "time": "10:00-15:00",
+                  "freq": "5 - 8"
+                },
+                {
+                  "time": "15:00-20:00",
+                  "freq": "4 - 7"
+                },
+                {
+                  "time": "20:00-00:45",
+                  "freq": "5 - 8"
+                }
+              ]
+            },
+            {
+              "title": "星期日及公眾假期",
+              "items": [
+                {
+                  "time": "05:45-09:00",
+                  "freq": "5 - 8"
+                },
+                {
+                  "time": "09:00-20:00",
+                  "freq": "4 - 7"
+                },
+                {
+                  "time": "20:00-00:45",
+                  "freq": "4 - 8"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "10": {
+      "source_url": "https://www.dsat.gov.mo/dsat/download_route.aspx?route=busroute_10",
+      "pdf_date": "2025-12-27",
+      "directions": {
+        "0": {
+          "label_pt": "PARA BARRA",
+          "sections": [
+            {
+              "title": "星期一至六（公眾假期除外）",
+              "items": [
+                {
+                  "time": "06:00-10:00",
+                  "freq": "5 - 9"
+                },
+                {
+                  "time": "10:00-15:00",
+                  "freq": "6 - 10"
+                },
+                {
+                  "time": "15:00-20:00",
+                  "freq": "5 - 9"
+                },
+                {
+                  "time": "20:00-01:15",
+                  "freq": "8 - 12"
+                }
+              ]
+            },
+            {
+              "title": "星期日及公眾假期",
+              "items": [
+                {
+                  "time": "06:00-15:00",
+                  "freq": "6 - 8"
+                },
+                {
+                  "time": "15:00-20:00",
+                  "freq": "5 - 8"
+                },
+                {
+                  "time": "20:00-01:15",
+                  "freq": "8 - 12"
+                }
+              ]
+            }
+          ]
+        },
+        "1": {
+          "label_pt": "PARA PORTAS DO CERCO",
+          "sections": [
+            {
+              "title": "星期一至六（公眾假期除外）",
+              "items": [
+                {
+                  "time": "05:45-10:00",
+                  "freq": "5 - 9"
+                },
+                {
+                  "time": "10:00-15:00",
+                  "freq": "6 - 10"
+                },
+                {
+                  "time": "15:00-20:00",
+                  "freq": "5 - 9"
+                },
+                {
+                  "time": "20:00-00:40",
+                  "freq": "8 - 12"
+                }
+              ]
+            },
+            {
+              "title": "星期日及公眾假期",
+              "items": [
+                {
+                  "time": "05:45-15:00",
+                  "freq": "6 - 8"
+                },
+                {
+                  "time": "15:00-20:00",
+                  "freq": "5 - 8"
+                },
+                {
+                  "time": "20:00-00:40",
+                  "freq": "8 - 12"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "25": {
+      "source_url": "https://www.dsat.gov.mo/dsat/download_route.aspx?route=busroute_25",
+      "pdf_date": "2025-12-27",
+      "directions": {
+        "0": {
+          "label_pt": "",
+          "sections": [
+            {
+              "title": "星期一至五（公眾假期除外）",
+              "items": [
+                {
+                  "time": "06:00-10:00",
+                  "freq": "5 - 9"
+                },
+                {
+                  "time": "10:00-15:00",
+                  "freq": "8 - 12"
+                },
+                {
+                  "time": "15:00-20:00",
+                  "freq": "5 - 9"
+                },
+                {
+                  "time": "20:00-01:15",
+                  "freq": "12 - 15"
+                }
+              ]
+            },
+            {
+              "title": "星期六（公眾假期除外）",
+              "items": [
+                {
+                  "time": "06:00-10:00",
+                  "freq": "8 - 10"
+                },
+                {
+                  "time": "10:00-15:00",
+                  "freq": "10 - 15"
+                },
+                {
+                  "time": "15:00-20:00",
+                  "freq": "6 - 9"
+                },
+                {
+                  "time": "20:00-01:15",
+                  "freq": "15 - 18"
+                }
+              ]
+            },
+            {
+              "title": "星期日及公眾假期",
+              "items": [
+                {
+                  "time": "06:00-10:00",
+                  "freq": "10 - 13"
+                },
+                {
+                  "time": "10:00-15:00",
+                  "freq": "10 - 12"
+                },
+                {
+                  "time": "15:00-20:00",
+                  "freq": "8 - 12"
+                },
+                {
+                  "time": "20:00-01:15",
+                  "freq": "15 - 18"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "3A": {
+      "source_url": "https://www.dsat.gov.mo/dsat/download_route.aspx?route=busroute_3A",
+      "pdf_date": "2026-01-24",
+      "directions": {
+        "0": {
+          "label_pt": "",
+          "sections": [
+            {
+              "title": "星期一至六（公眾假期除外）",
+              "items": [
+                {
+                  "time": "05:40-10:00",
+                  "freq": "5 - 11"
+                },
+                {
+                  "time": "10:00-15:00",
+                  "freq": "8 - 12"
+                },
+                {
+                  "time": "15:00-20:00",
+                  "freq": "6 - 11"
+                },
+                {
+                  "time": "20:00-00:45",
+                  "freq": "10 - 14"
+                }
+              ]
+            },
+            {
+              "title": "星期日及公眾假期",
+              "items": [
+                {
+                  "time": "05:40-08:00",
+                  "freq": "10 - 14"
+                },
+                {
+                  "time": "08:00-20:00",
+                  "freq": "8 - 12"
+                },
+                {
+                  "time": "20:00-00:45",
+                  "freq": "10 - 14"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "11": {
+      "source_url": "https://www.dsat.gov.mo/dsat/download_route.aspx?route=busroute_11",
+      "pdf_date": "2025-01-27",
+      "directions": {
+        "0": {
+          "label_pt": "",
+          "sections": [
+            {
+              "title": "星期一至六（公眾假期除外）",
+              "items": [
+                {
+                  "time": "06:10-10:00",
+                  "freq": "4 - 10"
+                },
+                {
+                  "time": "10:00-15:00",
+                  "freq": "8 - 12"
+                },
+                {
+                  "time": "15:00-20:00",
+                  "freq": "4 - 10"
+                },
+                {
+                  "time": "20:00-00:00",
+                  "freq": "8 - 12"
+                }
+              ]
+            },
+            {
+              "title": "星期日及公眾假期",
+              "items": [
+                {
+                  "time": "06:10-11:00",
+                  "freq": "8 - 12"
+                },
+                {
+                  "time": "11:00-20:00",
+                  "freq": "4 - 10"
+                },
+                {
+                  "time": "20:00-00:00",
+                  "freq": "8 - 12"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "28A": {
+      "source_url": "https://www.dsat.gov.mo/dsat/download_route.aspx?route=busroute_28A",
+      "pdf_date": "2024-04-01",
+      "directions": {
+        "0": {
+          "label_pt": "",
+          "sections": [
+            {
+              "title": "星期一至五（公眾假期除外）",
+              "items": [
+                {
+                  "time": "06:30-09:00",
+                  "freq": "10 - 15"
+                },
+                {
+                  "time": "09:00-16:30",
+                  "freq": "15 - 20"
+                },
+                {
+                  "time": "16:30-19:00",
+                  "freq": "10 - 15"
+                },
+                {
+                  "time": "19:00-00:10",
+                  "freq": "15 - 20"
+                }
+              ]
+            },
+            {
+              "title": "星期六、日及公眾假期",
+              "items": [
+                {
+                  "time": "06:30-09:00",
+                  "freq": "12 - 16"
+                },
+                {
+                  "time": "09:00-16:30",
+                  "freq": "15 - 20"
+                },
+                {
+                  "time": "16:30-19:00",
+                  "freq": "12 - 16"
+                },
+                {
+                  "time": "19:00-00:10",
+                  "freq": "15 - 20"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}
