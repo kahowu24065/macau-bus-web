@@ -1,7 +1,11 @@
 # MBKa (macau-bus-web) — iOS TestFlight via Codemagic.
-# Mirrors .github/workflows/ios.yml testflight job (do NOT use GHA; minutes exhausted).
 # Secrets from app env group `asc`: ASC_ISSUER_ID, ASC_KEY_ID, ASC_KEY_P8, APPLE_TEAM_ID.
-# Start from Codemagic UI or: POST /builds with workflowId "ios-testflight".
+#
+# TEMPORARY (1.0.22 TestFlight AdMob placement preview):
+#   USE_TEST_ADS=true forces Google sample app + banner IDs.
+#   Next production TestFlight: set USE_TEST_ADS to "false" (or remove),
+#   drop the "Force Google sample AdMob app ID" script, and rebuild.
+#   Dart: --dart-define=USE_TEST_ADS=true (see lib/constants/admob_ids.dart).
 workflows:
   ios-testflight:
     name: iOS TestFlight
@@ -15,11 +19,29 @@ workflows:
       cocoapods: default
       vars:
         BUNDLE_ID: mo.mbka.bus
+        # TEMP: Google test ads for TestFlight banner preview. Restore to "false" next build.
+        USE_TEST_ADS: "true"
     scripts:
       - name: Flutter version
         script: |
           flutter --version
           xcodebuild -version
+          echo "USE_TEST_ADS=${USE_TEST_ADS}"
+
+      - name: Force Google sample AdMob app ID (TEMP when USE_TEST_ADS=true)
+        script: |
+          set -e
+          if [ "${USE_TEST_ADS}" = "true" ]; then
+            # Google sample iOS application ID (test ads).
+            /usr/libexec/PlistBuddy -c \
+              "Set :GADApplicationIdentifier ca-app-pub-3940256099942544~1458002511" \
+              ios/Runner/Info.plist
+            echo "GADApplicationIdentifier overridden to Google sample app ID"
+            /usr/libexec/PlistBuddy -c 'Print :GADApplicationIdentifier' ios/Runner/Info.plist
+          else
+            echo "Keeping committed production GADApplicationIdentifier"
+            /usr/libexec/PlistBuddy -c 'Print :GADApplicationIdentifier' ios/Runner/Info.plist
+          fi
 
       - name: Get packages
         script: |
@@ -44,7 +66,8 @@ workflows:
 
       - name: Flutter build ios (unsigned)
         script: |
-          flutter build ios --release --no-codesign
+          flutter build ios --release --no-codesign \
+            --dart-define=USE_TEST_ADS=${USE_TEST_ADS}
 
       - name: Archive (unsigned; signing at export)
         script: |
