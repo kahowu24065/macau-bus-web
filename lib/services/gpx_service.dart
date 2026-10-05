@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import '../constants/feature_flags.dart';
@@ -27,14 +28,40 @@ class GPXService {
   }
 
   static Future<List<LatLng>> fetchFullGpx(String route, int dir) async {
+    final lines = await fetchRouteLines(route, dir);
+    if (lines.isEmpty) return [];
+    return lines.reduce((a, b) => a.length >= b.length ? a : b);
+  }
+
+  /// Every drawable piece of the route. Disconnected edges stay separate
+  /// so the map does not stroke across the gap.
+  static Future<List<List<LatLng>>> fetchRouteLines(String route, int dir) async {
     if (!FeatureFlags.showRouteTrajectory) return [];
     try {
-      final res = await _fetch(routeShapeUri(route, dir));
-      if (res.statusCode != 200 || res.body.isEmpty) return [];
-      return pointsFromShapeBody(res.body);
+      var lines = await _linesFor(route, dir);
+      if (lines.isEmpty) {
+        final base = _expressParent(route);
+        if (base != null) lines = await _linesFor(base, dir);
+      }
+      return lines;
     } catch (_) {
       return [];
     }
+  }
+
+  static Future<List<List<LatLng>>> _linesFor(String route, int dir) async {
+    final res = await _fetch(routeShapeUri(route, dir));
+    if (res.statusCode != 200 || res.body.isEmpty) return [];
+    return linesFromShapeBody(res.body);
+  }
+
+  /// `102X` with no open-data row is the same trajectory as `102`.
+  static String? _expressParent(String route) {
+    final match = RegExp(r'^(\d+)X$', caseSensitive: false).firstMatch(route.trim());
+    if (match == null) return null;
+    final base = match.group(1);
+    if (base == null || base.isEmpty) return null;
+    return base;
   }
 
   static Future<http.Response> _fetch(Uri uri) {
@@ -44,17 +71,111 @@ class GPXService {
   }
 
   static List<LatLng> pointsFromShapeBody(String body) {
+    final lines = linesFromShapeBody(body);
+    if (lines.isEmpty) return [];
+    return lines.reduce((a, b) => a.length >= b.length ? a : b);
+  }
+
+  static List<List<LatLng>> linesFromShapeBody(String body) {
     final decoded = jsonDecode(body);
-    if (decoded is! Map) return [];
-    if (decoded['success'] != true || decoded['points'] is! List) return [];
+    if (decoded is! Map || decoded['success'] != true) return [];
+    final rawLines = decoded['lines'];
+    if (rawLines is List && rawLines.isNotEmpty) {
+      final lines = <List<LatLng>>[
+        for (final line in rawLines)
+          if (line is List) _pointsFromList(line),
+      ].where((line) => line.length >= 2).toList();
+      if (lines.isNotEmpty) return lines;
+    }
+    if (decoded['points'] is! List) return [];
+    return splitDiscontinuous(_pointsFromList(decoded['points'] as List));
+  }
+
+  static List<List<LatLng>> linesFromCached(dynamic decoded) {
+    if (decoded is! List || decoded.isEmpty) return [];
+    if (decoded.first is List) {
+      return [
+        for (final line in decoded)
+          if (line is List) _pointsFromList(line),
+      ].where((line) => line.length >= 2).toList();
+    }
+    return splitDiscontinuous(_pointsFromList(decoded));
+  }
+
+  static List<LatLng> _pointsFromList(List<dynamic> raw) {
     return [
-      for (final p in decoded['points'] as List)
+      for (final p in raw)
         if (p is Map)
           LatLng(
             ParseUtils.parseDbl(p['lat']),
             ParseUtils.parseDbl(p['lng']),
           ),
     ].where((l) => l.latitude != 0 && l.longitude != 0).toList();
+  }
+
+  /// Same rule as the server: drop a long step that leaves the local road
+  /// bearing or sits between two short steps. Colinear bridge spans stay.
+  static List<List<LatLng>> splitDiscontinuous(List<LatLng> points) {
+    if (points.length < 2) return [];
+    const minLen = 600.0;
+    const maxTurn = 30.0;
+    const neighMin = 8.0;
+    final ds = <double>[];
+    final bs = <double>[];
+    for (var i = 1; i < points.length; i++) {
+      ds.add(_meters(points[i - 1], points[i]));
+      bs.add(_bearing(points[i - 1], points[i]));
+    }
+    ({double bearing, double dist})? neigh(int start, int step) {
+      var j = start;
+      while (j >= 0 && j < ds.length) {
+        if (ds[j] >= neighMin) return (bearing: bs[j], dist: ds[j]);
+        j += step;
+      }
+      return null;
+    }
+
+    final breakAfter = List<bool>.filled(ds.length, false);
+    for (var i = 0; i < ds.length; i++) {
+      final d = ds[i];
+      if (d < minLen) continue;
+      final prev = neigh(i - 1, -1);
+      final next = neigh(i + 1, 1);
+      final badP = prev != null && _angleDiff(bs[i], prev.bearing) > maxTurn;
+      final badN = next != null && _angleDiff(bs[i], next.bearing) > maxTurn;
+      final shortP = prev != null && prev.dist < minLen * 0.5;
+      final shortN = next != null && next.dist < minLen * 0.5;
+      if (badP || badN || (shortP && shortN)) breakAfter[i] = true;
+    }
+    final lines = <List<LatLng>>[];
+    var cur = <LatLng>[points.first];
+    for (var i = 0; i < ds.length; i++) {
+      if (breakAfter[i]) {
+        if (cur.length >= 2) lines.add(cur);
+        cur = <LatLng>[points[i + 1]];
+      } else {
+        cur.add(points[i + 1]);
+      }
+    }
+    if (cur.length >= 2) lines.add(cur);
+    return lines;
+  }
+
+  static double _meters(LatLng a, LatLng b) {
+    final dy = b.latitude - a.latitude;
+    final dx = (b.longitude - a.longitude) * math.cos(((a.latitude + b.latitude) / 2) * math.pi / 180);
+    return math.sqrt(dy * dy + dx * dx) * 111320;
+  }
+
+  static double _bearing(LatLng a, LatLng b) {
+    final dy = b.latitude - a.latitude;
+    final dx = (b.longitude - a.longitude) * math.cos(((a.latitude + b.latitude) / 2) * math.pi / 180);
+    return (math.atan2(dx, dy) * 180 / math.pi + 360) % 360;
+  }
+
+  static double _angleDiff(double a, double b) {
+    final d = (a - b).abs() % 360;
+    return math.min(d, 360 - d);
   }
 
   static Future<List<LatLng>?> fetchAndSliceGpx(String route, int dir, LatLng fromPt, LatLng toPt) async {

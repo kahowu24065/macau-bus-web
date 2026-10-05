@@ -61,10 +61,6 @@ function fieldValue(row, fieldName) {
   return row.fields[fieldName];
 }
 
-function closePoint(a, b) {
-  return Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6;
-}
-
 function looksLikeLng(v) {
   return v >= 113.3 && v <= 113.8;
 }
@@ -246,24 +242,29 @@ function directionMapper(values) {
   };
 }
 
-function appendRing(out, ring) {
-  if (!ring || ring.length === 0) return;
-  let pts = ring;
-  if (out.length) {
-    const last = out[out.length - 1];
-    const head = pts[0];
-    const tail = pts[pts.length - 1];
-    if (!closePoint(last, head) && closePoint(last, tail)) {
-      pts = pts.slice().reverse();
-    }
-  }
-  const start = out.length && closePoint(out[out.length - 1], pts[0]) ? 1 : 0;
-  for (let i = start; i < pts.length; i++) out.push(pts[i]);
+function joinTolerance(pt) {
+  if (!pt) return 1e-6;
+  const ax = Math.abs(pt[0]);
+  const ay = Math.abs(pt[1]);
+  // Geographic degrees around Macau, or Macau Grid meters (~20 km origin).
+  if (ax <= 180 && ay <= 90) return 2e-4;
+  return 20;
 }
 
+function nearPoint(a, b, tol) {
+  return Math.hypot(a[0] - b[0], a[1] - b[1]) <= tol;
+}
+
+/**
+ * Walk edges in SEQ order. Flip an edge when its far end is the one that
+ * meets the previous vertex. If neither end meets, start another polyline.
+ * Disconnected rings are not joined by a straight jump.
+ * @returns {number[][][]}
+ */
 function chainRings(rings) {
-  const usable = rings.filter((r) => r && r.length);
+  const usable = rings.filter((r) => r && r.length).map((r) => r.slice());
   if (!usable.length) return [];
+  const tol = joinTolerance(usable[0][0]);
   if (usable.length >= 2) {
     const a = usable[0];
     const b = usable[1];
@@ -271,13 +272,108 @@ function chainRings(rings) {
     const a1 = a[a.length - 1];
     const b0 = b[0];
     const b1 = b[b.length - 1];
-    const endTouches = closePoint(a1, b0) || closePoint(a1, b1);
-    const startTouches = closePoint(a0, b0) || closePoint(a0, b1);
+    const endTouches = nearPoint(a1, b0, tol) || nearPoint(a1, b1, tol);
+    const startTouches = nearPoint(a0, b0, tol) || nearPoint(a0, b1, tol);
     if (!endTouches && startTouches) usable[0] = a.slice().reverse();
   }
-  const out = [];
-  for (const ring of usable) appendRing(out, ring);
-  return out;
+  const lines = [];
+  let current = [];
+  for (const ring of usable) {
+    if (!current.length) {
+      current = ring.slice();
+      continue;
+    }
+    const last = current[current.length - 1];
+    let pts = ring;
+    let joined = false;
+    if (nearPoint(last, ring[0], tol)) {
+      joined = true;
+    } else if (nearPoint(last, ring[ring.length - 1], tol)) {
+      pts = ring.slice().reverse();
+      joined = true;
+    }
+    if (!joined) {
+      if (current.length >= 2) lines.push(current);
+      current = ring.slice();
+      continue;
+    }
+    const start = nearPoint(current[current.length - 1], pts[0], tol) ? 1 : 0;
+    for (let i = start; i < pts.length; i++) current.push(pts[i]);
+  }
+  if (current.length >= 2) lines.push(current);
+  return lines;
+}
+
+function metersBetween(a, b) {
+  const dy = b.lat - a.lat;
+  const dx = (b.lng - a.lng) * Math.cos((((a.lat + b.lat) / 2) * Math.PI) / 180);
+  return Math.hypot(dy, dx) * 111320;
+}
+
+function bearingDeg(a, b) {
+  const dy = b.lat - a.lat;
+  const dx = (b.lng - a.lng) * Math.cos((((a.lat + b.lat) / 2) * Math.PI) / 180);
+  return (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+}
+
+function angleDiff(a, b) {
+  const d = Math.abs(a - b) % 360;
+  return Math.min(d, 360 - d);
+}
+
+/**
+ * Split a projected polyline where a long step is a teleport between
+ * dense road vertices (or leaves the local bearing). Colinear bridge
+ * spans, like the ~800 m steps on N3, stay in one line.
+ * @param {{lat:number,lng:number}[]} points
+ * @returns {{lat:number,lng:number}[][]}
+ */
+function splitDiscontinuous(points) {
+  if (!points || points.length < 2) return [];
+  const minLen = 600;
+  const maxTurn = 30;
+  const neighMin = 8;
+  const ds = [];
+  const bs = [];
+  for (let i = 1; i < points.length; i++) {
+    ds.push(metersBetween(points[i - 1], points[i]));
+    bs.push(bearingDeg(points[i - 1], points[i]));
+  }
+  function neigh(start, step) {
+    let j = start;
+    while (j >= 0 && j < ds.length) {
+      if (ds[j] >= neighMin) return { bearing: bs[j], dist: ds[j] };
+      j += step;
+    }
+    return null;
+  }
+  const breakAfter = new Array(ds.length).fill(false);
+  for (let i = 0; i < ds.length; i++) {
+    const d = ds[i];
+    if (d < minLen) continue;
+    const prev = neigh(i - 1, -1);
+    const next = neigh(i + 1, 1);
+    // A missing side is not a turn. It still counts as "short", so an
+    // isolated chord (or a 2-point teleport) is dropped, while a bridge
+    // span that continues on the other side is kept.
+    const badP = prev ? angleDiff(bs[i], prev.bearing) > maxTurn : false;
+    const badN = next ? angleDiff(bs[i], next.bearing) > maxTurn : false;
+    const shortP = Boolean(prev) && prev.dist < minLen * 0.5;
+    const shortN = Boolean(next) && next.dist < minLen * 0.5;
+    if (badP || badN || (shortP && shortN)) breakAfter[i] = true;
+  }
+  const lines = [];
+  let cur = [points[0]];
+  for (let i = 0; i < ds.length; i++) {
+    if (breakAfter[i]) {
+      if (cur.length >= 2) lines.push(cur);
+      cur = [points[i + 1]];
+    } else {
+      cur.push(points[i + 1]);
+    }
+  }
+  if (cur.length >= 2) lines.push(cur);
+  return lines;
 }
 
 function toLatLngPoints(xy) {
@@ -304,41 +400,17 @@ function toLatLngPoints(xy) {
   return { points, swapped };
 }
 
-/**
- * Join sequence rows to network edges.
- * @param {object[]} seqRows rows with fields
- * @param {ReturnType<typeof indexNetwork>} networkIndex
- * @param {string} route
- * @param {number} dir
- * @param {object} fields detected column names
- */
-function assembleRoute(seqRows, networkIndex, route, dir, fields) {
-  const matched = seqRows.filter((row) => !row.deleted && routeMatches(fieldValue(row, fields.route), route));
-  if (!matched.length) {
-    return { success: false, points: [], error: 'no_shape', segmentCount: 0 };
-  }
-
-  let chosen = matched;
-  if (fields.dir) {
-    const mapper = directionMapper(matched.map((row) => fieldValue(row, fields.dir)));
-    const tagged = matched.map((row) => ({ row, mapped: mapper(fieldValue(row, fields.dir)) }));
-    const distinct = new Set(tagged.map((t) => t.mapped).filter((d) => d != null));
-    if (distinct.size > 1) {
-      chosen = tagged.filter((t) => t.mapped === dir).map((t) => t.row);
-      if (!chosen.length) {
-        return { success: false, points: [], error: 'no_shape', segmentCount: 0 };
-      }
-    }
-  }
-
-  const ordered = chosen
+function orderRows(rows, fields) {
+  return rows
     .map((row, index) => ({ row, index, seq: fields.seq ? Number(fieldValue(row, fields.seq)) : index }))
     .sort((a, b) => {
       const as = Number.isFinite(a.seq) ? a.seq : a.index;
       const bs = Number.isFinite(b.seq) ? b.seq : b.index;
       return as - bs || a.index - b.index;
     });
+}
 
+function rowsToXyLines(ordered, networkIndex, fields) {
   const rings = [];
   let unmatched = 0;
   for (const item of ordered) {
@@ -351,19 +423,122 @@ function assembleRoute(seqRows, networkIndex, route, dir, fields) {
     }
     for (const ring of edgeRings) rings.push(ring);
   }
-  const xy = chainRings(rings);
-  if (xy.length < 2) {
-    return { success: false, points: [], error: 'no_shape', segmentCount: rings.length, unmatched };
+  return { rings, unmatched, lines: chainRings(rings) };
+}
+
+function projectLines(xyLines) {
+  const geoLines = [];
+  let swapped = false;
+  for (const xy of xyLines) {
+    const geo = toLatLngPoints(xy);
+    if (geo.error) return geo;
+    if (geo.swapped) swapped = true;
+    for (const part of splitDiscontinuous(geo.points)) {
+      if (part.length >= 2) geoLines.push(part);
+    }
   }
-  const geo = toLatLngPoints(xy);
+  return { lines: geoLines, swapped };
+}
+
+function longestLine(lines) {
+  return lines.reduce((best, line) => (line.length > best.length ? line : best));
+}
+
+function binaryGroups(rows, key) {
+  const groups = new Map();
+  for (const row of rows) {
+    const value = String(fieldValue(row, key) ?? '').trim();
+    if (!value) continue;
+    if (!groups.has(value)) groups.set(value, []);
+    groups.get(value).push(row);
+    if (groups.size > 2) return null;
+  }
+  if (groups.size !== 2) return null;
+  return groups;
+}
+
+/**
+ * When SEQ interleaves two directions, the chain shatters into many pieces.
+ * A two-valued column (even if it is not named DIR) is used only when it
+ * clearly reconnects the requested direction. Routes that already chain,
+ * such as N3, are left alone.
+ */
+function recoverDirection(rows, networkIndex, fields, dir, baseline) {
+  if (!rows.length || baseline.lines.length < 12) return null;
+  const skip = new Set([fields.route, fields.networkId, fields.seq, fields.dir].filter(Boolean));
+  let best = null;
+  for (const key of Object.keys(rows[0].fields || {})) {
+    if (skip.has(key)) continue;
+    const groups = binaryGroups(rows, key);
+    if (!groups) continue;
+    const values = [...groups.keys()];
+    const mapper = directionMapper(values);
+    const mapped = values.map((value) => mapper(value));
+    let chosen;
+    if (mapped.every((value) => value != null) && new Set(mapped).size === 2) {
+      chosen = rows.filter((row) => mapper(fieldValue(row, key)) === dir);
+    } else {
+      const sorted = values.slice().sort();
+      chosen = groups.get(sorted[dir === 1 ? 1 : 0]) || [];
+    }
+    if (chosen.length < rows.length * 0.25) continue;
+    const attempt = rowsToXyLines(orderRows(chosen, fields), networkIndex, fields);
+    if (!attempt.lines.length) continue;
+    const longer = longestLine(attempt.lines).length > longestLine(baseline.lines).length * 1.4;
+    const fewer = attempt.lines.length <= baseline.lines.length / 2;
+    if ((longer || fewer) && (!best || attempt.lines.length < best.lines.length)) {
+      best = attempt;
+    }
+  }
+  return best;
+}
+
+/**
+ * Join sequence rows to network edges.
+ * @param {object[]} seqRows rows with fields
+ * @param {ReturnType<typeof indexNetwork>} networkIndex
+ * @param {string} route
+ * @param {number} dir
+ * @param {object} fields detected column names
+ */
+function assembleRoute(seqRows, networkIndex, route, dir, fields) {
+  const matched = seqRows.filter((row) => !row.deleted && routeMatches(fieldValue(row, fields.route), route));
+  if (!matched.length) {
+    return { success: false, points: [], lines: [], error: 'no_shape', segmentCount: 0 };
+  }
+
+  let chosen = matched;
+  if (fields.dir) {
+    const mapper = directionMapper(matched.map((row) => fieldValue(row, fields.dir)));
+    const tagged = matched.map((row) => ({ row, mapped: mapper(fieldValue(row, fields.dir)) }));
+    const distinct = new Set(tagged.map((t) => t.mapped).filter((d) => d != null));
+    if (distinct.size > 1) {
+      chosen = tagged.filter((t) => t.mapped === dir).map((t) => t.row);
+      if (!chosen.length) {
+        return { success: false, points: [], lines: [], error: 'no_shape', segmentCount: 0 };
+      }
+    }
+  }
+
+  let built = rowsToXyLines(orderRows(chosen, fields), networkIndex, fields);
+  const recovered = recoverDirection(chosen, networkIndex, fields, dir, built);
+  if (recovered) built = recovered;
+  if (!built.lines.length) {
+    return { success: false, points: [], lines: [], error: 'no_shape', segmentCount: built.rings.length, unmatched: built.unmatched };
+  }
+  const geo = projectLines(built.lines);
   if (geo.error) {
-    return { success: false, points: [], error: geo.error, sample: geo.sample, segmentCount: rings.length };
+    return { success: false, points: [], lines: [], error: geo.error, sample: geo.sample, segmentCount: built.rings.length };
+  }
+  if (!geo.lines.length) {
+    return { success: false, points: [], lines: [], error: 'no_shape', segmentCount: built.rings.length, unmatched: built.unmatched };
   }
   return {
     success: true,
-    points: geo.points,
-    segmentCount: rings.length,
-    unmatched,
+    points: longestLine(geo.lines),
+    lines: geo.lines,
+    segmentCount: built.rings.length,
+    unmatched: built.unmatched,
     swapped: geo.swapped,
   };
 }
@@ -433,17 +608,36 @@ class RouteShapeIndex {
 
   shape(route, dir) {
     this.ensure();
-    if (this.error) return { ...this.error, route, dir, attribution: this.attribution, dataDate: this.dataDate };
-    const assembled = assembleRoute(
+    const requested = upper(route);
+    const direction = Number(dir) || 0;
+    if (this.error) return { ...this.error, route: requested, dir: direction, attribution: this.attribution, dataDate: this.dataDate };
+    const assembled = this._assemble(requested, direction);
+    if (!assembled.success && assembled.error === 'no_shape') {
+      const express = requested.match(/^(\d+)X$/);
+      if (express) {
+        const fallback = this._assemble(express[1], direction);
+        if (fallback.success) {
+          return this._envelope(requested, direction, { ...fallback, matchedRoute: express[1] });
+        }
+      }
+    }
+    return this._envelope(requested, direction, assembled);
+  }
+
+  _assemble(route, dir) {
+    return assembleRoute(
       this.loaded.seq.rows,
       this.loaded.networkIndex,
       route,
-      Number(dir) || 0,
+      dir,
       this.loaded.fields,
     );
+  }
+
+  _envelope(route, dir, assembled) {
     return {
-      route: upper(route),
-      dir: Number(dir) || 0,
+      route,
+      dir,
       source: 'ROUTE_NETWORK',
       attribution: this.attribution,
       dataDate: this.dataDate,
@@ -570,6 +764,8 @@ module.exports = {
   MACAU_LAT_OFFSET,
   MACAU_LNG_OFFSET,
   toLatLngPoints,
+  splitDiscontinuous,
+  chainRings,
   RouteShapeIndex,
   assembleRoute,
   readDbf,

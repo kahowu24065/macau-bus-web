@@ -690,7 +690,10 @@ class _MapScreenState extends State<MapScreen> {
                     PolylineLayer(
                       polylines: [
                         if (navCtrl.otpNavigationPolylines.isNotEmpty) ...navCtrl.otpNavigationPolylines
-                        else if (!shouldHideOriginalRoute && busCtrl.gpxRoutePoints.isNotEmpty) Polyline(points: busCtrl.gpxRoutePoints, strokeWidth: 5.0, color: const Color.fromARGB(255, 114, 0, 162)),
+                        else if (!shouldHideOriginalRoute)
+                          for (final line in busCtrl.gpxRouteLines)
+                            if (line.length >= 2)
+                              Polyline(points: line, strokeWidth: 5.0, color: const Color.fromARGB(255, 114, 0, 162)),
                       ],
                     ),
                   MarkerLayer(markers: [...stopMarkers, ...busMarkers, ...extraMarkers]),
@@ -801,19 +804,6 @@ class _MapScreenState extends State<MapScreen> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (FeatureFlags.showRouteTrajectory)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 4),
-                                child: Text(
-                                  langCtrl.tr('route_shape_source_note'),
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: isDark ? Colors.white70 : Colors.black54,
-                                    fontSize: 10,
-                                    height: 1.2,
-                                  ),
-                                ),
-                              ),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceAround,
                               children: [
