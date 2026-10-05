@@ -1,0 +1,104 @@
+# MBKa (macau-bus-web) — iOS TestFlight via Codemagic.
+# Mirrors .github/workflows/ios.yml testflight job (do NOT use GHA; minutes exhausted).
+# Secrets from app env group `asc`: ASC_ISSUER_ID, ASC_KEY_ID, ASC_KEY_P8, APPLE_TEAM_ID.
+# Start from Codemagic UI or: POST /builds with workflowId "ios-testflight".
+workflows:
+  ios-testflight:
+    name: iOS TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 120
+    environment:
+      groups:
+        - asc
+      flutter: 3.44.8
+      xcode: latest
+      cocoapods: default
+      vars:
+        BUNDLE_ID: mo.mbka.bus
+    scripts:
+      - name: Flutter version
+        script: |
+          flutter --version
+          xcodebuild -version
+
+      - name: Get packages
+        script: |
+          flutter pub get
+          cd ios && pod install
+
+      - name: Prepare App Store Connect API key
+        script: |
+          set -e
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          RAW="$ASC_KEY_P8"
+          if printf '%s' "$RAW" | grep -q 'BEGIN PRIVATE KEY'; then
+            BODY=$(printf '%s' "$RAW" | sed -e 's/-----BEGIN PRIVATE KEY-----//' -e 's/-----END PRIVATE KEY-----//' | tr -d ' \r\n\t')
+            { echo '-----BEGIN PRIVATE KEY-----'; printf '%s' "$BODY" | fold -w 64; echo; echo '-----END PRIVATE KEY-----'; } > "$KEY_PATH"
+          else
+            printf '%s' "$RAW" | base64 --decode > "$KEY_PATH"
+          fi
+          chmod 600 "$KEY_PATH"
+          grep -q 'BEGIN PRIVATE KEY' "$KEY_PATH" || { echo "ASC_KEY_P8 is not a valid .p8"; exit 1; }
+          echo "KEY_PATH=$KEY_PATH" >> "$CM_ENV"
+
+      - name: Flutter build ios (unsigned)
+        script: |
+          flutter build ios --release --no-codesign
+
+      - name: Archive (unsigned; signing at export)
+        script: |
+          set -o pipefail
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -archivePath "$CM_BUILD_DIR/Runner.xcarchive" archive \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            2>&1 | tee /tmp/archive.log | grep -E "error:|ARCHIVE" || true
+          grep -q "ARCHIVE SUCCEEDED" /tmp/archive.log || { tail -n 100 /tmp/archive.log; exit 1; }
+
+      - name: Strip vendor signatures from embedded frameworks
+        script: |
+          APP="$CM_BUILD_DIR/Runner.xcarchive/Products/Applications/Runner.app"
+          shopt -s nullglob
+          for f in "$APP"/Frameworks/*.framework "$APP"/Frameworks/*.dylib; do
+            echo "== $(basename "$f")"
+            codesign --remove-signature "$f" 2>/dev/null || true
+            rm -rf "$f/_CodeSignature"
+          done
+
+      - name: Export + upload to App Store Connect / TestFlight
+        script: |
+          set -o pipefail
+          cat > "$CM_BUILD_DIR/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath "$CM_BUILD_DIR/Runner.xcarchive" \
+            -exportOptionsPlist "$CM_BUILD_DIR/ExportOptions.plist" \
+            -exportPath "$CM_BUILD_DIR/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            2>&1 | tee /tmp/export.log | tail -n 80
+          grep -qE "EXPORT SUCCEEDED|Upload succeeded|Uploaded" /tmp/export.log || { echo "export/upload failed"; exit 1; }
+
+      - name: Clean up API key
+        script: |
+          rm -rf "$HOME/.appstoreconnect"
+
+    artifacts:
+      - /tmp/archive.log
+      - /tmp/export.log
+      - $CM_BUILD_DIR/export/*.ipa
