@@ -1,11 +1,10 @@
 # MBKa (macau-bus-web) — iOS TestFlight via Codemagic.
 # Secrets from app env group `asc`: ASC_ISSUER_ID, ASC_KEY_ID, ASC_KEY_P8, APPLE_TEAM_ID.
 #
-# TEMPORARY (1.0.22 TestFlight AdMob placement preview):
-#   USE_TEST_ADS=true forces Google sample app + banner IDs.
-#   Next production TestFlight: set USE_TEST_ADS to "false" (or remove),
-#   drop the "Force Google sample AdMob app ID" script, and rebuild.
-#   Dart: --dart-define=USE_TEST_ADS=true (see lib/constants/admob_ids.dart).
+# Production AdMob (1.0.24): USE_TEST_ADS=false keeps the committed
+# GADApplicationIdentifier and production banner units
+# (lib/constants/admob_ids.dart). The sample-ID override below runs only
+# when USE_TEST_ADS is "true".
 workflows:
   ios-testflight:
     name: iOS TestFlight
@@ -19,8 +18,8 @@ workflows:
       cocoapods: default
       vars:
         BUNDLE_ID: mo.mbka.bus
-        # TEMP: Google test ads for TestFlight banner preview. Restore to "false" next build.
-        USE_TEST_ADS: "true"
+        # "false" ships production AdMob IDs. "true" forces Google sample IDs.
+        USE_TEST_ADS: "false"
     scripts:
       - name: Flutter version
         script: |
@@ -28,7 +27,7 @@ workflows:
           xcodebuild -version
           echo "USE_TEST_ADS=${USE_TEST_ADS}"
 
-      - name: Force Google sample AdMob app ID (TEMP when USE_TEST_ADS=true)
+      - name: AdMob app ID (sample override only when USE_TEST_ADS=true)
         script: |
           set -e
           if [ "${USE_TEST_ADS}" = "true" ]; then
