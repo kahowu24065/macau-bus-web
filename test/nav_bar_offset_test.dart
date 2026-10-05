@@ -2,8 +2,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:macau_bus_app/views/widgets/route_liquid_glass_nav.dart';
 
 void main() {
-  test('iOS docks the capsule above a slim home-indicator clearance', () {
+  test('iOS sits halfway between the old float and the flush bottom', () {
     const safe = 34.0;
+    final floating = RouteLiquidGlassNavStyle.legacyFloatMargin + safe;
+    final flush = RouteLiquidGlassNavStyle.homeIndicatorClearance;
     final offset = RouteLiquidGlassNavStyle.barBottomOffset(safe, ios: true);
     final margin = RouteLiquidGlassNavStyle.tabBarMarginBottom(
       paddingBottom: safe,
@@ -11,10 +13,11 @@ void main() {
       ios: true,
     );
 
-    expect(offset, RouteLiquidGlassNavStyle.homeIndicatorClearance);
+    expect(offset, (floating + flush) / 2);
+    expect(offset, greaterThan(flush));
+    expect(offset, lessThan(floating));
     // Package adds the safe inset back onto margin.bottom.
     expect(margin + safe, offset);
-    expect(offset, lessThan(safe));
   });
 
   test('iOS with no home indicator sits on the screen edge', () {
