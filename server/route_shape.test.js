@@ -364,6 +364,54 @@ test('a reversal across a landfill and a chord off a teleport are not stroked', 
   assert.strictEqual(splitDiscontinuous(straight).length, 1);
 });
 
+test('a bridge deck drawn as one long step between short road vertices stays one line', () => {
+  const cos = Math.cos(22.14 * Math.PI / 180);
+  const deg = (m) => m / 111320;
+  // Lotus Bridge link on 102: ~995 m single step, short colinear road on both sides.
+  const deck = [];
+  let lng = 113.5600;
+  for (let i = 0; i < 6; i++) {
+    deck.push({ lat: 22.1394, lng });
+    lng -= deg(20) / cos;
+  }
+  lng -= deg(995) / cos;
+  for (let i = 0; i < 6; i++) {
+    deck.push({ lat: 22.1394, lng });
+    lng -= deg(20) / cos;
+  }
+  assert.strictEqual(splitDiscontinuous(deck).length, 1);
+
+  // Ponte Macau on 103: ~1.77 km northbound step.
+  const ponte = [];
+  let lat = 22.1700;
+  for (let i = 0; i < 4; i++) { ponte.push({ lat, lng: 113.5730 }); lat += deg(60); }
+  lat += deg(1766);
+  for (let i = 0; i < 4; i++) { ponte.push({ lat, lng: 113.5730 }); lat += deg(60); }
+  assert.strictEqual(splitDiscontinuous(ponte).length, 1);
+
+  // Same long step, but the road beyond it bends 20°: still not a deck, still split.
+  const bent = [];
+  lat = 22.1700;
+  for (let i = 0; i < 4; i++) { bent.push({ lat, lng: 113.5730 }); lat += deg(60); }
+  lat += deg(1766);
+  let blng = 113.5730;
+  const turn = 20 * Math.PI / 180;
+  for (let i = 0; i < 4; i++) {
+    bent.push({ lat, lng: blng });
+    lat += deg(60) * Math.cos(turn);
+    blng += deg(60) * Math.sin(turn) / Math.cos(lat * Math.PI / 180);
+  }
+  assert.strictEqual(splitDiscontinuous(bent).length, 2);
+
+  // Longer than any Macau deck step: still treated as a teleport.
+  const far = [];
+  lat = 22.1700;
+  for (let i = 0; i < 4; i++) { far.push({ lat, lng: 113.5730 }); lat += deg(60); }
+  lat += deg(4000);
+  for (let i = 0; i < 4; i++) { far.push({ lat, lng: 113.5730 }); lat += deg(60); }
+  assert.strictEqual(splitDiscontinuous(far).length, 2);
+});
+
 test('missing shapefiles are reported and not invented', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'route-shape-empty-'));
   const index = new RouteShapeIndex(dir);
