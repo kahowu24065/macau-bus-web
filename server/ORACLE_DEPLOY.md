@@ -15,7 +15,7 @@ Upload the 2026-09-25 ExportShapeFile set into the directory that already has `B
 
 Leave `BUS_POLE` where the existing stop code already reads it. This module does not open `BUS_POLE`. This repo does not contain `server.js`, so the current `BUS_POLE` read was not changed.
 
-Copy `server/route_shape.js` from this repo to `~/macau-bus/route_shape.js`. No npm package is required.
+Copy `server/route_shape.js` from this repo to `~/macau-bus/route_shape.js`. The module requires `proj4`, which the existing `BUS_POLE` code in `server.js` already uses. If `require('proj4')` fails, run `npm install proj4` in `~/macau-bus`.
 
 ## Edit `~/macau-bus/server.js`
 
@@ -29,12 +29,12 @@ const { mountRouteShape, mountDisabledBusGpx } = require('./route_shape');
 mountDisabledBusGpx(app);
 
 mountRouteShape(app, {
-  shapeDir: '/home/ubuntu/macau-bus', // directory that contains ROUTE_NETWORK.* and BUS_ROUTE_SEQ.*
-  dataDate: '2026-09-25',
+  shapeDir: "/home/ubuntu/macau-bus",
+  dataDate: "2026-09-25",
 });
 ```
 
-Use the real shapefile directory if it is not `/home/ubuntu/macau-bus`. `shapeDir` can also be set with the `SHAPE_DIR` environment variable.
+`shapeDir` and `dataDate` must be quoted strings. Unquoted values are not valid JavaScript and crashed pm2. Use the real shapefile directory if it is not `/home/ubuntu/macau-bus`. `shapeDir` can also be set with the `SHAPE_DIR` environment variable.
 
 `mountRouteShape` registers `GET /api/route-shape` and `GET /route-shape`. The app uses `/api/route-shape`.
 
@@ -45,7 +45,7 @@ Use the real shapefile directory if it is not `/home/ubuntu/macau-bus`. `shapeDi
 - Order by `SEQ` (or `SEQUENCE` / `ROUTE_SEQ` when that is the column name).
 - Look up each `NETWORK_ID` on `ROUTE_NETWORK` and concatenate the polyline, flipping an edge when its far end is the one that touches the previous vertex.
 - Respond with `{ success, points: [{ lat, lng }], source: "ROUTE_NETWORK", attribution, dataDate }`.
-- Coordinates must already be WGS84 degrees around Macau. A projected grid is refused (`crs_not_wgs84`) instead of being drawn.
+- `ROUTE_NETWORK` coordinates are Macau Grid meters (a sample vertex is about x=19956, y=19416), not WGS84. The module projects them with the same `proj4` definition and offsets as `BUS_POLE` in `server.js` (`MACAU_LAT_OFFSET` 0.00034, `MACAU_LNG_OFFSET` 0.00048). Vertices that are already longitude/latitude around Macau are left unchanged. Anything else still returns `crs_not_wgs84`.
 
 If the DBF uses different column names, `node route_shape.js --shape-dir ~/macau-bus --inspect` prints the names it found and the ones it selected. A missing `ROUTE_NOS` or `NETWORK_ID` returns HTTP 503 `unexpected_fields` plus the real column list.
 

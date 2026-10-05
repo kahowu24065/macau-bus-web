@@ -5,12 +5,17 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const proj4 = require('proj4');
 const {
+  MACAU_GRID,
+  MACAU_LAT_OFFSET,
+  MACAU_LNG_OFFSET,
   RouteShapeIndex,
   mountDisabledBusGpx,
   readDbf,
   readShpRings,
   routeMatches,
+  toLatLngPoints,
 } = require('./route_shape');
 
 function writeDbf(file, fieldDefs, rows) {
@@ -123,6 +128,23 @@ function fixtureDir() {
   fs.writeFileSync(path.join(dir, 'BUS_POLE.dbf'), 'unused');
   return dir;
 }
+
+test('Macau Grid meters become WGS84 with the BUS_POLE offsets', () => {
+  const sample = [[19956, 19416], [20000, 20000]];
+  const out = toLatLngPoints(sample);
+  assert.strictEqual(out.projected, true);
+  assert.strictEqual(out.error, undefined);
+  sample.forEach(([px, py], i) => {
+    const [lng, lat] = proj4(MACAU_GRID, proj4.WGS84, [px, py]);
+    assert.ok(Math.abs(out.points[i].lat - (lat + MACAU_LAT_OFFSET)) < 1e-12);
+    assert.ok(Math.abs(out.points[i].lng - (lng + MACAU_LNG_OFFSET)) < 1e-12);
+    assert.ok(out.points[i].lat > 22.05 && out.points[i].lat < 22.25);
+    assert.ok(out.points[i].lng > 113.5 && out.points[i].lng < 113.6);
+  });
+  const geographic = toLatLngPoints([[113.54, 22.19]]);
+  assert.strictEqual(geographic.projected, undefined);
+  assert.deepStrictEqual(geographic.points, [{ lat: 22.19, lng: 113.54 }]);
+});
 
 test('route codes split on combined ROUTE_NOS', () => {
   assert.strictEqual(routeMatches('1A,3X', '3x'), true);

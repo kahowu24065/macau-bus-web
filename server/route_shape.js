@@ -14,6 +14,12 @@
 
 const fs = require('fs');
 const path = require('path');
+const proj4 = require('proj4');
+
+const MACAU_GRID = '+proj=tmerc +lat_0=22.21239722222222 +lon_0=113.5364694444444 +k=1.0 +x_0=20000 +y_0=20000 +ellps=intl +towgs84=-162.619,-273.963,-187.095 +units=m +no_defs';
+const WGS84 = proj4.WGS84;
+const MACAU_LAT_OFFSET = 0.00034;
+const MACAU_LNG_OFFSET = 0.00048;
 
 const ATTRIBUTION = '澳門特別行政區政府數據開放平台';
 const DEFAULT_DATA_DATE = '2026-09-25';
@@ -278,9 +284,20 @@ function toLatLngPoints(xy) {
   if (!xy.length) return { points: [], swapped: false };
   const [x, y] = xy[0];
   let swapped = false;
-  if (looksLikeLng(x) && looksLikeLat(y)) swapped = false;
-  else if (looksLikeLat(x) && looksLikeLng(y)) swapped = true;
-  else return { error: 'crs_not_wgs84', sample: { x, y } };
+  if (looksLikeLng(x) && looksLikeLat(y)) {
+    swapped = false;
+  } else if (looksLikeLat(x) && looksLikeLng(y)) {
+    swapped = true;
+  } else if (Number.isFinite(x) && Number.isFinite(y) && Math.abs(x) < 1e6 && Math.abs(y) < 1e6) {
+    // Macau Grid (ROUTE_NETWORK.prj) -> WGS84, same offsets as BUS_POLE in server.js
+    const points = xy.map(([px, py]) => {
+      const [lng, lat] = proj4(MACAU_GRID, WGS84, [px, py]);
+      return { lat: lat + MACAU_LAT_OFFSET, lng: lng + MACAU_LNG_OFFSET };
+    });
+    return { points, swapped: false, projected: true };
+  } else {
+    return { error: 'crs_not_wgs84', sample: { x, y } };
+  }
   const points = xy.map(([px, py]) => (
     swapped ? { lat: px, lng: py } : { lat: py, lng: px }
   ));
@@ -549,6 +566,10 @@ if (require.main === module) {
 module.exports = {
   ATTRIBUTION,
   DEFAULT_DATA_DATE,
+  MACAU_GRID,
+  MACAU_LAT_OFFSET,
+  MACAU_LNG_OFFSET,
+  toLatLngPoints,
   RouteShapeIndex,
   assembleRoute,
   readDbf,
