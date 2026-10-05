@@ -322,17 +322,27 @@ function angleDiff(a, b) {
 }
 
 /**
- * Split a projected polyline where a long step is a teleport between
- * dense road vertices (or leaves the local bearing). Colinear bridge
- * spans, like the ~800 m steps on N3, stay in one line.
+ * Drop steps that are not road edges so the map never strokes them.
+ * A step ≥ 600 m breaks when it turns off the local bearing or sits
+ * between two short neighbors. Colinear bridge spans (N3's ~800 m
+ * steps) stay. A step ≥ 160 m that reverses within 400 m is a landfill
+ * zigzag and both legs are dropped. A step ≥ 250 m with a teleport on
+ * one side and no long colinear continuation is a chord across a gap
+ * (the westbound water stroke on route 102) and is dropped. A lone
+ * 2-point edge has nothing to compare and stays.
  * @param {{lat:number,lng:number}[]} points
  * @returns {{lat:number,lng:number}[][]}
  */
 function splitDiscontinuous(points) {
   if (!points || points.length < 2) return [];
-  const minLen = 600;
+  const cap = 600;
   const maxTurn = 30;
   const neighMin = 8;
+  const reverseMin = 160;
+  const reverseTurn = 120;
+  const maxConn = 400;
+  const isolateMin = 250;
+  const contBar = 80;
   const ds = [];
   const bs = [];
   for (let i = 1; i < points.length; i++) {
@@ -350,17 +360,40 @@ function splitDiscontinuous(points) {
   const breakAfter = new Array(ds.length).fill(false);
   for (let i = 0; i < ds.length; i++) {
     const d = ds[i];
-    if (d < minLen) continue;
+    if (d < cap) continue;
     const prev = neigh(i - 1, -1);
     const next = neigh(i + 1, 1);
-    // A missing side is not a turn. It still counts as "short", so an
-    // isolated chord (or a 2-point teleport) is dropped, while a bridge
-    // span that continues on the other side is kept.
+    // A missing side is not a turn and is not short, so a lone edge stays.
     const badP = prev ? angleDiff(bs[i], prev.bearing) > maxTurn : false;
     const badN = next ? angleDiff(bs[i], next.bearing) > maxTurn : false;
-    const shortP = Boolean(prev) && prev.dist < minLen * 0.5;
-    const shortN = Boolean(next) && next.dist < minLen * 0.5;
+    const shortP = Boolean(prev) && prev.dist < cap * 0.5;
+    const shortN = Boolean(next) && next.dist < cap * 0.5;
     if (badP || badN || (shortP && shortN)) breakAfter[i] = true;
+  }
+  const longs = [];
+  for (let i = 0; i < ds.length; i++) if (ds[i] >= reverseMin) longs.push(i);
+  for (let k = 1; k < longs.length; k++) {
+    const a = longs[k - 1];
+    const b = longs[k];
+    let conn = 0;
+    for (let j = a + 1; j < b; j++) conn += ds[j];
+    if (conn <= maxConn && angleDiff(bs[a], bs[b]) > reverseTurn) {
+      breakAfter[a] = true;
+      breakAfter[b] = true;
+    }
+  }
+  for (let i = 0; i < ds.length; i++) {
+    if (ds[i] < isolateMin || breakAfter[i]) continue;
+    const prev = neigh(i - 1, -1);
+    const next = neigh(i + 1, 1);
+    if (!prev && !next) continue;
+    const turnP = prev ? angleDiff(bs[i], prev.bearing) : null;
+    const turnN = next ? angleDiff(bs[i], next.bearing) : null;
+    const gapP = !prev || (prev.dist >= cap && turnP > maxTurn);
+    const gapN = !next || (next.dist >= cap && turnN > maxTurn);
+    const contP = Boolean(prev) && turnP <= maxTurn && prev.dist >= contBar;
+    const contN = Boolean(next) && turnN <= maxTurn && next.dist >= contBar;
+    if ((gapP || gapN) && !contP && !contN) breakAfter[i] = true;
   }
   const lines = [];
   let cur = [points[0]];

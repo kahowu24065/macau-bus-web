@@ -43,7 +43,7 @@ mountRouteShape(app, {
 - Keep `BUS_ROUTE_SEQ` rows whose `ROUTE_NOS` equals the requested route (also splits combined values such as `1A,3`).
 - If a direction column exists (`DIR`, `DIRECTION`, …) and has two values, `dir=0` is the lower/outbound value and `dir=1` the other. A single direction (circular routes) is returned for both.
 - Order by `SEQ` (or `SEQUENCE` / `ROUTE_SEQ` when that is the column name).
-- Look up each `NETWORK_ID` on `ROUTE_NETWORK` and chain polylines, flipping an edge when its far end is the one that touches the previous vertex. An edge that does not meet the previous vertex starts another line. Those gaps are not drawn.
+- Look up each `NETWORK_ID` on `ROUTE_NETWORK` and chain polylines, flipping an edge when its far end is the one that touches the previous vertex. An edge that does not meet the previous vertex starts another line. Those gaps are not drawn. A step that reverses across a short connector, or that runs off a teleport with no road continuation, is dropped as well, so a chord across water or bare landfill is not stroked. Colinear bridge spans stay in the line.
 - If that chain shatters (many pieces) and some other two-valued column separates the rows into directions that reconnect, `dir=0` / `dir=1` follow that column. A route that already chains, such as N3, is not split.
 - A code like `102X` with no rows is served from `102`.
 - Respond with `{ success, lines: [[{ lat, lng }, ...], ...], points, source: "ROUTE_NETWORK", attribution, dataDate }`. `points` is the longest line. `lines` is every piece. The app draws `lines`.

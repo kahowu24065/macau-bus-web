@@ -83,8 +83,8 @@ class GPXService {
     if (rawLines is List && rawLines.isNotEmpty) {
       final lines = <List<LatLng>>[
         for (final line in rawLines)
-          if (line is List) _pointsFromList(line),
-      ].where((line) => line.length >= 2).toList();
+          if (line is List) ...splitDiscontinuous(_pointsFromList(line)),
+      ];
       if (lines.isNotEmpty) return lines;
     }
     if (decoded['points'] is! List) return [];
@@ -96,8 +96,8 @@ class GPXService {
     if (decoded.first is List) {
       return [
         for (final line in decoded)
-          if (line is List) _pointsFromList(line),
-      ].where((line) => line.length >= 2).toList();
+          if (line is List) ...splitDiscontinuous(_pointsFromList(line)),
+      ];
     }
     return splitDiscontinuous(_pointsFromList(decoded));
   }
@@ -113,13 +113,19 @@ class GPXService {
     ].where((l) => l.latitude != 0 && l.longitude != 0).toList();
   }
 
-  /// Same rule as the server: drop a long step that leaves the local road
-  /// bearing or sits between two short steps. Colinear bridge spans stay.
+  /// Same rule as the server. Steps that reverse across a short connector,
+  /// or that leave a teleport with no road continuation, are not stroked.
+  /// Colinear bridge spans stay.
   static List<List<LatLng>> splitDiscontinuous(List<LatLng> points) {
     if (points.length < 2) return [];
-    const minLen = 600.0;
+    const cap = 600.0;
     const maxTurn = 30.0;
     const neighMin = 8.0;
+    const reverseMin = 160.0;
+    const reverseTurn = 120.0;
+    const maxConn = 400.0;
+    const isolateMin = 250.0;
+    const contBar = 80.0;
     final ds = <double>[];
     final bs = <double>[];
     for (var i = 1; i < points.length; i++) {
@@ -138,14 +144,43 @@ class GPXService {
     final breakAfter = List<bool>.filled(ds.length, false);
     for (var i = 0; i < ds.length; i++) {
       final d = ds[i];
-      if (d < minLen) continue;
+      if (d < cap) continue;
       final prev = neigh(i - 1, -1);
       final next = neigh(i + 1, 1);
       final badP = prev != null && _angleDiff(bs[i], prev.bearing) > maxTurn;
       final badN = next != null && _angleDiff(bs[i], next.bearing) > maxTurn;
-      final shortP = prev != null && prev.dist < minLen * 0.5;
-      final shortN = next != null && next.dist < minLen * 0.5;
+      final shortP = prev != null && prev.dist < cap * 0.5;
+      final shortN = next != null && next.dist < cap * 0.5;
       if (badP || badN || (shortP && shortN)) breakAfter[i] = true;
+    }
+    final longs = <int>[
+      for (var i = 0; i < ds.length; i++)
+        if (ds[i] >= reverseMin) i,
+    ];
+    for (var k = 1; k < longs.length; k++) {
+      final a = longs[k - 1];
+      final b = longs[k];
+      var conn = 0.0;
+      for (var j = a + 1; j < b; j++) {
+        conn += ds[j];
+      }
+      if (conn <= maxConn && _angleDiff(bs[a], bs[b]) > reverseTurn) {
+        breakAfter[a] = true;
+        breakAfter[b] = true;
+      }
+    }
+    for (var i = 0; i < ds.length; i++) {
+      if (ds[i] < isolateMin || breakAfter[i]) continue;
+      final prev = neigh(i - 1, -1);
+      final next = neigh(i + 1, 1);
+      if (prev == null && next == null) continue;
+      final turnP = prev == null ? null : _angleDiff(bs[i], prev.bearing);
+      final turnN = next == null ? null : _angleDiff(bs[i], next.bearing);
+      final gapP = prev == null || (prev.dist >= cap && turnP! > maxTurn);
+      final gapN = next == null || (next.dist >= cap && turnN! > maxTurn);
+      final contP = prev != null && turnP! <= maxTurn && prev.dist >= contBar;
+      final contN = next != null && turnN! <= maxTurn && next.dist >= contBar;
+      if ((gapP || gapN) && !contP && !contN) breakAfter[i] = true;
     }
     final lines = <List<LatLng>>[];
     var cur = <LatLng>[points.first];
