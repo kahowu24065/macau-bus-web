@@ -266,7 +266,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     });
                   },
                 ),
-                // Empty footprint for the floating glass bar + home indicator.
+                // Docked tab-bar footprint. The banner stays above it
+                // (Music mini-player), not in the sliver under the capsule.
                 SizedBox(
                   height: RouteLiquidGlassNavStyle.bottomReserve(context),
                 ),

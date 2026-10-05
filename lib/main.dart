@@ -69,13 +69,15 @@ class MacauBusApp extends StatelessWidget {
     final theme = context.watch<ThemeController>();
     final view = View.of(context);
     final safeBottom = view.padding.bottom / view.devicePixelRatio;
+    final ios = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
     final snackBarTheme = SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
       insetPadding: EdgeInsets.fromLTRB(
         16,
         0,
         16,
-        RouteLiquidGlassNavStyle.barFootprint + safeBottom,
+        RouteLiquidGlassNavStyle.barHeight +
+            RouteLiquidGlassNavStyle.barBottomOffset(safeBottom, ios: ios),
       ),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.all(Radius.circular(12)),
