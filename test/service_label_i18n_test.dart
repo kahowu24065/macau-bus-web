@@ -29,5 +29,19 @@ void main() {
     expect(ServiceLabelI18n.translate('星期一至五（公眾假期及澳門大學休假日除外）', 'en'), 'Mon–Fri\n(except public holidays & UM vacation days)');
     expect(ServiceLabelI18n.translate('星期一至五（公眾假期除外）', 'zh'), '星期一至五（公眾假期除外）');
     expect(ServiceLabelI18n.translate('星期六、日及公眾假期', 'zhHans'), '星期六、日及公众假期');
+    expect(ServiceLabelI18n.translate('星期一至六（強制性假日除外）', 'en'), 'Mon–Sat (except mandatory holidays)');
+    expect(ServiceLabelI18n.translate('星期日及強制性假日', 'en'), 'Sun & mandatory holidays');
+    expect(
+      ServiceLabelI18n.translate('2026年9月25-27日及2026年10月1-7日', 'en'),
+      '25–27 Sep 2026\n1–7 Oct 2026',
+    );
+    expect(
+      ServiceLabelI18n.translate('2026年9月19-20日、25-27日及2026年10月1-7日', 'en'),
+      '19–20 & 25–27 Sep 2026\n1–7 Oct 2026',
+    );
+    expect(
+      ServiceLabelI18n.translate('2026年9月12日、19日、25日及2026年10月1日、4日', 'en'),
+      '12, 19 & 25 Sep 2026\n1 & 4 Oct 2026',
+    );
   });
 }
