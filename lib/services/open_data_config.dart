@@ -145,6 +145,30 @@ class OpenDataConfig extends ChangeNotifier {
     return text.isEmpty ? null : text;
   }
 
+  /// Pins the switch for tests and skips the next unforced config fetch.
+  @visibleForTesting
+  void debugApply({
+    bool? configRealtime,
+    bool? configRouteNotices,
+    bool? etaRealtime,
+    bool? noticesRealtime,
+    String? attribution,
+    String? attributionEn,
+    String? attributionPt,
+    String? dataDate,
+  }) {
+    this.configRealtime = configRealtime;
+    this.configRouteNotices = configRouteNotices;
+    this.etaRealtime = etaRealtime;
+    this.noticesRealtime = noticesRealtime;
+    this.attribution = attribution;
+    this.attributionEn = attributionEn;
+    this.attributionPt = attributionPt;
+    this.dataDate = dataDate;
+    _configLoaded = true;
+    notifyListeners();
+  }
+
   @visibleForTesting
   void debugReset() {
     configRealtime = null;
