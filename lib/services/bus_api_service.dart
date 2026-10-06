@@ -25,12 +25,25 @@ class _ResettableClient {
   }
 }
 
+class RouteAlertsFetch {
+  final List<Map<String, dynamic>> alerts;
+  final bool realtimeFlagKnown;
+  final bool realtimeAvailable;
+
+  const RouteAlertsFetch({
+    required this.alerts,
+    this.realtimeFlagKnown = false,
+    this.realtimeAvailable = false,
+  });
+}
+
 class BusApiService {
   static String get baseUrl => ApiConfig.api;
   static final _ResettableClient _stops = _ResettableClient();
   static final _ResettableClient _eta = _ResettableClient();
   static final _ResettableClient _detour = _ResettableClient();
   static final _ResettableClient _catalog = _ResettableClient();
+  static final _ResettableClient _config = _ResettableClient();
 
   static const Map<String, String> _headers = {
     'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
@@ -120,6 +133,8 @@ class BusApiService {
           'approachingCount': (json['dataList'] is List) ? (json['dataList'] as List).length : 0,
           'lastBusWindow': json['lastBusWindow'] == true,
           'serviceEnded': json['serviceEnded'] == true,
+          'realtimeFlagKnown': json['realtimeAvailable'] is bool,
+          'realtimeAvailable': json['realtimeAvailable'] == true,
         };
       }
       return {'success': false, 'message': json['message'] ?? '查詢失敗'};
@@ -153,7 +168,7 @@ class BusApiService {
     return null;
   }
 
-  static Future<List<Map<String, dynamic>>> fetchRouteAlerts(String route) async {
+  static Future<RouteAlertsFetch> fetchRouteAlerts(String route) async {
     try {
       final res = await _get(
         _catalog,
@@ -162,17 +177,39 @@ class BusApiService {
       );
       if (res.statusCode == 200 && !res.body.trimLeft().startsWith('<')) {
         final json = jsonDecode(res.body);
-        if (json['success'] == true && json['alerts'] is List) {
-          return (json['alerts'] as List)
-              .whereType<Map>()
-              .map((e) => Map<String, dynamic>.from(e))
-              .toList();
+        if (json is Map && json['success'] == true && json['alerts'] is List) {
+          return RouteAlertsFetch(
+            alerts: (json['alerts'] as List)
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .toList(),
+            realtimeFlagKnown: json['realtimeAvailable'] is bool,
+            realtimeAvailable: json['realtimeAvailable'] == true,
+          );
         }
       }
     } catch (e) {
       debugPrint('fetchRouteAlerts Error: $e');
     }
-    return [];
+    return const RouteAlertsFetch(alerts: <Map<String, dynamic>>[]);
+  }
+
+  /// App-wide realtime switch and open-data credit. Null when the request fails.
+  static Future<Map<String, dynamic>?> fetchAppConfig() async {
+    try {
+      final res = await _get(
+        _config,
+        '/config',
+        timeout: const Duration(seconds: 6),
+      );
+      if (res.statusCode != 200 || res.body.trimLeft().startsWith('<')) return null;
+      final json = jsonDecode(res.body);
+      if (json is Map<String, dynamic>) return json;
+      if (json is Map) return Map<String, dynamic>.from(json);
+    } catch (e) {
+      debugPrint('fetchAppConfig Error: $e');
+    }
+    return null;
   }
 
   /// specialRoutes from the last successful /all-routes.json (festival /

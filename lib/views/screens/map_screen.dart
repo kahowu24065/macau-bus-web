@@ -390,7 +390,8 @@ class _MapScreenState extends State<MapScreen> {
 
     final List<Marker> busMarkers = [];
     int actualMapBusCount = 0;
-    if (!shouldHideOriginalRoute) {
+    final showLiveArrivals = busCtrl.showLiveArrivals;
+    if (!shouldHideOriginalRoute && showLiveArrivals) {
       final drawn = <({Bus bus, LatLng loc, bool atStop})>[];
       for (final bus in busCtrl.allBusesList) {
         final loc = busCtrl.snapBusToStop(bus);
@@ -804,15 +805,32 @@ class _MapScreenState extends State<MapScreen> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceAround,
-                              children: [
-                                Text(stopsDisplay, style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13, fontWeight: FontWeight.bold)),
-                                Text('${langCtrl.tr('operating_buses')}${busCtrl.allBusesList.length}${langCtrl.tr('map_showing')}$actualMapBusCount)', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
-                                if (busCtrl.stopsList.isEmpty && !busCtrl.isLoadingStops)
-                                  InkWell(onTap: () => busCtrl.fetchStops(), child: Text(langCtrl.tr('click_retry'), style: const TextStyle(color: Colors.amber, decoration: TextDecoration.underline))),
-                              ],
-                            ),
+                            if (showLiveArrivals)
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                children: [
+                                  Text(stopsDisplay, style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13, fontWeight: FontWeight.bold)),
+                                  Text('${langCtrl.tr('operating_buses')}${busCtrl.allBusesList.length}${langCtrl.tr('map_showing')}$actualMapBusCount)', style: const TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.bold)),
+                                  if (busCtrl.stopsList.isEmpty && !busCtrl.isLoadingStops)
+                                    InkWell(onTap: () => busCtrl.fetchStops(), child: Text(langCtrl.tr('click_retry'), style: const TextStyle(color: Colors.amber, decoration: TextDecoration.underline))),
+                                ],
+                              )
+                            else
+                              Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(stopsDisplay, textAlign: TextAlign.center, style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13, fontWeight: FontWeight.bold)),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    langCtrl.tr('realtime_pending'),
+                                    textAlign: TextAlign.center,
+                                    softWrap: true,
+                                    style: TextStyle(color: isDark ? Colors.grey[300] : Colors.grey[800], fontSize: 13, height: 1.35, fontWeight: FontWeight.w600),
+                                  ),
+                                  if (busCtrl.stopsList.isEmpty && !busCtrl.isLoadingStops)
+                                    InkWell(onTap: () => busCtrl.fetchStops(), child: Text(langCtrl.tr('click_retry'), style: const TextStyle(color: Colors.amber, decoration: TextDecoration.underline))),
+                                ],
+                              ),
                           ],
                         ),
                       ),

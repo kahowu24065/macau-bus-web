@@ -50,6 +50,7 @@ class AppTranslations {
       'tab_map': '地圖', 'tab_favorite': '收藏', 'tab_settings': '設定',
       
       'live_tracking_status': '實時動態: 以 10 至 15 秒持續更新',
+      'realtime_pending': '實時到站：申請中',
 
       'bus_plate': '車牌: ',
       'gps_fetching': '獲取中',
@@ -192,6 +193,7 @@ class AppTranslations {
       'tab_search': '搜索', 'tab_route': '路线', 'tab_station': '车站',
       'tab_map': '地图', 'tab_favorite': '收藏', 'tab_settings': '设置',
       'live_tracking_status': '实时动态: 以 10 至 15 秒持续更新',
+      'realtime_pending': '实时到站：申请中',
       'bus_plate': '车牌: ',
       'gps_fetching': '获取中',
       'arrived_at_stop': '已到站',
@@ -320,6 +322,7 @@ class AppTranslations {
       'tab_search': 'Pesquisa', 'tab_route': 'Rotas', 'tab_station': 'Paragens',
       'tab_map': 'Mapa', 'tab_favorite': 'Favoritos', 'tab_settings': 'Definições',
       'live_tracking_status': 'Dinâmico: Atualizado a cada 10-15s',
+      'realtime_pending': 'Tempo real: pedido pendente',
       'bus_plate': 'Matrícula: ',
       'gps_fetching': 'Recuperando',
       'arrived_at_stop': 'Chegou',
@@ -448,6 +451,7 @@ class AppTranslations {
       'tab_search': 'Search', 'tab_route': 'Routes', 'tab_station': 'Stops',
       'tab_map': 'Map', 'tab_favorite': 'Favorites', 'tab_settings': 'Settings',
       'live_tracking_status': 'Live: Updates every 10 to 15s',
+      'realtime_pending': 'Live arrivals: pending approval',
       'bus_plate': 'Plate: ',
       'gps_fetching': 'Fetching',
       'arrived_at_stop': 'Arrived',

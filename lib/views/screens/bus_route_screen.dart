@@ -9,7 +9,9 @@ import '../../controllers/bus_controller.dart';
 import '../../controllers/location_controller.dart';
 import '../../controllers/navigation_controller.dart';
 import '../../services/gps_service.dart'; 
-import '../../services/bus_api_service.dart'; 
+import '../../services/bus_api_service.dart';
+import '../../services/open_data_config.dart';
+import '../../utils/bus_eta_estimate.dart';
 import '../../models/bus.dart';
 import '../../controllers/background_controller.dart';
 import '../widgets/glowing_badge.dart';
@@ -64,10 +66,13 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
   Future<void> _fetchRouteAlerts(String route) async {
     if (route.isEmpty) return;
     try {
-      final alerts = await BusApiService.fetchRouteAlerts(route);
+      final fetched = await BusApiService.fetchRouteAlerts(route);
+      if (fetched.realtimeFlagKnown) {
+        OpenDataConfig.instance.applyNoticesFlag(fetched.realtimeAvailable);
+      }
       if (!mounted) return;
       setState(() {
-        _routeAlerts = alerts;
+        _routeAlerts = fetched.alerts;
       });
     } catch (e) {
       debugPrint('讀取路線通告失敗: $e');
@@ -343,6 +348,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
   }
 
   List<Map<String, String>> _getUpcomingBusesInfo(BusController busCtrl, LanguageController langCtrl) {
+    if (!busCtrl.showLiveArrivals) return [];
     if (busCtrl.etaData == null && busCtrl.allBusesList.isEmpty) return [];
     
     String rawEtaStatus = busCtrl.etaData?['status']?.toString() ?? '';
@@ -396,14 +402,14 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
         if (firstBusDiff == -1) firstBusDiff = diff; 
         String status = '';
         if (diff > 0) {
-           int estimatedMins = 0;
-           if (upcoming.isEmpty && firstBusMins != null) {
-             estimatedMins = firstBusMins; 
-           } else if (firstBusMins != null && firstBusDiff > 0) {
-             estimatedMins = (diff * (firstBusMins / firstBusDiff)).round();
-           } else {
-             estimatedMins = (diff * 2.5).round();
-           }
+           final bool isFirst = upcoming.isEmpty;
+           final int estimatedMins = approachingEtaMinutes(
+             busEtaMinutes: bus.etaMinutes,
+             isFirst: isFirst,
+             stopsAway: diff,
+             firstStopsAway: firstBusDiff,
+             firstStatusMinutes: firstBusMins,
+           );
            
            if (diff == 1) {
              status = estimatedMins > 0 
@@ -601,10 +607,13 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     final isFavorite = busCtrl.favoriteRoutes.contains(busCtrl.currentRoute);
     final hasRoute = busCtrl.currentRoute.isNotEmpty;
 
-    final alertStops = busCtrl.stopsList.where(_hasAnyStopWarning).toList();
+    final alertStops = busCtrl.stopsList
+        .where((stop) => busCtrl.showRouteNotices && _hasAnyStopWarning(stop))
+        .toList();
 
     List<Widget> combinedAlertWidgets = [];
 
+    if (busCtrl.showRouteNotices) {
     for (var alert in _routeAlerts) {
       combinedAlertWidgets.add(
         Padding(
@@ -637,6 +646,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
           ),
         )
       );
+    }
     }
 
     if (alertStops.isNotEmpty) {
@@ -948,7 +958,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                                               AnimatedSize(
                                                                 duration: const Duration(milliseconds: 350),
                                                                 curve: Curves.easeOutCubic,
-                                                                child: _hasAnyStopWarning(stop)
+                                                                child: busCtrl.showRouteNotices && _hasAnyStopWarning(stop)
                                                                     ? Padding(
                                                                         padding: const EdgeInsets.only(right: 4.0),
                                                                         child: BlinkingWarningIcon(onTap: () => _openStopWarning(stop)),
@@ -988,6 +998,18 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                                                 crossAxisAlignment: CrossAxisAlignment.start,
                                                                 mainAxisAlignment: MainAxisAlignment.center,
                                                                 children: [
+                                                                  if (!busCtrl.showLiveArrivals)
+                                                                    Text(
+                                                                      langCtrl.tr('realtime_pending'),
+                                                                      softWrap: true,
+                                                                      style: TextStyle(
+                                                                        color: isDark ? Colors.grey[300] : Colors.grey[800],
+                                                                        fontSize: 15,
+                                                                        height: 1.4,
+                                                                        fontWeight: FontWeight.w600,
+                                                                      ),
+                                                                    )
+                                                                  else ...[
                                                                   const LiveTrackingBadge(),
                                                                   
                                                                   if (busCtrl.isLoadingETA)
@@ -1018,6 +1040,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                                                       );
                                                                     }),
                                                                   ]
+                                                                  ],
                                                                 ],
                                                               ),
                                                             ),
@@ -1072,7 +1095,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                           ]
                                         )
                                       ),
-                                      if (_hasAnyStopWarning(stop)) ...[
+                                      if (busCtrl.showRouteNotices && _hasAnyStopWarning(stop)) ...[
                                         const SizedBox(width: 8),
                                         BlinkingWarningIcon(onTap: () => _openStopWarning(stop)),
                                       ],

@@ -9,6 +9,7 @@ import 'dart:async';
 
 import '../services/places_service.dart';
 import '../services/bus_api_service.dart';
+import '../services/open_data_config.dart';
 import '../utils/coord_transform.dart';
 import '../models/itinerary.dart';
 import '../models/bus_stop.dart';
@@ -1507,6 +1508,15 @@ class NavigationController extends ChangeNotifier {
         lang: langCtrl.currentLanguage,
       );
       if (etaRes['success'] == true && etaRes['etaData'] != null) {
+        if (etaRes['realtimeFlagKnown'] == true) {
+          OpenDataConfig.instance.applyEtaFlag(etaRes['realtimeAvailable'] == true);
+        }
+        if (!OpenDataConfig.instance.showLiveArrivals) {
+          leg.realtimeEta = null;
+          leg.liveCheck = null;
+          leg.showScheduledDeparture = false;
+          return;
+        }
         leg.realtimeEta = etaRes['etaData']['status'];
         _applyScheduledCheck(leg, etaRes);
         _applyLastTripCheck(leg, etaRes, langCtrl);
