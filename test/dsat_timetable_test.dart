@@ -88,6 +88,43 @@ void main() {
     expect(DsatTimetable.sectionsFor('26S', 0).single.items.single.time, '21:30-23:00');
     expect(DsatTimetable.sectionsFor('52S', 0).single.items.single.time, '20:30-23:00');
     expect(DsatTimetable.sectionsFor('52S', 0).single.items.single.freq, '15 - 20');
+    expect(DsatTimetable.sectionsFor('52S', 1).single.title, DsatTimetable.sectionsFor('52S', 0).single.title);
+  });
+
+  test('PDF corrections split Saturday and name suspended days', () {
+    expect(DsatTimetable.sectionsFor('6B', 0).map((s) => s.title), [
+      '星期一至六（強制性假日除外）',
+      '星期日及強制性假日',
+    ]);
+    expect(DsatTimetable.sectionsFor('6B', 0).last.items.single.freq, '服務暫停 / SERVIÇO SUSPENSO');
+
+    final route4 = DsatTimetable.sectionsFor('4', 0);
+    expect(route4.map((s) => s.title), [
+      '星期一至五（公眾假期除外）',
+      '星期六（公眾假期除外）',
+      '星期日及公眾假期',
+    ]);
+    expect(route4[1].items[2].time, '10:00-20:00');
+    expect(route4[1].items[2].freq, '10 - 12');
+    expect(route4.last.items.first.time, '06:00-20:00');
+    expect(route4.last.items.first.freq, '12 - 15');
+
+    final toBarra = DsatTimetable.sectionsFor('18', 0);
+    final toCurrais = DsatTimetable.sectionsFor('18', 1);
+    expect(toBarra.first.items.map((i) => i.time), [
+      '06:00-10:00',
+      '10:00-15:00',
+      '15:00-20:00',
+      '20:00-01:10',
+    ]);
+    expect(toCurrais.first.items.first.time, '05:45-10:00');
+    expect(toCurrais.last.items.last.time, '20:00-00:40');
+
+    expect(DsatTimetable.sectionsFor('701XS', 0).last.items.single.freq, '服務暫停 / SERVIÇO SUSPENSO');
+    expect(DsatTimetable.sectionsFor('H2', 0).last.title, '星期六、日及強制性假日');
+    expect(DsatTimetable.sectionsFor('101XS', 0).single.title, '2026年9月25-27日及2026年10月1-7日');
+    expect(DsatTimetable.sectionsFor('18B', 1)[1].title, '星期六（公眾假期除外）');
+    expect(DsatTimetable.sectionsFor('18B', 0).last.items.first.time, '07:00-16:00');
   });
 
   test('bundled service windows stay first and last times', () async {
