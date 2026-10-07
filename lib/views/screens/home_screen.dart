@@ -24,6 +24,24 @@ import '../../controllers/language_controller.dart';
 import '../../controllers/purchase_controller.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
+/// Home-shell AdMob banner, including the 50px slot reserved above the tab bar.
+///
+/// Hidden on the map overlay, the station/stops tab (and the legacy map index
+/// that still renders that tab), and while route planning is open. Pro and web
+/// never show it. Every other tab keeps the slot.
+bool showHomeBannerSlot({
+  required bool isWeb,
+  required bool isPro,
+  required bool showMapView,
+  required int selectedIndex,
+  required bool isPlanningRoute,
+}) {
+  if (isWeb || isPro) return false;
+  if (showMapView || isPlanningRoute) return false;
+  if (selectedIndex == 2 || selectedIndex == 3) return false;
+  return true;
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
   @override
@@ -146,12 +164,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final isPro =
         context.select<PurchaseController, bool>((c) => c.isPro);
-    final showBannerAd = !kIsWeb && !isPro;
+    final isPlanningRoute = context.select<NavigationController, bool>(
+      (c) => c.isPlanningRoute,
+    );
+    // Map, station/stops, and route planning: no banner and no reserved gap.
+    // Search, route list, favorites, and settings keep the slot.
+    final showBannerAd = showHomeBannerSlot(
+      isWeb: kIsWeb,
+      isPro: isPro,
+      showMapView: showMapView,
+      selectedIndex: selectedIndex,
+      isPlanningRoute: isPlanningRoute,
+    );
     final bannerH =
         showBannerAd ? RouteLiquidGlassNavStyle.bannerAdHeight : 0.0;
 
     return BannerSlotHeight(
-      height: _bannerOccupiedHeight,
+      height: showBannerAd ? _bannerOccupiedHeight : 0,
       child: Stack(
       children: [
         Positioned.fill(
@@ -257,6 +286,7 @@ class _HomeScreenState extends State<HomeScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 CustomBannerAd(
+                  visible: showBannerAd,
                   onOccupiedHeight: (h) {
                     if (h == _bannerOccupiedHeight) return;
                     WidgetsBinding.instance.addPostFrameCallback((_) {
