@@ -3,11 +3,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:macau_bus_app/constants/app_translations.dart';
-import 'package:macau_bus_app/controllers/elderly_mode_controller.dart';
+import 'package:macau_bus_app/controllers/easy_read_mode_controller.dart';
 import 'package:macau_bus_app/services/arrival_speaker.dart';
-import 'package:macau_bus_app/theme/elderly_theme.dart';
-import 'package:macau_bus_app/utils/elderly_arrival.dart';
-import 'package:macau_bus_app/views/screens/elderly_more_screen.dart';
+import 'package:macau_bus_app/theme/easy_read_theme.dart';
+import 'package:macau_bus_app/utils/easy_read_arrival.dart';
+import 'package:macau_bus_app/views/screens/easy_read_more_screen.dart';
 import 'package:macau_bus_app/views/screens/home_screen.dart';
 
 String _tr(String lang, String key) =>
@@ -44,37 +44,37 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  test('elderly mode defaults off and persists', () async {
-    final first = ElderlyModeController();
+  test('easy read mode defaults off and persists', () async {
+    final first = EasyReadModeController();
     await first.ready;
     expect(first.enabled, isFalse);
 
     await first.setEnabled(true);
-    final second = ElderlyModeController();
+    final second = EasyReadModeController();
     await second.ready;
     expect(second.enabled, isTrue);
   });
 
   test('fixed controller does not read preferences', () async {
-    SharedPreferences.setMockInitialValues({'elderly_mode': true});
-    final fixed = ElderlyModeController.fixed(false);
+    SharedPreferences.setMockInitialValues({'easy_read_mode': true});
+    final fixed = EasyReadModeController.fixed(false);
     await fixed.ready;
     expect(fixed.enabled, isFalse);
   });
 
-  test('translations include elderly mode in all four languages', () {
+  test('translations include easy read mode in all four languages', () {
     const keys = [
-      'elderly_mode',
-      'elderly_mode_desc',
-      'elderly_eta_mins',
-      'elderly_arriving_next',
-      'elderly_arriving_soon',
+      'easy_read_mode',
+      'easy_read_mode_desc',
+      'easy_read_eta_mins',
+      'easy_read_arriving_next',
+      'easy_read_arriving_soon',
       'more_options',
-      'elderly_stop_closed',
-      'elderly_diversion',
-      'elderly_no_diversion',
-      'elderly_pick_route',
-      'elderly_list_empty',
+      'easy_read_stop_closed',
+      'easy_read_diversion',
+      'easy_read_no_diversion',
+      'easy_read_pick_route',
+      'easy_read_list_empty',
     ];
     for (final lang in ['zh', 'zhHans', 'pt', 'en']) {
       for (final key in keys) {
@@ -82,58 +82,59 @@ void main() {
         expect(AppTranslations.data[lang]![key]!.trim(), isNotEmpty);
       }
     }
-    expect(AppTranslations.data['zh']!['elderly_mode'], '長者模式');
+    expect(AppTranslations.data['zh']!['easy_read_mode'], '易讀模式');
     expect(AppTranslations.data['zh']!['more_options'], '更多');
-    expect(AppTranslations.data['zh']!['elderly_eta_mins'], '@mins 分鐘後到');
-    expect(AppTranslations.data['zh']!['elderly_mode_desc'], contains('\n'));
-    expect(AppTranslations.data['en']!['elderly_mode'], 'Elderly mode');
+    expect(AppTranslations.data['zh']!['easy_read_eta_mins'], '@mins 分鐘後到');
+    expect(AppTranslations.data['zh']!['easy_read_mode_desc'], contains('\n'));
+    expect(AppTranslations.data['en']!['easy_read_mode'], 'Easy Read Mode');
+    expect(AppTranslations.data['pt']!['easy_read_mode'], 'Modo de Leitura Fácil');
     expect(AppTranslations.data['pt']!['more_options'], 'Mais');
-    expect(AppTranslations.data['zhHans']!['elderly_mode'], '长者模式');
+    expect(AppTranslations.data['zhHans']!['easy_read_mode'], '易读模式');
   });
 
   test('arrival wording keeps next-stop and arriving-soon logic', () {
     String zh(String key) => _tr('zh', key);
 
     expect(
-      approachingStatus(elderly: false, stopsAway: 2, estimatedMins: 4, tr: zh),
+      approachingStatus(easyRead: false, stopsAway: 2, estimatedMins: 4, tr: zh),
       '尚有 2 站 (約 4 分鐘)',
     );
     expect(
-      approachingStatus(elderly: false, stopsAway: 1, estimatedMins: 5, tr: zh),
+      approachingStatus(easyRead: false, stopsAway: 1, estimatedMins: 5, tr: zh),
       '下站到達 (約 5 分鐘)',
     );
     expect(
-      approachingStatus(elderly: false, stopsAway: 1, estimatedMins: 0, tr: zh),
+      approachingStatus(easyRead: false, stopsAway: 1, estimatedMins: 0, tr: zh),
       '下站到達',
     );
     expect(
-      approachingStatus(elderly: false, stopsAway: 0, estimatedMins: 0, tr: zh),
+      approachingStatus(easyRead: false, stopsAway: 0, estimatedMins: 0, tr: zh),
       '即將到站 / 到站中',
     );
 
     expect(
-      approachingStatus(elderly: true, stopsAway: 2, estimatedMins: 4, tr: zh),
+      approachingStatus(easyRead: true, stopsAway: 2, estimatedMins: 4, tr: zh),
       '4 分鐘後到',
     );
     expect(
-      approachingStatus(elderly: true, stopsAway: 1, estimatedMins: 5, tr: zh),
+      approachingStatus(easyRead: true, stopsAway: 1, estimatedMins: 5, tr: zh),
       '5 分鐘後到',
     );
     expect(
-      approachingStatus(elderly: true, stopsAway: 1, estimatedMins: 0, tr: zh),
+      approachingStatus(easyRead: true, stopsAway: 1, estimatedMins: 0, tr: zh),
       '下一站到達',
     );
     expect(
-      approachingStatus(elderly: true, stopsAway: 0, estimatedMins: 0, tr: zh),
+      approachingStatus(easyRead: true, stopsAway: 0, estimatedMins: 0, tr: zh),
       '即將到站',
     );
     expect(
-      presentArrivalStatus(elderly: true, status: zh('service_ended'), tr: zh),
+      presentArrivalStatus(easyRead: true, status: zh('service_ended'), tr: zh),
       '本日服務已結束',
     );
     expect(
       approachingStatus(
-        elderly: true,
+        easyRead: true,
         stopsAway: 3,
         estimatedMins: 8,
         tr: (key) => _tr('en', key),
@@ -142,7 +143,7 @@ void main() {
     );
     expect(
       approachingStatus(
-        elderly: true,
+        easyRead: true,
         stopsAway: 0,
         estimatedMins: 0,
         tr: (key) => _tr('pt', key),
@@ -152,40 +153,40 @@ void main() {
   });
 
   test('text scale undo restores the size under the header', () {
-    expect(ElderlyTheme.undoTextScale(const TextScaler.linear(1.35)).scale(1), closeTo(1, 0.001));
+    expect(EasyReadTheme.undoTextScale(const TextScaler.linear(1.35)).scale(1), closeTo(1, 0.001));
     expect(
-      ElderlyTheme.undoTextScale(const TextScaler.linear(1.2 * 1.35)).scale(1),
+      EasyReadTheme.undoTextScale(const TextScaler.linear(1.2 * 1.35)).scale(1),
       closeTo(1.2, 0.001),
     );
   });
 
   test('contrast lifts grey and keeps saturated colours in both themes', () {
-    expect(ElderlyTheme.lift(Colors.grey.shade500, Brightness.light), ElderlyTheme.lightForeground);
-    expect(ElderlyTheme.lift(Colors.grey.shade500, Brightness.dark), Colors.white);
-    expect(ElderlyTheme.lift(Colors.white70, Brightness.dark), Colors.white);
-    expect(ElderlyTheme.lift(Colors.black54, Brightness.light), ElderlyTheme.lightForeground);
-    expect(ElderlyTheme.lift(Colors.amber, Brightness.light), Colors.amber);
-    expect(ElderlyTheme.lift(Colors.black, Brightness.light), Colors.black);
-    expect(ElderlyTheme.lift(Colors.white, Brightness.dark), Colors.white);
+    expect(EasyReadTheme.lift(Colors.grey.shade500, Brightness.light), EasyReadTheme.lightForeground);
+    expect(EasyReadTheme.lift(Colors.grey.shade500, Brightness.dark), Colors.white);
+    expect(EasyReadTheme.lift(Colors.white70, Brightness.dark), Colors.white);
+    expect(EasyReadTheme.lift(Colors.black54, Brightness.light), EasyReadTheme.lightForeground);
+    expect(EasyReadTheme.lift(Colors.amber, Brightness.light), Colors.amber);
+    expect(EasyReadTheme.lift(Colors.black, Brightness.light), Colors.black);
+    expect(EasyReadTheme.lift(Colors.white, Brightness.dark), Colors.white);
 
-    final light = ElderlyTheme.apply(ThemeData.light());
-    final dark = ElderlyTheme.apply(ThemeData.dark());
+    final light = EasyReadTheme.apply(ThemeData.light());
+    final dark = EasyReadTheme.apply(ThemeData.dark());
     expect(light.textButtonTheme.style?.minimumSize?.resolve({}), const Size(72, 56));
     expect(dark.colorScheme.onSurface, Colors.white);
-    expect(light.colorScheme.onSurface, ElderlyTheme.lightForeground);
+    expect(light.colorScheme.onSurface, EasyReadTheme.lightForeground);
     expect(light.textTheme.bodyMedium?.fontWeight, FontWeight.w700);
     expect(dark.textTheme.bodyMedium?.fontWeight, FontWeight.w700);
   });
 
-  test('elderly mode hides every ad slot except settings', () {
-    bool show({required int selectedIndex, bool elderlyMode = true, bool isPro = false}) {
+  test('easy read mode hides every ad slot except settings', () {
+    bool show({required int selectedIndex, bool easyReadMode = true, bool isPro = false}) {
       return showHomeBannerSlot(
         isWeb: false,
         isPro: isPro,
         showMapView: false,
         selectedIndex: selectedIndex,
         isPlanningRoute: false,
-        elderlyMode: elderlyMode,
+        easyReadMode: easyReadMode,
       );
     }
 
@@ -195,7 +196,7 @@ void main() {
     expect(show(selectedIndex: 4), isFalse);
     expect(show(selectedIndex: 5), isTrue);
     expect(show(selectedIndex: 5, isPro: true), isFalse);
-    expect(show(selectedIndex: 0, elderlyMode: false), isTrue);
+    expect(show(selectedIndex: 0, easyReadMode: false), isTrue);
   });
 
   test('speech uses the current language and degrades on web', () async {

@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../../controllers/bus_controller.dart';
 import '../../controllers/navigation_controller.dart';
 import '../../controllers/language_controller.dart';
-import '../../utils/elderly_access.dart';
+import '../../utils/easy_read_access.dart';
 import '../widgets/preserve_chrome.dart';
 
 class FavoritesScreen extends StatefulWidget {
@@ -114,7 +114,7 @@ class _FavoriteRouteRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final busCtrl = context.read<BusController>();
     final langCtrl = context.read<LanguageController>();
-    final elderly = ElderlyAccess.enabled(context);
+    final easyRead = EasyReadAccess.enabled(context);
 
     String routeDesc = langCtrl.tr('unknown_dir');
     for (final r in busCtrl.allRoutesWithDir) {
@@ -133,7 +133,7 @@ class _FavoriteRouteRow extends StatelessWidget {
         context.read<NavigationController>().changeTab(2);
       },
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 12, vertical: elderly ? 16 : 10),
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: easyRead ? 16 : 10),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -157,11 +157,11 @@ class _FavoriteRouteRow extends StatelessWidget {
                 routeDesc,
                 softWrap: true,
                 style: TextStyle(
-                  color: elderly
+                  color: easyRead
                       ? (isDark ? Colors.white : const Color(0xFF111111))
                       : (isDark ? const Color(0xFFC7C7CC) : Colors.black54),
-                  fontSize: elderly ? 16 : 13,
-                  fontWeight: elderly ? FontWeight.w700 : FontWeight.normal,
+                  fontSize: easyRead ? 16 : 13,
+                  fontWeight: easyRead ? FontWeight.w700 : FontWeight.normal,
                   height: 1.3,
                 ),
               ),

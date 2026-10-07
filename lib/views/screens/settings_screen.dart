@@ -18,8 +18,8 @@ import '../../controllers/bus_controller.dart';
 import '../../controllers/background_controller.dart';
 import '../../controllers/language_controller.dart';
 import '../../controllers/navigation_controller.dart';
-import '../../controllers/elderly_mode_controller.dart';
-import '../../utils/elderly_access.dart';
+import '../../controllers/easy_read_mode_controller.dart';
+import '../../utils/easy_read_access.dart';
 import '../widgets/preserve_chrome.dart';
 import '../../services/open_data_config.dart';
 
@@ -161,7 +161,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Color get _readable {
-    if (!ElderlyAccess.enabled(context)) return _subText;
+    if (!EasyReadAccess.enabled(context)) return _subText;
     final dark = Theme.of(context).brightness == Brightness.dark;
     return dark ? Colors.white : const Color(0xFF111111);
   }
@@ -213,7 +213,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       inactiveTrackColor: _mutedWell,
       thumbColor: isDark ? Colors.black : Colors.white,
     );
-    if (!ElderlyAccess.enabled(context)) return control;
+    if (!EasyReadAccess.enabled(context)) return control;
     return Transform.scale(scale: 1.2, alignment: Alignment.centerRight, child: control);
   }
 
@@ -226,10 +226,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     VoidCallback? onTap,
     bool isDark = true,
   }) {
-    final elderly = ElderlyAccess.enabled(context);
+    final easyRead = EasyReadAccess.enabled(context);
     final sub = _readable;
     return ListTile(
-      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: elderly ? 12 : 4),
+      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: easyRead ? 12 : 4),
       onTap: onTap,
       splashColor: isDark ? Colors.white.withValues(alpha: 0.10) : Colors.black.withValues(alpha: 0.06),
       hoverColor: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
@@ -238,8 +238,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         decoration: BoxDecoration(color: isDark ? _mutedWell : Colors.grey[200], borderRadius: BorderRadius.circular(8)),
         child: Icon(icon, color: isDark ? const Color(0xFFD1D1D6) : Colors.black87, size: 18),
       ),
-      title: Text(title, softWrap: true, style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 15, fontWeight: elderly ? FontWeight.w700 : FontWeight.w500, fontFamily: 'Inter')),
-      subtitle: subtitle != null ? Text(subtitle, softWrap: true, style: TextStyle(color: sub, fontSize: 13, fontFamily: 'Inter', fontWeight: elderly ? FontWeight.w700 : null, height: elderly ? 1.35 : null)) : null,
+      title: Text(title, softWrap: true, style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 15, fontWeight: easyRead ? FontWeight.w700 : FontWeight.w500, fontFamily: 'Inter')),
+      subtitle: subtitle != null ? Text(subtitle, softWrap: true, style: TextStyle(color: sub, fontSize: 13, fontFamily: 'Inter', fontWeight: easyRead ? FontWeight.w700 : null, height: easyRead ? 1.35 : null)) : null,
       trailing: trailing ?? (trailingText != null 
           ? Row(
               mainAxisSize: MainAxisSize.min,
@@ -299,7 +299,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _copyContactEmail(BuildContext context, LanguageController langCtrl) async {
     await Clipboard.setData(const ClipboardData(text: _contactEmail));
     if (!context.mounted) return;
-    if (!ElderlyAccess.enabled(context, listen: false)) {
+    if (!EasyReadAccess.enabled(context, listen: false)) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(langCtrl.tr('email_copied')), duration: const Duration(seconds: 2)));
     }
   }
@@ -529,9 +529,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final purchaseCtrl = context.watch<PurchaseController>();
     final bgCtrl = context.watch<BackgroundController>();
     final langCtrl = context.watch<LanguageController>();
-    final elderlyCtrl = context.watch<ElderlyModeController>();
+    final easyReadCtrl = context.watch<EasyReadModeController>();
 
-    final availableTabs = (busCtrl.isSimpleMode || elderlyCtrl.enabled) ? [0, 2, 4, 5] : [0, 1, 2, 4, 5];
+    final availableTabs = (busCtrl.isSimpleMode || easyReadCtrl.enabled) ? [0, 2, 4, 5] : [0, 1, 2, 4, 5];
     final tabMap = { 
       0: langCtrl.tr('tab_search'), 
       1: langCtrl.tr('tab_route'), 
@@ -692,11 +692,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       isDark: isDark,
                       children: [
                         _buildTile(
-                          icon: Icons.elderly, title: langCtrl.tr('elderly_mode'), subtitle: langCtrl.tr('elderly_mode_desc'), isDark: isDark,
+                          icon: Icons.format_size, title: langCtrl.tr('easy_read_mode'), subtitle: langCtrl.tr('easy_read_mode_desc'), isDark: isDark,
                           trailing: _settingsSwitch(
-                            value: elderlyCtrl.enabled,
+                            value: easyReadCtrl.enabled,
                             isDark: isDark,
-                            onChanged: elderlyCtrl.setEnabled,
+                            onChanged: easyReadCtrl.setEnabled,
                           ),
                         ),
                         _buildTile(
@@ -787,7 +787,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     if (_versionLabel != null) ...[
                       const SizedBox(height: 12),
-                      Center(child: Text(_versionLabel!, style: TextStyle(color: ElderlyAccess.enabled(context) ? _readable : (isDark ? const Color(0xFF3A3A3C) : Colors.grey[400]), fontSize: 11, fontFamily: 'Inter', letterSpacing: 0.5))),
+                      Center(child: Text(_versionLabel!, style: TextStyle(color: EasyReadAccess.enabled(context) ? _readable : (isDark ? const Color(0xFF3A3A3C) : Colors.grey[400]), fontSize: 11, fontFamily: 'Inter', letterSpacing: 0.5))),
                     ],
                   ],
                 ),

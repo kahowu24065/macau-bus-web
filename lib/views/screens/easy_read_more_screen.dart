@@ -38,8 +38,8 @@ void openBusRoute(BuildContext context, String routeNo) {
   Navigator.of(context).popUntil((route) => route.isFirst);
 }
 
-class ElderlyMoreScreen extends StatelessWidget {
-  const ElderlyMoreScreen({super.key});
+class EasyReadMoreScreen extends StatelessWidget {
+  const EasyReadMoreScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -83,7 +83,7 @@ class ElderlyMoreScreen extends StatelessWidget {
             ),
             _MoreCard(
               icon: Icons.warning_amber_rounded,
-              title: lang.tr('elderly_diversion'),
+              title: lang.tr('easy_read_diversion'),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const _DiversionPage()),
               ),
@@ -203,7 +203,7 @@ class _RouteListPage extends StatelessWidget {
                   ? Padding(
                       padding: const EdgeInsets.all(16),
                       child: Text(
-                        context.read<LanguageController>().tr('elderly_list_empty'),
+                        context.read<LanguageController>().tr('easy_read_list_empty'),
                         softWrap: true,
                         style: TextStyle(color: fg, fontSize: 20, fontWeight: FontWeight.w700, height: 1.35),
                       ),
@@ -371,7 +371,7 @@ class _DiversionPageState extends State<_DiversionPage> {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
               child: Text(
-                lang.tr('elderly_diversion'),
+                lang.tr('easy_read_diversion'),
                 softWrap: true,
                 style: TextStyle(color: fg, fontSize: 32, fontWeight: FontWeight.w800, height: 1.2),
               ),
@@ -381,7 +381,7 @@ class _DiversionPageState extends State<_DiversionPage> {
                   ? Padding(
                       padding: const EdgeInsets.all(16),
                       child: Text(
-                        lang.tr('elderly_pick_route'),
+                        lang.tr('easy_read_pick_route'),
                         softWrap: true,
                         style: TextStyle(color: fg, fontSize: 22, fontWeight: FontWeight.w700, height: 1.35),
                       ),
@@ -398,7 +398,7 @@ class _DiversionPageState extends State<_DiversionPage> {
                           return Padding(
                             padding: const EdgeInsets.all(16),
                             child: Text(
-                              lang.tr('elderly_no_diversion'),
+                              lang.tr('easy_read_no_diversion'),
                               softWrap: true,
                               style: TextStyle(color: fg, fontSize: 22, fontWeight: FontWeight.w700, height: 1.35),
                             ),
@@ -415,7 +415,7 @@ class _DiversionPageState extends State<_DiversionPage> {
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                lang.tr('elderly_stop_closed'),
+                                lang.tr('easy_read_stop_closed'),
                                 softWrap: true,
                                 style: const TextStyle(color: Colors.redAccent, fontSize: 20, fontWeight: FontWeight.w800, height: 1.3),
                               ),
@@ -428,7 +428,7 @@ class _DiversionPageState extends State<_DiversionPage> {
                                       builder: (_) => _DetourDetailPage(stopCode: stop.code, stopName: stop.getLocalizedName(lang.currentLanguage)),
                                     ),
                                   ),
-                                  child: Text(lang.tr('elderly_diversion')),
+                                  child: Text(lang.tr('easy_read_diversion')),
                                 ),
                               ),
                               const SizedBox(height: 20),

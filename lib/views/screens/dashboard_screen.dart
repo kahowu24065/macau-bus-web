@@ -12,9 +12,9 @@ import '../../controllers/keyboard_controller.dart';
 import '../../controllers/language_controller.dart'; 
 import '../../services/gps_service.dart';
 import '../../services/otp_service.dart';
-import '../../utils/elderly_access.dart';
+import '../../utils/easy_read_access.dart';
 import '../routing/open_route_planner.dart';
-import '../screens/elderly_more_screen.dart';
+import '../screens/easy_read_more_screen.dart';
 import '../widgets/preserve_chrome.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -357,7 +357,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return langCtrl.tr('macau_bus_route_desc');
   }
 
-  Widget _elderlyCard({
+  Widget _easyReadCard({
     required bool isDark,
     required VoidCallback? onTap,
     required List<Widget> children,
@@ -389,10 +389,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildElderlyFavorites(bool isDark, BusController busCtrl, NavigationController navCtrl, LanguageController langCtrl) {
+  Widget _buildEasyReadFavorites(bool isDark, BusController busCtrl, NavigationController navCtrl, LanguageController langCtrl) {
     final fg = isDark ? Colors.white : const Color(0xFF111111);
     if (busCtrl.favoriteRoutes.isEmpty) {
-      return _elderlyCard(
+      return _easyReadCard(
         isDark: isDark,
         onTap: null,
         children: [
@@ -407,7 +407,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Column(
       children: [
         for (final route in busCtrl.favoriteRoutes)
-          _elderlyCard(
+          _easyReadCard(
             isDark: isDark,
             onTap: () {
               busCtrl.setRoute(route);
@@ -436,7 +436,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     navCtrl.changeTab(2);
   }
 
-  Widget _buildElderlyNearby(
+  Widget _buildEasyReadNearby(
     LocationController locCtrl,
     bool isDark,
     LanguageController langCtrl,
@@ -460,12 +460,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Column(
       children: [
         for (final raw in _nearbyStopsCache)
-          _elderlyNearbyCard(Map<String, dynamic>.from(raw as Map), isDark, fg, busCtrl, navCtrl),
+          _easyReadNearbyCard(Map<String, dynamic>.from(raw as Map), isDark, fg, busCtrl, navCtrl),
       ],
     );
   }
 
-  Widget _elderlyNearbyCard(
+  Widget _easyReadNearbyCard(
     Map<String, dynamic> stop,
     bool isDark,
     Color fg,
@@ -475,7 +475,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final stopName = stop['name'].toString().replaceAll(RegExp(r'[\(（].*?[\)）]'), '').trim();
     final dist = (double.tryParse(stop['distance'].toString()) ?? 0).round();
     final routes = ((stop['routes'] as List?) ?? const []).map((r) => r.toString()).where((r) => r.isNotEmpty).toList();
-    return _elderlyCard(
+    return _easyReadCard(
       isDark: isDark,
       onTap: null,
       children: [
@@ -500,13 +500,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildElderlyMoreButton(LanguageController langCtrl) {
+  Widget _buildEasyReadMoreButton(LanguageController langCtrl) {
     return SizedBox(
       width: double.infinity,
       child: FilledButton(
         onPressed: () {
           Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const ElderlyMoreScreen()),
+            MaterialPageRoute(builder: (_) => const EasyReadMoreScreen()),
           );
         },
         child: Text(langCtrl.tr('more_options'), softWrap: true),
@@ -522,7 +522,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final keyboardCtrl = context.watch<KeyboardController>(); 
     final langCtrl = context.watch<LanguageController>(); 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final elderly = ElderlyAccess.enabled(context);
+    final easyRead = EasyReadAccess.enabled(context);
     
     _checkAndFetchNearby(locCtrl, langCtrl);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -583,7 +583,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           icon: locCtrl.isLocating ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amber)) : Icon(Icons.my_location, color: locCtrl.isFollowingUser ? Colors.green : Colors.amber),
                           onPressed: () => GpsService.toggleGpsAndAutoSelectStop(context, busCtrl, locCtrl),
                         ),
-                        if (!busCtrl.isSimpleMode && !elderly)
+                        if (!busCtrl.isSimpleMode && !easyRead)
                           IconButton(icon: const Icon(Icons.directions, color: Colors.blueAccent), onPressed: () => openRoutePlanner(context)),
                       ]
                     ),
@@ -600,15 +600,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     16,
                     MediaQuery.paddingOf(context).bottom,
                   ),
-                  children: elderly
+                  children: easyRead
                       ? [
                           _buildSectionTitle(Icons.star, langCtrl.tr('tab_favorite'), isDark),
-                          _buildElderlyFavorites(isDark, busCtrl, navCtrl, langCtrl),
+                          _buildEasyReadFavorites(isDark, busCtrl, navCtrl, langCtrl),
                           const SizedBox(height: 16),
                           _buildSectionTitle(Icons.location_on, langCtrl.tr('nearby_stops'), isDark),
-                          _buildElderlyNearby(locCtrl, isDark, langCtrl, busCtrl, navCtrl),
+                          _buildEasyReadNearby(locCtrl, isDark, langCtrl, busCtrl, navCtrl),
                           const SizedBox(height: 16),
-                          _buildElderlyMoreButton(langCtrl),
+                          _buildEasyReadMoreButton(langCtrl),
                         ]
                       : [
                           _buildSectionTitle(Icons.access_time, langCtrl.tr('recent_searches'), isDark),
@@ -658,13 +658,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   routeDesc,
                                   softWrap: true,
                                   style: TextStyle(
-                                    color: elderly
+                                    color: easyRead
                                         ? (isDark ? Colors.white : const Color(0xFF111111))
                                         : (isDark ? Colors.grey[400] : Colors.grey[600]),
                                     fontSize: 14,
                                   ),
-                                  maxLines: elderly ? null : 1,
-                                  overflow: elderly ? TextOverflow.visible : TextOverflow.ellipsis,
+                                  maxLines: easyRead ? null : 1,
+                                  overflow: easyRead ? TextOverflow.visible : TextOverflow.ellipsis,
                                 )),
                               ],
                             ),

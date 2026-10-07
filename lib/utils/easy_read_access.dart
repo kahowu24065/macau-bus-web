@@ -1,14 +1,14 @@
 import 'package:flutter/widgets.dart';
 import 'package:provider/provider.dart';
 
-import '../controllers/elderly_mode_controller.dart';
+import '../controllers/easy_read_mode_controller.dart';
 
-/// Reads elderly mode without forcing every screen test to provide it.
+/// Reads easy read mode without forcing every screen test to provide it.
 /// Missing controller means off, which is the default.
-class ElderlyAccess {
+class EasyReadAccess {
   static bool enabled(BuildContext context, {bool listen = true}) {
     try {
-      return Provider.of<ElderlyModeController>(context, listen: listen).enabled;
+      return Provider.of<EasyReadModeController>(context, listen: listen).enabled;
     } on ProviderNotFoundException {
       return false;
     }

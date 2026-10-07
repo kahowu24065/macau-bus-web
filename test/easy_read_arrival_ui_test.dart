@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:macau_bus_app/controllers/background_controller.dart';
 import 'package:macau_bus_app/controllers/bus_controller.dart';
-import 'package:macau_bus_app/controllers/elderly_mode_controller.dart';
+import 'package:macau_bus_app/controllers/easy_read_mode_controller.dart';
 import 'package:macau_bus_app/controllers/language_controller.dart';
 import 'package:macau_bus_app/controllers/location_controller.dart';
 import 'package:macau_bus_app/controllers/navigation_controller.dart';
@@ -67,7 +67,7 @@ void main() {
     ArrivalSpeaker.shared = ArrivalSpeaker();
   });
 
-  testWidgets('elderly mode shows plain arrival text and reads it aloud', (tester) async {
+  testWidgets('easy read mode shows plain arrival text and reads it aloud', (tester) async {
     OpenDataConfig.instance.debugApply(
       configRealtime: true,
       configRouteNotices: true,
@@ -106,7 +106,7 @@ void main() {
           ChangeNotifierProvider(create: (_) => LocationController()),
           ChangeNotifierProvider(create: (_) => BackgroundController()),
           ChangeNotifierProvider(create: (_) => NavigationController()),
-          ChangeNotifierProvider(create: (_) => ElderlyModeController.fixed(true)),
+          ChangeNotifierProvider(create: (_) => EasyReadModeController.fixed(true)),
         ],
         child: MaterialApp(
           theme: ThemeData.dark(),

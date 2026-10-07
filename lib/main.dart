@@ -6,9 +6,9 @@ import 'controllers/purchase_controller.dart';
 import 'services/background_tracker_service.dart';
 import 'services/notification_service.dart';
 import 'controllers/theme_controller.dart';
-import 'controllers/elderly_mode_controller.dart';
-import 'theme/elderly_theme.dart';
-import 'views/widgets/elderly_tap_haptics.dart';
+import 'controllers/easy_read_mode_controller.dart';
+import 'theme/easy_read_theme.dart';
+import 'views/widgets/easy_read_tap_haptics.dart';
 import 'views/widgets/preserve_chrome.dart';
 import 'controllers/bus_controller.dart';
 import 'controllers/location_controller.dart';
@@ -45,7 +45,7 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeController()),
-        ChangeNotifierProvider(create: (_) => ElderlyModeController()),
+        ChangeNotifierProvider(create: (_) => EasyReadModeController()),
         ChangeNotifierProvider(create: (_) => BusController()),
         ChangeNotifierProvider(create: (_) => LocationController()),
         ChangeNotifierProvider(create: (_) => NavigationController()),
@@ -93,18 +93,18 @@ class MacauBusApp extends StatelessWidget {
       title: '巴士預報-MBKa', 
       debugShowCheckedModeBanner: false,
       builder: (context, child) {
-        final elderlyOn = context.watch<ElderlyModeController>().enabled;
-        if (!elderlyOn || child == null) return child ?? const SizedBox.shrink();
+        final easyReadOn = context.watch<EasyReadModeController>().enabled;
+        if (!easyReadOn || child == null) return child ?? const SizedBox.shrink();
         final base = Theme.of(context);
         final mq = MediaQuery.of(context);
-        final scaled = mq.textScaler.scale(1) * ElderlyTheme.textScale;
-        return ElderlyChrome(
+        final scaled = mq.textScaler.scale(1) * EasyReadTheme.textScale;
+        return EasyReadChrome(
           baseTheme: base,
           child: MediaQuery(
             data: mq.copyWith(textScaler: TextScaler.linear(scaled)),
             child: Theme(
-              data: ElderlyTheme.apply(base),
-              child: ElderlyTapHaptics(child: child),
+              data: EasyReadTheme.apply(base),
+              child: EasyReadTapHaptics(child: child),
             ),
           ),
         );

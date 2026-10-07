@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../controllers/language_controller.dart';
-import '../../utils/elderly_access.dart';
+import '../../utils/easy_read_access.dart';
 import '../../services/dsat_timetable.dart';
 import '../../utils/service_label_i18n.dart';
 
@@ -332,7 +332,7 @@ class _TimetableDialogState extends State<TimetableDialog> {
                         ),
                       ),
                     ),
-                    if (!ElderlyAccess.enabled(context))
+                    if (!EasyReadAccess.enabled(context))
                       Padding(
                         padding: const EdgeInsets.fromLTRB(0, 10, 0, 4),
                         child: Text(

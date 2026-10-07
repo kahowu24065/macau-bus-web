@@ -5,7 +5,7 @@ import '../../controllers/bus_controller.dart';
 import '../../controllers/language_controller.dart';
 import '../../controllers/location_controller.dart';
 import '../../controllers/navigation_controller.dart';
-import '../../utils/elderly_access.dart';
+import '../../utils/easy_read_access.dart';
 import '../../utils/route_result_helper.dart';
 import '../widgets/route_liquid_glass_nav.dart';
 import '../widgets/routing_bottom_sheet.dart';
@@ -16,7 +16,7 @@ void openRoutePlanner(BuildContext parentContext) {
   final navCtrl = parentContext.read<NavigationController>();
   final locCtrl = parentContext.read<LocationController>();
   final langCtrl = parentContext.read<LanguageController>();
-  final elderly = ElderlyAccess.enabled(parentContext, listen: false);
+  final easyRead = EasyReadAccess.enabled(parentContext, listen: false);
 
   bool wasRouteCalculated = false;
   navCtrl.setPlanningRoute(true);
@@ -54,7 +54,7 @@ void openRoutePlanner(BuildContext parentContext) {
           Navigator.pop(sheetContext);
           busCtrl.clearCustomMapPoints();
           if (itineraries.isNotEmpty) {
-            if (onlyGhostsLeft && !elderly) {
+            if (onlyGhostsLeft && !easyRead) {
               ScaffoldMessenger.of(parentContext).showSnackBar(RouteLiquidGlassNavStyle.snackBar(context: parentContext, content: Text(langCtrl.tr('warning_offline')), backgroundColor: Colors.redAccent));
             }
             navCtrl.addHistory(itineraries, destination, onlyGhostsLeft);

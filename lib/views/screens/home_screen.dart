@@ -22,7 +22,7 @@ import '../../controllers/keyboard_controller.dart';
 import '../../controllers/background_controller.dart';
 import '../../controllers/language_controller.dart';
 import '../../controllers/purchase_controller.dart';
-import '../../utils/elderly_access.dart';
+import '../../utils/easy_read_access.dart';
 import '../widgets/preserve_chrome.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
@@ -37,11 +37,11 @@ bool showHomeBannerSlot({
   required bool showMapView,
   required int selectedIndex,
   required bool isPlanningRoute,
-  bool elderlyMode = false,
+  bool easyReadMode = false,
 }) {
   if (isWeb || isPro) return false;
-  // Elderly mode keeps the banner on the settings tab only.
-  if (elderlyMode && selectedIndex != 5) return false;
+  // Easy Read Mode keeps the banner on the settings tab only.
+  if (easyReadMode && selectedIndex != 5) return false;
   if (showMapView || isPlanningRoute) return false;
   if (selectedIndex == 2 || selectedIndex == 3) return false;
   return true;
@@ -104,7 +104,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final isSimpleMode = context.select<BusController, bool>(
       (c) => c.isSimpleMode,
     );
-    final elderly = ElderlyAccess.enabled(context);
+    final easyRead = EasyReadAccess.enabled(context);
     final bgPath = context.select<BackgroundController, String?>(
       (c) => c.backgroundImagePath,
     );
@@ -120,7 +120,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final hasCustomBg = bgPath != null;
 
-    final visibleIndices = (isSimpleMode || elderly) ? [0, 2, 4, 5] : [0, 1, 2, 4, 5];
+    final visibleIndices = (isSimpleMode || easyRead) ? [0, 2, 4, 5] : [0, 1, 2, 4, 5];
 
     if (isSimpleMode && showMapView) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -181,7 +181,7 @@ class _HomeScreenState extends State<HomeScreen> {
       showMapView: showMapView,
       selectedIndex: selectedIndex,
       isPlanningRoute: isPlanningRoute,
-      elderlyMode: elderly,
+      easyReadMode: easyRead,
     );
     final bannerH =
         showBannerAd ? RouteLiquidGlassNavStyle.bannerAdHeight : 0.0;
@@ -194,7 +194,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Container(
             color: isDark
                 ? Colors.black
-                : (elderly ? Colors.white : const Color(0xFFF5F5F7)),
+                : (easyRead ? Colors.white : const Color(0xFFF5F5F7)),
           ),
         ),
         if (bgPath != null)
@@ -296,7 +296,7 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 CustomBannerAd(
                   visible: showBannerAd,
-                  allowInElderlyMode: selectedIndex == 5,
+                  allowInEasyReadMode: selectedIndex == 5,
                   onOccupiedHeight: (h) {
                     if (h == _bannerOccupiedHeight) return;
                     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -321,7 +321,7 @@ class _HomeScreenState extends State<HomeScreen> {
             selectedColor: isDark
                 ? kRouteLgAccent
                 : const Color.fromARGB(255, 255, 140, 0),
-            unselectedColor: elderly
+            unselectedColor: easyRead
                 ? (isDark ? Colors.white : Colors.black)
                 : (isDark
                     ? Colors.white
@@ -368,7 +368,7 @@ class GlobalCustomKeyboard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final elderly = ElderlyAccess.enabled(context);
+    final easyRead = EasyReadAccess.enabled(context);
 
     final keyboardCtrl = context.watch<KeyboardController>();
     final busCtrl = context.read<BusController>();
@@ -419,7 +419,7 @@ class GlobalCustomKeyboard extends StatelessWidget {
                         icon,
                         color: isEnabled
                             ? (isDark ? Colors.white : Colors.black)
-                            : (elderly ? (isDark ? Colors.white : Colors.black) : Colors.grey[600]),
+                            : (easyRead ? (isDark ? Colors.white : Colors.black) : Colors.grey[600]),
                         size: 26,
                       )
                     : Text(
@@ -429,7 +429,7 @@ class GlobalCustomKeyboard extends StatelessWidget {
                           fontWeight: FontWeight.w500,
                           color: isEnabled
                               ? (isDark ? Colors.white : Colors.black)
-                              : (elderly ? (isDark ? Colors.white : Colors.black) : Colors.grey[600]),
+                              : (easyRead ? (isDark ? Colors.white : Colors.black) : Colors.grey[600]),
                         ),
                       ),
               ),

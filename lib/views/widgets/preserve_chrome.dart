@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
-import '../../theme/elderly_theme.dart';
-import '../../utils/elderly_access.dart';
+import '../../theme/easy_read_theme.dart';
+import '../../utils/easy_read_access.dart';
 
-/// Holds the theme from before elderly overrides, so chrome can opt out.
-class ElderlyChrome extends InheritedWidget {
-  const ElderlyChrome({
+/// Holds the theme from before easy read overrides, so chrome can opt out.
+class EasyReadChrome extends InheritedWidget {
+  const EasyReadChrome({
     super.key,
     required this.baseTheme,
     required super.child,
@@ -14,16 +14,16 @@ class ElderlyChrome extends InheritedWidget {
   final ThemeData baseTheme;
 
   static ThemeData? maybeOf(BuildContext context) {
-    return context.dependOnInheritedWidgetOfExactType<ElderlyChrome>()?.baseTheme;
+    return context.dependOnInheritedWidgetOfExactType<EasyReadChrome>()?.baseTheme;
   }
 
   @override
-  bool updateShouldNotify(ElderlyChrome oldWidget) =>
+  bool updateShouldNotify(EasyReadChrome oldWidget) =>
       oldWidget.baseTheme != baseTheme;
 }
 
 /// Keeps an existing header on the normal text scale and theme.
-/// When elderly mode is off this returns [child] unchanged.
+/// When easy read mode is off this returns [child] unchanged.
 class PreserveChrome extends StatelessWidget {
   const PreserveChrome({super.key, required this.child});
 
@@ -31,13 +31,13 @@ class PreserveChrome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!ElderlyAccess.enabled(context)) return child;
+    if (!EasyReadAccess.enabled(context)) return child;
     final mq = MediaQuery.of(context);
     final restored = MediaQuery(
-      data: mq.copyWith(textScaler: ElderlyTheme.undoTextScale(mq.textScaler)),
+      data: mq.copyWith(textScaler: EasyReadTheme.undoTextScale(mq.textScaler)),
       child: child,
     );
-    final base = ElderlyChrome.maybeOf(context);
+    final base = EasyReadChrome.maybeOf(context);
     if (base == null) return restored;
     return Theme(data: base, child: restored);
   }

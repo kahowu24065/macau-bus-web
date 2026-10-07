@@ -2,8 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-/// Visual overrides used only while elderly mode is on.
-abstract final class ElderlyTheme {
+/// Visual overrides used only while easy read mode is on.
+abstract final class EasyReadTheme {
   static const double textScale = 1.35;
   static const Color lightForeground = Color(0xFF111111);
   static const Color lightAccent = Color(0xFFE65100);

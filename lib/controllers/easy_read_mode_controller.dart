@@ -2,19 +2,19 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Persisted accessibility mode. Off unless the user turns it on.
-class ElderlyModeController extends ChangeNotifier {
-  static const prefKey = 'elderly_mode';
+class EasyReadModeController extends ChangeNotifier {
+  static const prefKey = 'easy_read_mode';
 
   bool enabled = false;
   bool _userSet = false;
   late final Future<void> ready;
 
-  ElderlyModeController() {
+  EasyReadModeController() {
     ready = _load();
   }
 
   /// Does not read preferences. For tests and previews.
-  ElderlyModeController.fixed(this.enabled) {
+  EasyReadModeController.fixed(this.enabled) {
     ready = Future<void>.value();
   }
 

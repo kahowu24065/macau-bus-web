@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../controllers/bus_controller.dart';
 import '../controllers/location_controller.dart';
 import '../controllers/language_controller.dart';
-import '../utils/elderly_access.dart';
+import '../utils/easy_read_access.dart';
 import '../views/widgets/route_liquid_glass_nav.dart';
 
 class GpsService {
@@ -19,7 +19,7 @@ class GpsService {
     
     // 🌟 即時讀取語言設定，確保獲取最新狀態
     final langCtrl = context.read<LanguageController>();
-    final allowSnack = showSnackbar && !ElderlyAccess.enabled(context, listen: false);
+    final allowSnack = showSnackbar && !EasyReadAccess.enabled(context, listen: false);
 
     if (allowSnack) {
       ScaffoldMessenger.of(context).clearSnackBars();

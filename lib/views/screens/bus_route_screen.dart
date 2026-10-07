@@ -21,9 +21,9 @@ import '../widgets/route_liquid_glass_nav.dart';
 import '../../constants/app_translations.dart';
 import '../../constants/feature_flags.dart';
 import '../../services/arrival_speaker.dart';
-import '../../utils/elderly_access.dart';
-import '../../utils/elderly_arrival.dart';
-import '../screens/elderly_more_screen.dart';
+import '../../utils/easy_read_access.dart';
+import '../../utils/easy_read_arrival.dart';
+import '../screens/easy_read_more_screen.dart';
 import '../widgets/fare_dialog.dart';
 import '../widgets/preserve_chrome.dart';
 import '../widgets/timetable_dialog.dart';
@@ -108,8 +108,8 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     final localizedStopName = stop.getLocalizedName(langCtrl.currentLanguage);
     final cacheKey = '${_busCtrl.currentRoute}_${stopCode}_${langCtrl.currentLanguage}';
 
-    final elderly = ElderlyAccess.enabled(context, listen: false);
-    if (!elderly) {
+    final easyRead = EasyReadAccess.enabled(context, listen: false);
+    if (!easyRead) {
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -136,7 +136,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
       debugPrint('獲取車站官方通告失敗: $e');
     }
 
-    if (mounted && !elderly) {
+    if (mounted && !easyRead) {
       Navigator.of(context).pop(); 
     }
 
@@ -160,7 +160,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
           ],
         ),
         content: SingleChildScrollView(
-          child: elderly
+          child: easyRead
             ? Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -329,7 +329,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     );
   }
 
-  List<Map<String, String>> _getUpcomingBusesInfo(BusController busCtrl, LanguageController langCtrl, {required bool elderly}) {
+  List<Map<String, String>> _getUpcomingBusesInfo(BusController busCtrl, LanguageController langCtrl, {required bool easyRead}) {
     if (!busCtrl.showLiveArrivals) return [];
     if (busCtrl.etaData == null && busCtrl.allBusesList.isEmpty) return [];
     
@@ -395,14 +395,14 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
            
            if (diff == 1) {
              status = approachingStatus(
-               elderly: elderly,
+               easyRead: easyRead,
                stopsAway: 1,
                estimatedMins: estimatedMins,
                tr: langCtrl.tr,
              );
            } else {
              status = approachingStatus(
-               elderly: elderly,
+               easyRead: easyRead,
                stopsAway: diff,
                estimatedMins: estimatedMins,
                tr: langCtrl.tr,
@@ -410,7 +410,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
            }
         } else {
            status = approachingStatus(
-             elderly: elderly,
+             easyRead: easyRead,
              stopsAway: 0,
              estimatedMins: 0,
              tr: langCtrl.tr,
@@ -443,7 +443,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
           'status': cleanEta.isEmpty
               ? langCtrl.tr('click_to_update')
               : presentArrivalStatus(
-                  elderly: elderly,
+                  easyRead: easyRead,
                   status: AppTranslations.localizeEtaStatus(cleanEta, langCtrl.tr),
                   tr: langCtrl.tr,
                 ),
@@ -528,7 +528,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                   onPressed: () {
                                     Navigator.pop(dialogCtx); busCtrl.setAlightingStop(stop.seq); 
                                     locCtrl.toggleLocationTracking((loc) { busCtrl.checkAlightingAlarm(loc); });
-                                    if (!ElderlyAccess.enabled(context, listen: false)) {
+                                    if (!EasyReadAccess.enabled(context, listen: false)) {
                                       ScaffoldMessenger.of(context).showSnackBar(RouteLiquidGlassNavStyle.snackBar(context: context, content: Text(langCtrl.tr('gps_opened')), backgroundColor: Colors.green));
                                     }
                                     Navigator.pop(context); 
@@ -610,7 +610,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
 
     final isFavorite = busCtrl.favoriteRoutes.contains(busCtrl.currentRoute);
     final hasRoute = busCtrl.currentRoute.isNotEmpty;
-    final elderly = ElderlyAccess.enabled(context);
+    final easyRead = EasyReadAccess.enabled(context);
 
     final alertStops = busCtrl.stopsList
         .where((stop) => busCtrl.showRouteNotices && _hasAnyStopWarning(stop))
@@ -618,7 +618,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
 
     List<Widget> combinedAlertWidgets = [];
 
-    if (busCtrl.showRouteNotices && !elderly) {
+    if (busCtrl.showRouteNotices && !easyRead) {
     for (var alert in _routeAlerts) {
       combinedAlertWidgets.add(
         Padding(
@@ -745,7 +745,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                               hasRoute ? busCtrl.currentRoute : '--', 
                               style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 64, fontWeight: FontWeight.bold, height: 1.0),
                             ),
-                            if (hasRoute && !elderly) 
+                            if (hasRoute && !easyRead) 
                               InkWell(
                                 onTap: () => showBusFareDialog(context),
                                 borderRadius: BorderRadius.circular(12),
@@ -873,7 +873,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
               ),
               ),
               Divider(height: 1, color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.1)),
-              if (elderly)
+              if (easyRead)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
                   child: SizedBox(
@@ -881,7 +881,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                     child: FilledButton(
                       onPressed: () {
                         Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const ElderlyMoreScreen()),
+                          MaterialPageRoute(builder: (_) => const EasyReadMoreScreen()),
                         );
                       },
                       child: Text(langCtrl.tr('more_options'), softWrap: true),
@@ -954,7 +954,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0), 
                                               child: Builder(
                                                 builder: (context) {
-                                                  final upcomingInfo = _getUpcomingBusesInfo(busCtrl, langCtrl, elderly: elderly);
+                                                  final upcomingInfo = _getUpcomingBusesInfo(busCtrl, langCtrl, easyRead: easyRead);
                                                   return Column(
                                                     crossAxisAlignment: CrossAxisAlignment.start,
                                                     children: [
@@ -1001,11 +1001,11 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                                           ),
                                                         ],
                                                       ),
-                                                      if (elderly && busCtrl.showRouteNotices && _hasAnyStopWarning(stop))
+                                                      if (easyRead && busCtrl.showRouteNotices && _hasAnyStopWarning(stop))
                                                         Padding(
                                                           padding: const EdgeInsets.only(top: 6),
                                                           child: Text(
-                                                            langCtrl.tr('elderly_stop_closed'),
+                                                            langCtrl.tr('easy_read_stop_closed'),
                                                             softWrap: true,
                                                             style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w800, fontSize: 18, height: 1.3),
                                                           ),
@@ -1052,7 +1052,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                                                       final statusText = busInfo['status'] ?? '';
                                                                       final statusColor = isDark ? (isSecondBus ? Colors.amber.shade200 : Colors.amber) : (isSecondBus ? Colors.orange.shade500 : Colors.orange.shade700);
                                                                       final plate = busInfo['plate'];
-                                                                      if (!elderly) {
+                                                                      if (!easyRead) {
                                                                         return Padding(
                                                                           padding: EdgeInsets.only(top: isSecondBus ? 6.0 : 0.0),
                                                                           child: Row(
@@ -1134,7 +1134,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                               InkWell(
                                 onTap: () { busCtrl.selectStop(stop.seq); busCtrl.fetchBusETA(); },
                                 child: Padding(
-                                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: elderly ? 16 : 6), 
+                                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: easyRead ? 16 : 6), 
                                   child: Row(
                                     crossAxisAlignment: CrossAxisAlignment.center,
                                     children: [
@@ -1158,11 +1158,11 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                                 ),
                                               ],
                                             ),
-                                            if (elderly && busCtrl.showRouteNotices && _hasAnyStopWarning(stop))
+                                            if (easyRead && busCtrl.showRouteNotices && _hasAnyStopWarning(stop))
                                               Padding(
                                                 padding: const EdgeInsets.only(top: 6),
                                                 child: Text(
-                                                  langCtrl.tr('elderly_stop_closed'),
+                                                  langCtrl.tr('easy_read_stop_closed'),
                                                   softWrap: true,
                                                   style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w800, fontSize: 18, height: 1.3),
                                                 ),

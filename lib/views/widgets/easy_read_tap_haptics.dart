@@ -2,17 +2,17 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 /// Light haptic on taps. Scrolls move far enough that they do not buzz.
-/// Mounted only while elderly mode is on.
-class ElderlyTapHaptics extends StatefulWidget {
-  const ElderlyTapHaptics({super.key, required this.child});
+/// Mounted only while easy read mode is on.
+class EasyReadTapHaptics extends StatefulWidget {
+  const EasyReadTapHaptics({super.key, required this.child});
 
   final Widget child;
 
   @override
-  State<ElderlyTapHaptics> createState() => _ElderlyTapHapticsState();
+  State<EasyReadTapHaptics> createState() => _EasyReadTapHapticsState();
 }
 
-class _ElderlyTapHapticsState extends State<ElderlyTapHaptics> {
+class _EasyReadTapHapticsState extends State<EasyReadTapHaptics> {
   Offset? _down;
 
   @override
