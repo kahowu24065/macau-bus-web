@@ -8,6 +8,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 
+import '../../utils/easy_read_access.dart';
+
 /// Accent for selected tab — matches app amber.
 const Color kRouteLgAccent = Color(0xFFFFC107);
 
@@ -20,6 +22,12 @@ class RouteLiquidGlassNavItem {
 /// Pre-tuned styles for the liquid-glass bottom nav.
 abstract final class RouteLiquidGlassNavStyle {
   static const double barHeight = 68;
+
+  /// Taller bar while easy read mode is on. [barHeight] stays the normal size.
+  static const double easyReadBarHeight = 88;
+
+  static double barHeightOf(BuildContext context) =>
+      EasyReadAccess.enabled(context) ? easyReadBarHeight : barHeight;
   /// Rounder end caps now that the bar is taller.
   static const double kSharedCornerRadius = 32;
 
@@ -66,7 +74,7 @@ abstract final class RouteLiquidGlassNavStyle {
     BuildContext context, {
     double bannerHeight = 0,
   }) =>
-      barHeight +
+      barHeightOf(context) +
       barBottomOffset(
         MediaQuery.viewPaddingOf(context).bottom,
         ios: isIos(context),
@@ -199,28 +207,33 @@ abstract final class RouteLiquidGlassNavStyle {
   static LiquidGlassTabItemStyle itemStyle({
     Color selected = kRouteLgAccent,
     Color unselected = Colors.white,
+    bool easyRead = false,
   }) =>
       LiquidGlassTabItemStyle(
         selectedColor: selected,
         unselectedColor: unselected,
-        iconSize: 24,
-        labelFontSize: 11,
-        iconLabelGap: 3,
-        underGlassIconSize: 26,
-        underGlassLabelFontSize: 11,
+        iconSize: easyRead ? 32 : 24,
+        labelFontSize: easyRead ? 14 : 11,
+        iconLabelGap: easyRead ? 4 : 3,
+        underGlassIconSize: easyRead ? 34 : 26,
+        underGlassLabelFontSize: easyRead ? 14 : 11,
         selectedFontWeight: FontWeight.w700,
-        unselectedFontWeight: FontWeight.w500,
+        unselectedFontWeight: easyRead ? FontWeight.w700 : FontWeight.w500,
       );
 
   static List<LiquidGlassTabBarItem> toItems(
-          List<RouteLiquidGlassNavItem> items) =>
+    List<RouteLiquidGlassNavItem> items, {
+    bool easyRead = false,
+  }) =>
       [
         for (final t in items)
           LiquidGlassTabBarItem(
             label: t.label,
             iconBuilder: (context, i) => Icon(
               t.icon,
-              size: i.underGlass == true ? 28 : 24,
+              size: easyRead
+                  ? (i.underGlass == true ? 36 : 32)
+                  : (i.underGlass == true ? 28 : 24),
               color: i.color,
             ),
           ),
@@ -342,9 +355,12 @@ class RouteLiquidGlassNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Near full-width so each tab cell is wide enough for PT labels.
+    final easyRead = EasyReadAccess.enabled(context);
     final w = width ??
         (MediaQuery.sizeOf(context).width - 20).clamp(300.0, 520.0);
-    final h = RouteLiquidGlassNavStyle.barHeight;
+    final h = easyRead
+        ? RouteLiquidGlassNavStyle.easyReadBarHeight
+        : RouteLiquidGlassNavStyle.barHeight;
     final ios = RouteLiquidGlassNavStyle.isIos(context);
     // Dock the capsule. The package adds padding.bottom on top of
     // margin.bottom; cancel that so we don't stack a second inset
@@ -377,7 +393,7 @@ class RouteLiquidGlassNav extends StatelessWidget {
         ),
         // 2) Package bar: clear capsule + refractive selection lens.
         LiquidGlassTabBar.withImpeller(
-          items: RouteLiquidGlassNavStyle.toItems(items),
+          items: RouteLiquidGlassNavStyle.toItems(items, easyRead: easyRead),
           selectedIndex: selectedIndex,
           onChanged: onChanged,
           width: w,
@@ -388,6 +404,7 @@ class RouteLiquidGlassNav extends StatelessWidget {
           itemStyle: RouteLiquidGlassNavStyle.itemStyle(
             selected: selectedColor,
             unselected: unselectedColor,
+            easyRead: easyRead,
           ),
           pillStyle: RouteLiquidGlassNavStyle.pillStyle,
         ),

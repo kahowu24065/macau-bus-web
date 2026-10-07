@@ -5,15 +5,20 @@ import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, Tar
 import '../../constants/admob_ids.dart';
 import 'package:provider/provider.dart';
 import '../../controllers/purchase_controller.dart';
+import '../../utils/easy_read_access.dart';
 
 class CustomBannerAd extends StatelessWidget {
   final bool visible;
   final ValueChanged<double>? onOccupiedHeight;
 
+  /// Settings is the only slot that stays up in easy read mode.
+  final bool allowInEasyReadMode;
+
   const CustomBannerAd({
     super.key,
     this.visible = true,
     this.onOccupiedHeight,
+    this.allowInEasyReadMode = false,
   });
 
   @override
@@ -25,8 +30,10 @@ class CustomBannerAd extends StatelessWidget {
       return const SizedBox.shrink();
     }
     final isPro = context.select<PurchaseController, bool>((c) => c.isPro);
+    final easyRead = EasyReadAccess.enabled(context);
+    final allowed = !easyRead || allowInEasyReadMode;
     return _BannerAdHost(
-      show: visible && !isPro,
+      show: visible && !isPro && allowed,
       onOccupiedHeight: onOccupiedHeight,
     );
   }

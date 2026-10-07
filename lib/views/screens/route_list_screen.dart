@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../controllers/bus_controller.dart';
 import '../../controllers/navigation_controller.dart';
 import '../../controllers/language_controller.dart';
+import '../widgets/preserve_chrome.dart';
 
 class RouteListScreen extends StatefulWidget {
   const RouteListScreen({super.key});
@@ -146,7 +147,8 @@ class _RouteListScreenState extends State<RouteListScreen> {
       backgroundColor: Colors.transparent,
       body: Column(
         children: [
-          ClipRect(
+          PreserveChrome(
+          child: ClipRect(
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
               child: Container(
@@ -169,6 +171,7 @@ class _RouteListScreenState extends State<RouteListScreen> {
                 ),
               ),
             ),
+          ),
           ),
           Divider(height: 1, color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.1)),
           Expanded(

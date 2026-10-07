@@ -22,6 +22,8 @@ import '../../controllers/keyboard_controller.dart';
 import '../../controllers/background_controller.dart';
 import '../../controllers/language_controller.dart';
 import '../../controllers/purchase_controller.dart';
+import '../../utils/easy_read_access.dart';
+import '../widgets/preserve_chrome.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
 /// Home-shell AdMob banner, including the 50px slot reserved above the tab bar.
@@ -35,8 +37,11 @@ bool showHomeBannerSlot({
   required bool showMapView,
   required int selectedIndex,
   required bool isPlanningRoute,
+  bool easyReadMode = false,
 }) {
   if (isWeb || isPro) return false;
+  // Easy Read Mode keeps the banner on the settings tab only.
+  if (easyReadMode && selectedIndex != 5) return false;
   if (showMapView || isPlanningRoute) return false;
   if (selectedIndex == 2 || selectedIndex == 3) return false;
   return true;
@@ -99,6 +104,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final isSimpleMode = context.select<BusController, bool>(
       (c) => c.isSimpleMode,
     );
+    final easyRead = EasyReadAccess.enabled(context);
     final bgPath = context.select<BackgroundController, String?>(
       (c) => c.backgroundImagePath,
     );
@@ -114,7 +120,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final hasCustomBg = bgPath != null;
 
-    final visibleIndices = isSimpleMode ? [0, 2, 4, 5] : [0, 1, 2, 4, 5];
+    final visibleIndices = (isSimpleMode || easyRead) ? [0, 2, 4, 5] : [0, 1, 2, 4, 5];
 
     if (isSimpleMode && showMapView) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -175,6 +181,7 @@ class _HomeScreenState extends State<HomeScreen> {
       showMapView: showMapView,
       selectedIndex: selectedIndex,
       isPlanningRoute: isPlanningRoute,
+      easyReadMode: easyRead,
     );
     final bannerH =
         showBannerAd ? RouteLiquidGlassNavStyle.bannerAdHeight : 0.0;
@@ -185,7 +192,9 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         Positioned.fill(
           child: Container(
-            color: isDark ? Colors.black : const Color(0xFFF5F5F7),
+            color: isDark
+                ? Colors.black
+                : (easyRead ? Colors.white : const Color(0xFFF5F5F7)),
           ),
         ),
         if (bgPath != null)
@@ -287,6 +296,7 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 CustomBannerAd(
                   visible: showBannerAd,
+                  allowInEasyReadMode: selectedIndex == 5,
                   onOccupiedHeight: (h) {
                     if (h == _bannerOccupiedHeight) return;
                     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -304,15 +314,18 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-        RouteLiquidGlassNav(
+        PreserveChrome(
+          child: RouteLiquidGlassNav(
             selectedIndex: navBarIndex,
             isDark: isDark,
             selectedColor: isDark
                 ? kRouteLgAccent
                 : const Color.fromARGB(255, 255, 140, 0),
-            unselectedColor: isDark
-                ? Colors.white
-                : Colors.black.withValues(alpha: 0.55),
+            unselectedColor: easyRead
+                ? (isDark ? Colors.white : Colors.black)
+                : (isDark
+                    ? Colors.white
+                    : Colors.black.withValues(alpha: 0.55)),
             items: [
               for (final spec in navItems)
                 RouteLiquidGlassNavItem(
@@ -336,6 +349,7 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             },
           ),
+        ),
       ],
     ),
     );
@@ -354,6 +368,7 @@ class GlobalCustomKeyboard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final easyRead = EasyReadAccess.enabled(context);
 
     final keyboardCtrl = context.watch<KeyboardController>();
     final busCtrl = context.read<BusController>();
@@ -404,7 +419,7 @@ class GlobalCustomKeyboard extends StatelessWidget {
                         icon,
                         color: isEnabled
                             ? (isDark ? Colors.white : Colors.black)
-                            : Colors.grey[600],
+                            : (easyRead ? (isDark ? Colors.white : Colors.black) : Colors.grey[600]),
                         size: 26,
                       )
                     : Text(
@@ -414,7 +429,7 @@ class GlobalCustomKeyboard extends StatelessWidget {
                           fontWeight: FontWeight.w500,
                           color: isEnabled
                               ? (isDark ? Colors.white : Colors.black)
-                              : Colors.grey[600],
+                              : (easyRead ? (isDark ? Colors.white : Colors.black) : Colors.grey[600]),
                         ),
                       ),
               ),

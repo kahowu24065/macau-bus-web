@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../controllers/bus_controller.dart';
 import '../controllers/location_controller.dart';
 import '../controllers/language_controller.dart';
+import '../utils/easy_read_access.dart';
 import '../views/widgets/route_liquid_glass_nav.dart';
 
 class GpsService {
@@ -18,8 +19,9 @@ class GpsService {
     
     // 🌟 即時讀取語言設定，確保獲取最新狀態
     final langCtrl = context.read<LanguageController>();
+    final allowSnack = showSnackbar && !EasyReadAccess.enabled(context, listen: false);
 
-    if (showSnackbar) {
+    if (allowSnack) {
       ScaffoldMessenger.of(context).clearSnackBars();
     }
 
@@ -32,7 +34,7 @@ class GpsService {
           busCtrl.selectStop(res['seq']);
           busCtrl.fetchBusETA();
           
-          if (showSnackbar) {
+          if (allowSnack) {
             // 💡 1. 提取靜態 UI 翻譯
             String stopMsg = langCtrl.tr('auto_selected_stop');
             String distMsg = langCtrl.tr('distance_approx');
@@ -66,7 +68,7 @@ class GpsService {
       }
     });
 
-    if (showSnackbar) {
+    if (allowSnack) {
       if (!wasFollowing) {
         ScaffoldMessenger.of(context).showSnackBar(
           RouteLiquidGlassNavStyle.snackBar(

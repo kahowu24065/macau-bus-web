@@ -6,6 +6,10 @@ import 'controllers/purchase_controller.dart';
 import 'services/background_tracker_service.dart';
 import 'services/notification_service.dart';
 import 'controllers/theme_controller.dart';
+import 'controllers/easy_read_mode_controller.dart';
+import 'theme/easy_read_theme.dart';
+import 'views/widgets/easy_read_tap_haptics.dart';
+import 'views/widgets/preserve_chrome.dart';
 import 'controllers/bus_controller.dart';
 import 'controllers/location_controller.dart';
 import 'controllers/navigation_controller.dart';
@@ -41,6 +45,7 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeController()),
+        ChangeNotifierProvider(create: (_) => EasyReadModeController()),
         ChangeNotifierProvider(create: (_) => BusController()),
         ChangeNotifierProvider(create: (_) => LocationController()),
         ChangeNotifierProvider(create: (_) => NavigationController()),
@@ -68,6 +73,7 @@ class MacauBusApp extends StatelessWidget {
   Widget build(BuildContext context) { 
     final theme = context.watch<ThemeController>();
     final view = View.of(context);
+    final barHeight = RouteLiquidGlassNavStyle.barHeightOf(context);
     final safeBottom = view.padding.bottom / view.devicePixelRatio;
     final ios = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
     final snackBarTheme = SnackBarThemeData(
@@ -76,7 +82,7 @@ class MacauBusApp extends StatelessWidget {
         16,
         0,
         16,
-        RouteLiquidGlassNavStyle.barHeight +
+        barHeight +
             RouteLiquidGlassNavStyle.barBottomOffset(safeBottom, ios: ios),
       ),
       shape: const RoundedRectangleBorder(
@@ -86,6 +92,23 @@ class MacauBusApp extends StatelessWidget {
     return MaterialApp(
       title: '巴士預報-MBKa', 
       debugShowCheckedModeBanner: false,
+      builder: (context, child) {
+        final easyReadOn = context.watch<EasyReadModeController>().enabled;
+        if (!easyReadOn || child == null) return child ?? const SizedBox.shrink();
+        final base = Theme.of(context);
+        final mq = MediaQuery.of(context);
+        final scaled = mq.textScaler.scale(1) * EasyReadTheme.textScale;
+        return EasyReadChrome(
+          baseTheme: base,
+          child: MediaQuery(
+            data: mq.copyWith(textScaler: TextScaler.linear(scaled)),
+            child: Theme(
+              data: EasyReadTheme.apply(base),
+              child: EasyReadTapHaptics(child: child),
+            ),
+          ),
+        );
+      },
       themeMode: theme.themeMode,
       theme: ThemeData(
         brightness: Brightness.light, 
