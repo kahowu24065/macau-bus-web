@@ -122,7 +122,7 @@ void main() {
     expect(find.text('尚有 2 站 (約 4 分鐘)'), findsNothing);
     expect(find.text('4 分鐘後到'), findsOneWidget);
     expect(find.text('11 分鐘後到'), findsOneWidget);
-    expect(find.text('更多'), findsOneWidget);
+    expect(find.text('更多'), findsNothing);
     expect(find.text('車資表'), findsNothing);
 
     final arrival = tester.widget<Text>(find.text('4 分鐘後到'));
