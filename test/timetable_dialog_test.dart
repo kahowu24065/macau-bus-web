@@ -34,6 +34,7 @@ Future<void> _pumpDialog(
     ChangeNotifierProvider<LanguageController>.value(
       value: lang,
       child: MaterialApp(
+        key: UniqueKey(),
         theme: ThemeData(brightness: brightness),
         home: Builder(
           builder: (context) => Scaffold(
@@ -53,6 +54,18 @@ Future<void> _pumpDialog(
   );
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
+}
+
+BoxDecoration _bandDecoration(WidgetTester tester) {
+  final card = tester.widget<Container>(
+    find.descendant(
+      of: find.byKey(const ValueKey('timetable-band-0')),
+      matching: find.byWidgetPredicate(
+        (widget) => widget is Container && widget.decoration is BoxDecoration,
+      ),
+    ),
+  );
+  return card.decoration! as BoxDecoration;
 }
 
 int _keyedCount(WidgetTester tester, String prefix) {
@@ -180,10 +193,7 @@ void main() {
     );
     expect(find.byIcon(Icons.schedule), findsNWidgets(5));
 
-    final card = tester.widget<Container>(
-      find.byKey(const ValueKey('timetable-band-0')),
-    );
-    final cardDecoration = card.decoration! as BoxDecoration;
+    final cardDecoration = _bandDecoration(tester);
     expect(cardDecoration.color, const Color(0xFF2A2A2A));
     expect(cardDecoration.borderRadius, BorderRadius.circular(14));
 
@@ -321,10 +331,7 @@ void main() {
     final dialog = tester.widget<AlertDialog>(find.byType(AlertDialog));
     expect(dialog.backgroundColor, Colors.white);
     expect(tester.widget<Text>(find.text('1A 時間表')).style?.color, Colors.black);
-    final card = tester.widget<Container>(
-      find.byKey(const ValueKey('timetable-band-0')),
-    );
-    expect((card.decoration! as BoxDecoration).color, const Color(0xFF2A2A2A));
+    expect(_bandDecoration(tester).color, const Color(0xFF2A2A2A));
     expect(
       tester
           .widget<Material>(
