@@ -12,9 +12,10 @@ import '../../controllers/keyboard_controller.dart';
 import '../../controllers/language_controller.dart'; 
 import '../../services/gps_service.dart';
 import '../../services/otp_service.dart';
-import '../../utils/route_result_helper.dart';
-import '../widgets/routing_bottom_sheet.dart';
-import '../widgets/route_liquid_glass_nav.dart';
+import '../../utils/elderly_access.dart';
+import '../routing/open_route_planner.dart';
+import '../screens/elderly_more_screen.dart';
+import '../widgets/preserve_chrome.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -98,75 +99,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _fetchNearbyStopsFromAPI(currentLoc.latitude, currentLoc.longitude, langCtrl.currentLanguage);
       });
     }
-  }
-
-  void _openRoutingPanel() {
-    final parentContext = context;
-    final busCtrl = parentContext.read<BusController>();
-    if (busCtrl.isSimpleMode) return;
-    final navCtrl = parentContext.read<NavigationController>();
-    final locCtrl = parentContext.read<LocationController>();
-    final langCtrl = parentContext.read<LanguageController>();
-    
-    bool wasRouteCalculated = false;
-    navCtrl.setPlanningRoute(true);
-
-    showModalBottomSheet(
-      context: parentContext, 
-      isScrollControlled: true, 
-      backgroundColor: Theme.of(parentContext).brightness == Brightness.dark ? const Color(0xFF1E1E1E) : Colors.white, 
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))), 
-      builder: (sheetContext) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(sheetContext).viewInsets.bottom), 
-        child: RoutingBottomSheet(
-          userLocation: locCtrl.isFollowingUser ? locCtrl.userLocation : null, 
-          isLocationActive: locCtrl.isFollowingUser, 
-          customMapStart: busCtrl.customMapStart, 
-          customMapEnd: busCtrl.customMapEnd, 
-          onPickOnMap: () { 
-            Navigator.pop(sheetContext); 
-            busCtrl.startPickingMapStart();
-            navCtrl.captureRouteForRestore(busCtrl.currentRoute);
-            navCtrl.clearNavigation();
-            navCtrl.setPlanningRoute(true);
-            navCtrl.openMap();
-          }, 
-          onPickEndOnMap: () { 
-            Navigator.pop(sheetContext); 
-            busCtrl.startPickingMapEnd();
-            navCtrl.captureRouteForRestore(busCtrl.currentRoute);
-            navCtrl.clearNavigation();
-            navCtrl.setPlanningRoute(true);
-            navCtrl.openMap();
-          }, 
-          onRouteCalculated: (itineraries, destination, onlyGhostsLeft) {
-            wasRouteCalculated = true;
-            Navigator.pop(sheetContext); 
-            busCtrl.clearCustomMapPoints(); 
-            if (itineraries.isNotEmpty) {
-              if (onlyGhostsLeft) {
-                ScaffoldMessenger.of(parentContext).showSnackBar(RouteLiquidGlassNavStyle.snackBar(context: parentContext, content: Text(langCtrl.tr('warning_offline')), backgroundColor: Colors.redAccent));
-              }
-              navCtrl.addHistory(itineraries, destination, onlyGhostsLeft);
-              Future.delayed(const Duration(milliseconds: 350), () {
-                if (parentContext.mounted) {
-                  // 🌟 呼叫共用工具
-                  RouteResultHelper.showOTPResultBottomSheet(parentContext, itineraries, destination, navCtrl, langCtrl);
-                }
-              });
-            } else {
-              ScaffoldMessenger.of(parentContext).showSnackBar(RouteLiquidGlassNavStyle.snackBar(context: parentContext, content: Text(langCtrl.tr('calc_route_failed'))));
-              navCtrl.setPlanningRoute(false);
-            }
-          }
-        )
-      )
-    ).whenComplete(() { 
-      if (!busCtrl.isPickingMapStart && !busCtrl.isPickingMapEnd && !wasRouteCalculated) {
-        busCtrl.clearCustomMapPoints();
-        navCtrl.setPlanningRoute(false);
-      }
-    });
   }
 
   Widget _buildSectionTitle(IconData icon, String title, bool isDark) {
@@ -414,6 +346,174 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  String _routeDescription(String routeNo, BusController busCtrl, LanguageController langCtrl) {
+    for (final raw in busCtrl.allRoutesWithDir) {
+      final parts = raw.split('|');
+      final code = parts.isNotEmpty ? parts.first.trim() : '';
+      if (code.toUpperCase() == routeNo.toUpperCase() && parts.length > 1 && parts[1].trim().isNotEmpty) {
+        return parts.sublist(1).join('|').trim();
+      }
+    }
+    return langCtrl.tr('macau_bus_route_desc');
+  }
+
+  Widget _elderlyCard({
+    required bool isDark,
+    required VoidCallback? onTap,
+    required List<Widget> children,
+  }) {
+    final fg = isDark ? Colors.white : const Color(0xFF111111);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: fg, width: 2),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 96),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: children,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildElderlyFavorites(bool isDark, BusController busCtrl, NavigationController navCtrl, LanguageController langCtrl) {
+    final fg = isDark ? Colors.white : const Color(0xFF111111);
+    if (busCtrl.favoriteRoutes.isEmpty) {
+      return _elderlyCard(
+        isDark: isDark,
+        onTap: null,
+        children: [
+          Text(
+            langCtrl.tr('no_fav_routes'),
+            softWrap: true,
+            style: TextStyle(color: fg, fontSize: 20, fontWeight: FontWeight.w700, height: 1.35),
+          ),
+        ],
+      );
+    }
+    return Column(
+      children: [
+        for (final route in busCtrl.favoriteRoutes)
+          _elderlyCard(
+            isDark: isDark,
+            onTap: () {
+              busCtrl.setRoute(route);
+              busCtrl.fetchStops();
+              navCtrl.clearNavigation();
+              navCtrl.changeTab(2);
+            },
+            children: [
+              Text(route, softWrap: true, style: TextStyle(color: fg, fontSize: 32, fontWeight: FontWeight.w800, height: 1.1)),
+              const SizedBox(height: 8),
+              Text(
+                _routeDescription(route, busCtrl, langCtrl),
+                softWrap: true,
+                style: TextStyle(color: fg, fontSize: 18, fontWeight: FontWeight.w700, height: 1.35),
+              ),
+            ],
+          ),
+      ],
+    );
+  }
+
+  void _openRoute(BusController busCtrl, NavigationController navCtrl, String route) {
+    busCtrl.setRoute(route);
+    busCtrl.fetchStops();
+    navCtrl.clearNavigation();
+    navCtrl.changeTab(2);
+  }
+
+  Widget _buildElderlyNearby(
+    LocationController locCtrl,
+    bool isDark,
+    LanguageController langCtrl,
+    BusController busCtrl,
+    NavigationController navCtrl,
+  ) {
+    final fg = isDark ? Colors.white : const Color(0xFF111111);
+    final messageStyle = TextStyle(color: fg, fontSize: 20, fontWeight: FontWeight.w700, height: 1.35);
+    if (!locCtrl.isFollowingUser || locCtrl.userLocation == null) {
+      return Text(langCtrl.tr('need_location_for_nearby'), softWrap: true, style: messageStyle);
+    }
+    if (_isFetchingNearby && _nearbyStopsCache.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Center(child: CircularProgressIndicator(color: Colors.amber)),
+      );
+    }
+    if (_nearbyStopsCache.isEmpty) {
+      return Text(langCtrl.tr('no_nearby_stops'), softWrap: true, style: messageStyle);
+    }
+    return Column(
+      children: [
+        for (final raw in _nearbyStopsCache)
+          _elderlyNearbyCard(Map<String, dynamic>.from(raw as Map), isDark, fg, busCtrl, navCtrl),
+      ],
+    );
+  }
+
+  Widget _elderlyNearbyCard(
+    Map<String, dynamic> stop,
+    bool isDark,
+    Color fg,
+    BusController busCtrl,
+    NavigationController navCtrl,
+  ) {
+    final stopName = stop['name'].toString().replaceAll(RegExp(r'[\(（].*?[\)）]'), '').trim();
+    final dist = (double.tryParse(stop['distance'].toString()) ?? 0).round();
+    final routes = ((stop['routes'] as List?) ?? const []).map((r) => r.toString()).where((r) => r.isNotEmpty).toList();
+    return _elderlyCard(
+      isDark: isDark,
+      onTap: null,
+      children: [
+        Text(stopName, softWrap: true, style: TextStyle(color: fg, fontSize: 24, fontWeight: FontWeight.w800, height: 1.25)),
+        const SizedBox(height: 8),
+        Text('$dist m', softWrap: true, style: TextStyle(color: fg, fontSize: 18, fontWeight: FontWeight.w700)),
+        if (routes.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final route in routes)
+                FilledButton(
+                  onPressed: () => _openRoute(busCtrl, navCtrl, route),
+                  child: Text(route),
+                ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildElderlyMoreButton(LanguageController langCtrl) {
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton(
+        onPressed: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const ElderlyMoreScreen()),
+          );
+        },
+        child: Text(langCtrl.tr('more_options'), softWrap: true),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final busCtrl = context.watch<BusController>();
@@ -422,6 +522,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final keyboardCtrl = context.watch<KeyboardController>(); 
     final langCtrl = context.watch<LanguageController>(); 
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final elderly = ElderlyAccess.enabled(context);
     
     _checkAndFetchNearby(locCtrl, langCtrl);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -443,7 +544,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         children: [
           Column(
             children: [
-              Container(
+              PreserveChrome(
+              child: Container(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -481,12 +583,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           icon: locCtrl.isLocating ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amber)) : Icon(Icons.my_location, color: locCtrl.isFollowingUser ? Colors.green : Colors.amber),
                           onPressed: () => GpsService.toggleGpsAndAutoSelectStop(context, busCtrl, locCtrl),
                         ),
-                        if (!busCtrl.isSimpleMode)
-                          IconButton(icon: const Icon(Icons.directions, color: Colors.blueAccent), onPressed: _openRoutingPanel),
+                        if (!busCtrl.isSimpleMode && !elderly)
+                          IconButton(icon: const Icon(Icons.directions, color: Colors.blueAccent), onPressed: () => openRoutePlanner(context)),
                       ]
                     ),
                   ],
                 ),
+              ),
               ),
               
               Expanded(
@@ -497,14 +600,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     16,
                     MediaQuery.paddingOf(context).bottom,
                   ),
-                  children: [
-                    _buildSectionTitle(Icons.access_time, langCtrl.tr('recent_searches'), isDark),
-                    _buildRecentSearches(isDark, busCtrl, navCtrl, langCtrl),
-                    
-                    const SizedBox(height: 16),
-                    _buildSectionTitle(Icons.location_on, langCtrl.tr('nearby_stops'), isDark),
-                    _buildDynamicNearbyStops(locCtrl, busCtrl, isDark, langCtrl),
-                  ],
+                  children: elderly
+                      ? [
+                          _buildSectionTitle(Icons.star, langCtrl.tr('tab_favorite'), isDark),
+                          _buildElderlyFavorites(isDark, busCtrl, navCtrl, langCtrl),
+                          const SizedBox(height: 16),
+                          _buildSectionTitle(Icons.location_on, langCtrl.tr('nearby_stops'), isDark),
+                          _buildElderlyNearby(locCtrl, isDark, langCtrl, busCtrl, navCtrl),
+                          const SizedBox(height: 16),
+                          _buildElderlyMoreButton(langCtrl),
+                        ]
+                      : [
+                          _buildSectionTitle(Icons.access_time, langCtrl.tr('recent_searches'), isDark),
+                          _buildRecentSearches(isDark, busCtrl, navCtrl, langCtrl),
+                          const SizedBox(height: 16),
+                          _buildSectionTitle(Icons.location_on, langCtrl.tr('nearby_stops'), isDark),
+                          _buildDynamicNearbyStops(locCtrl, busCtrl, isDark, langCtrl),
+                        ],
                 ),
               ),
             ],
@@ -542,7 +654,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               children: [
                                 const Icon(Icons.directions_bus, color: Colors.amber, size: 20), const SizedBox(width: 16),
                                 SizedBox(width: 55, child: Text(routeNum, style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 16, fontWeight: FontWeight.bold))),
-                                Expanded(child: Text(routeDesc, style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[600], fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                Expanded(child: Text(
+                                  routeDesc,
+                                  softWrap: true,
+                                  style: TextStyle(
+                                    color: elderly
+                                        ? (isDark ? Colors.white : const Color(0xFF111111))
+                                        : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                                    fontSize: 14,
+                                  ),
+                                  maxLines: elderly ? null : 1,
+                                  overflow: elderly ? TextOverflow.visible : TextOverflow.ellipsis,
+                                )),
                               ],
                             ),
                           ),

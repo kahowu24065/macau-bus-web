@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../../controllers/bus_controller.dart';
 import '../../controllers/navigation_controller.dart';
 import '../../controllers/language_controller.dart';
+import '../../utils/elderly_access.dart';
+import '../widgets/preserve_chrome.dart';
 
 class FavoritesScreen extends StatefulWidget {
   const FavoritesScreen({super.key});
@@ -44,7 +46,8 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       backgroundColor: Colors.transparent,
       body: Column(
         children: [
-          ClipRect(
+          PreserveChrome(
+          child: ClipRect(
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
               child: Container(
@@ -58,6 +61,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                 ),
               ),
             ),
+          ),
           ),
           Divider(height: 1, color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.1)),
           Expanded(
@@ -110,6 +114,7 @@ class _FavoriteRouteRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final busCtrl = context.read<BusController>();
     final langCtrl = context.read<LanguageController>();
+    final elderly = ElderlyAccess.enabled(context);
 
     String routeDesc = langCtrl.tr('unknown_dir');
     for (final r in busCtrl.allRoutesWithDir) {
@@ -128,7 +133,7 @@ class _FavoriteRouteRow extends StatelessWidget {
         context.read<NavigationController>().changeTab(2);
       },
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: elderly ? 16 : 10),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -150,7 +155,15 @@ class _FavoriteRouteRow extends StatelessWidget {
             Expanded(
               child: Text(
                 routeDesc,
-                style: TextStyle(color: isDark ? const Color(0xFFC7C7CC) : Colors.black54, fontSize: 13, height: 1.3),
+                softWrap: true,
+                style: TextStyle(
+                  color: elderly
+                      ? (isDark ? Colors.white : const Color(0xFF111111))
+                      : (isDark ? const Color(0xFFC7C7CC) : Colors.black54),
+                  fontSize: elderly ? 16 : 13,
+                  fontWeight: elderly ? FontWeight.w700 : FontWeight.normal,
+                  height: 1.3,
+                ),
               ),
             ),
             IconButton(

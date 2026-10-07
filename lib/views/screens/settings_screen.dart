@@ -18,6 +18,9 @@ import '../../controllers/bus_controller.dart';
 import '../../controllers/background_controller.dart';
 import '../../controllers/language_controller.dart';
 import '../../controllers/navigation_controller.dart';
+import '../../controllers/elderly_mode_controller.dart';
+import '../../utils/elderly_access.dart';
+import '../widgets/preserve_chrome.dart';
 import '../../services/open_data_config.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -157,12 +160,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Color get _readable {
+    if (!ElderlyAccess.enabled(context)) return _subText;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return dark ? Colors.white : const Color(0xFF111111);
+  }
+
   Widget _buildSectionHeader(String title) {
     return Padding(
       padding: const EdgeInsets.only(left: 16, bottom: 8, top: 24),
       child: Text(
         title.toUpperCase(),
-        style: TextStyle(color: _subText, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.2, fontFamily: 'Inter'),
+        softWrap: true,
+        style: TextStyle(color: _readable, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.2, fontFamily: 'Inter'),
       ),
     );
   }
@@ -191,6 +201,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Widget _settingsSwitch({
+    required bool value,
+    required bool isDark,
+    required ValueChanged<bool> onChanged,
+  }) {
+    final control = CupertinoSwitch(
+      value: value,
+      onChanged: onChanged,
+      activeTrackColor: isDark ? Colors.white : Colors.black,
+      inactiveTrackColor: _mutedWell,
+      thumbColor: isDark ? Colors.black : Colors.white,
+    );
+    if (!ElderlyAccess.enabled(context)) return control;
+    return Transform.scale(scale: 1.2, alignment: Alignment.centerRight, child: control);
+  }
+
   Widget _buildTile({
     required IconData icon,
     required String title,
@@ -200,8 +226,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     VoidCallback? onTap,
     bool isDark = true,
   }) {
+    final elderly = ElderlyAccess.enabled(context);
+    final sub = _readable;
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: elderly ? 12 : 4),
       onTap: onTap,
       splashColor: isDark ? Colors.white.withValues(alpha: 0.10) : Colors.black.withValues(alpha: 0.06),
       hoverColor: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
@@ -210,18 +238,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
         decoration: BoxDecoration(color: isDark ? _mutedWell : Colors.grey[200], borderRadius: BorderRadius.circular(8)),
         child: Icon(icon, color: isDark ? const Color(0xFFD1D1D6) : Colors.black87, size: 18),
       ),
-      title: Text(title, style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 15, fontWeight: FontWeight.w500, fontFamily: 'Inter')),
-      subtitle: subtitle != null ? Text(subtitle, style: TextStyle(color: _subText, fontSize: 13, fontFamily: 'Inter')) : null,
+      title: Text(title, softWrap: true, style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 15, fontWeight: elderly ? FontWeight.w700 : FontWeight.w500, fontFamily: 'Inter')),
+      subtitle: subtitle != null ? Text(subtitle, softWrap: true, style: TextStyle(color: sub, fontSize: 13, fontFamily: 'Inter', fontWeight: elderly ? FontWeight.w700 : null, height: elderly ? 1.35 : null)) : null,
       trailing: trailing ?? (trailingText != null 
           ? Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(trailingText, style: TextStyle(color: _subText, fontSize: 14, fontFamily: 'Inter')),
+                Text(trailingText, softWrap: true, style: TextStyle(color: sub, fontSize: 14, fontFamily: 'Inter')),
                 const SizedBox(width: 4),
-                Icon(Icons.chevron_right, color: _subText, size: 18),
+                Icon(Icons.chevron_right, color: sub, size: 18),
               ],
             ) 
-          : Icon(Icons.chevron_right, color: _subText, size: 18)),
+          : Icon(Icons.chevron_right, color: sub, size: 18)),
     );
   }
 
@@ -250,7 +278,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Text(
             isPro ? langCtrl.tr('status_active') : langCtrl.tr('status_inactive'),
             style: TextStyle(
-              color: isPro ? const Color(0xFF34C759) : _subText,
+              color: isPro ? const Color(0xFF34C759) : _readable,
               fontSize: 11,
               fontWeight: FontWeight.bold,
               fontFamily: 'Inter',
@@ -271,7 +299,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _copyContactEmail(BuildContext context, LanguageController langCtrl) async {
     await Clipboard.setData(const ClipboardData(text: _contactEmail));
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(langCtrl.tr('email_copied')), duration: const Duration(seconds: 2)));
+    if (!ElderlyAccess.enabled(context, listen: false)) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(langCtrl.tr('email_copied')), duration: const Duration(seconds: 2)));
+    }
   }
 
   Future<void> _openContactEmail(BuildContext context, LanguageController langCtrl) async {
@@ -304,10 +334,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _legalLinks(BuildContext context, bool isDark, LanguageController langCtrl) {
     final style = TextStyle(
-      color: _subText,
+      color: _readable,
       fontSize: 12,
       decoration: TextDecoration.underline,
-      decorationColor: _subText,
+      decorationColor: _readable,
       fontFamily: 'Inter',
     );
     return Wrap(
@@ -315,7 +345,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         InkWell(onTap: _openTerms, child: Text(langCtrl.tr('terms_of_use'), style: style)),
-        Text('   •   ', style: TextStyle(color: _subText, fontSize: 12)),
+        Text('   •   ', style: TextStyle(color: _readable, fontSize: 12)),
         InkWell(
           onTap: () => _showMarkdownDialog(context, isDark, langCtrl, 'privacy_policy', 'privacy', Icons.privacy_tip, Colors.amber),
           child: Text(langCtrl.tr('privacy_policy'), style: style),
@@ -462,7 +492,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Text(
                     _planInfo(langCtrl, purchaseCtrl.removeAdsPrice),
                     style: TextStyle(
-                      color: _subText,
+                      color: _readable,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       height: 1.45,
@@ -473,7 +503,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Text(
                     langCtrl.tr('sub_renew_note').replaceAll('{store}', _storeName),
                     style: TextStyle(
-                      color: _subText,
+                      color: _readable,
                       fontSize: 11.5,
                       height: 1.45,
                       fontFamily: 'Inter',
@@ -499,8 +529,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final purchaseCtrl = context.watch<PurchaseController>();
     final bgCtrl = context.watch<BackgroundController>();
     final langCtrl = context.watch<LanguageController>();
+    final elderlyCtrl = context.watch<ElderlyModeController>();
 
-    final availableTabs = busCtrl.isSimpleMode ? [0, 2, 4, 5] : [0, 1, 2, 4, 5];
+    final availableTabs = (busCtrl.isSimpleMode || elderlyCtrl.enabled) ? [0, 2, 4, 5] : [0, 1, 2, 4, 5];
     final tabMap = { 
       0: langCtrl.tr('tab_search'), 
       1: langCtrl.tr('tab_route'), 
@@ -523,7 +554,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: Column(
         children: [
           // 🌟 從 Source 1 移植嘅 Frosted Glass (毛玻璃) Header，並加入齒輪 Icon
-          ClipRect(
+          PreserveChrome(
+            child: ClipRect(
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
               child: Container(
@@ -546,6 +578,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ],
                 ),
               ),
+            ),
             ),
           ),
           
@@ -659,6 +692,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       isDark: isDark,
                       children: [
                         _buildTile(
+                          icon: Icons.elderly, title: langCtrl.tr('elderly_mode'), subtitle: langCtrl.tr('elderly_mode_desc'), isDark: isDark,
+                          trailing: _settingsSwitch(
+                            value: elderlyCtrl.enabled,
+                            isDark: isDark,
+                            onChanged: elderlyCtrl.setEnabled,
+                          ),
+                        ),
+                        _buildTile(
                           icon: Icons.dark_mode_outlined, title: langCtrl.tr('switch_theme'), subtitle: langCtrl.tr('easier_on_eyes'), isDark: isDark,
                           trailing: CupertinoSwitch(
                             value: themeCtrl.themeMode == ThemeMode.dark,
@@ -718,7 +759,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             icon: Icons.mail_outline, title: langCtrl.tr('contact_email_title'), subtitle: '$_contactEmail\n${langCtrl.tr('contact_hint')}', isDark: isDark,
                             onTap: () => _openContactEmail(context, langCtrl),
                             trailing: IconButton(
-                              icon: Icon(Icons.copy_rounded, color: _subText, size: 18),
+                              icon: Icon(Icons.copy_rounded, color: _readable, size: 18),
                               tooltip: langCtrl.tr('copy_email'),
                               onPressed: () => _copyContactEmail(context, langCtrl),
                             ),
@@ -734,19 +775,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         alignment: WrapAlignment.center,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          InkWell(onTap: () => _showMarkdownDialog(context, isDark, langCtrl, 'about_us', 'about', Icons.info_outline, Colors.blueAccent), child: Text(langCtrl.tr('about_us'), style: TextStyle(color: _subText, fontSize: 12))),
-                          Text('   •   ', style: TextStyle(color: _subText, fontSize: 12)),
-                          InkWell(onTap: () => _showMarkdownDialog(context, isDark, langCtrl, 'disclaimer', 'disclaimer', Icons.gavel, Colors.redAccent), child: Text(langCtrl.tr('disclaimer'), style: TextStyle(color: _subText, fontSize: 12))),
-                          Text('   •   ', style: TextStyle(color: _subText, fontSize: 12)),
-                          InkWell(onTap: () => _showMarkdownDialog(context, isDark, langCtrl, 'privacy_policy', 'privacy', Icons.privacy_tip, Colors.amber), child: Text(langCtrl.tr('privacy_policy'), style: TextStyle(color: _subText, fontSize: 12))),
-                          Text('   •   ', style: TextStyle(color: _subText, fontSize: 12)),
-                          InkWell(onTap: _openTerms, child: Text(langCtrl.tr('terms_of_use'), style: TextStyle(color: _subText, fontSize: 12))),
+                          InkWell(onTap: () => _showMarkdownDialog(context, isDark, langCtrl, 'about_us', 'about', Icons.info_outline, Colors.blueAccent), child: Text(langCtrl.tr('about_us'), style: TextStyle(color: _readable, fontSize: 12))),
+                          Text('   •   ', style: TextStyle(color: _readable, fontSize: 12)),
+                          InkWell(onTap: () => _showMarkdownDialog(context, isDark, langCtrl, 'disclaimer', 'disclaimer', Icons.gavel, Colors.redAccent), child: Text(langCtrl.tr('disclaimer'), style: TextStyle(color: _readable, fontSize: 12))),
+                          Text('   •   ', style: TextStyle(color: _readable, fontSize: 12)),
+                          InkWell(onTap: () => _showMarkdownDialog(context, isDark, langCtrl, 'privacy_policy', 'privacy', Icons.privacy_tip, Colors.amber), child: Text(langCtrl.tr('privacy_policy'), style: TextStyle(color: _readable, fontSize: 12))),
+                          Text('   •   ', style: TextStyle(color: _readable, fontSize: 12)),
+                          InkWell(onTap: _openTerms, child: Text(langCtrl.tr('terms_of_use'), style: TextStyle(color: _readable, fontSize: 12))),
                         ],
                       ),
                     ),
                     if (_versionLabel != null) ...[
                       const SizedBox(height: 12),
-                      Center(child: Text(_versionLabel!, style: TextStyle(color: isDark ? const Color(0xFF3A3A3C) : Colors.grey[400], fontSize: 11, fontFamily: 'Inter', letterSpacing: 0.5))),
+                      Center(child: Text(_versionLabel!, style: TextStyle(color: ElderlyAccess.enabled(context) ? _readable : (isDark ? const Color(0xFF3A3A3C) : Colors.grey[400]), fontSize: 11, fontFamily: 'Inter', letterSpacing: 0.5))),
                     ],
                   ],
                 ),

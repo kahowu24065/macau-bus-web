@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../controllers/language_controller.dart';
+import '../../utils/elderly_access.dart';
 import '../../services/dsat_timetable.dart';
 import '../../utils/service_label_i18n.dart';
 
@@ -331,18 +332,19 @@ class _TimetableDialogState extends State<TimetableDialog> {
                         ),
                       ),
                     ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(0, 10, 0, 4),
-                      child: Text(
-                        langCtrl.tr('timetable_source_note'),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.grey,
-                          fontSize: 11,
-                          height: 1.35,
+                    if (!ElderlyAccess.enabled(context))
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(0, 10, 0, 4),
+                        child: Text(
+                          langCtrl.tr('timetable_source_note'),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Colors.grey,
+                            fontSize: 11,
+                            height: 1.35,
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               ),

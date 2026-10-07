@@ -20,6 +20,12 @@ import '../../controllers/language_controller.dart';
 import '../widgets/route_liquid_glass_nav.dart';
 import '../../constants/app_translations.dart';
 import '../../constants/feature_flags.dart';
+import '../../services/arrival_speaker.dart';
+import '../../utils/elderly_access.dart';
+import '../../utils/elderly_arrival.dart';
+import '../screens/elderly_more_screen.dart';
+import '../widgets/fare_dialog.dart';
+import '../widgets/preserve_chrome.dart';
 import '../widgets/timetable_dialog.dart';
 
 class BusRouteScreen extends StatefulWidget {
@@ -102,11 +108,14 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     final localizedStopName = stop.getLocalizedName(langCtrl.currentLanguage);
     final cacheKey = '${_busCtrl.currentRoute}_${stopCode}_${langCtrl.currentLanguage}';
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const Center(child: CircularProgressIndicator(color: Colors.amber)),
-    );
+    final elderly = ElderlyAccess.enabled(context, listen: false);
+    if (!elderly) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => const Center(child: CircularProgressIndicator(color: Colors.amber)),
+      );
+    }
 
     Map<String, dynamic>? info;
 
@@ -127,7 +136,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
       debugPrint('獲取車站官方通告失敗: $e');
     }
 
-    if (mounted) {
+    if (mounted && !elderly) {
       Navigator.of(context).pop(); 
     }
 
@@ -151,7 +160,27 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
           ],
         ),
         content: SingleChildScrollView(
-          child: info != null 
+          child: elderly
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    langCtrl.tr('stop_warning_body').replaceAll('@stop', localizedStopName),
+                    softWrap: true,
+                    style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 18, height: 1.4, fontWeight: FontWeight.w700),
+                  ),
+                  if (info != null && info['suspendStops'] != null && (info['suspendStops'] as List).isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Text(langCtrl.tr('suspended_stops'), softWrap: true, style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w800, fontSize: 18)),
+                    ...((info['suspendStops'] as List).map((s) => Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text('$s', softWrap: true, style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 18, fontWeight: FontWeight.w700)),
+                    ))),
+                  ],
+                ],
+              )
+            : info != null 
             ? Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -291,53 +320,6 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     } 
   }
   
-  void _showFareDialog(BuildContext context, bool isDark) {
-    final langCtrl = context.read<LanguageController>();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            const Icon(Icons.monetization_on, color: Colors.amber, size: 28),
-            const SizedBox(width: 8),
-            Text(langCtrl.tr('fare_table'), style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontSize: 18)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildFareRow(langCtrl.tr('general_fare'), '\$6.0', isDark),
-            const SizedBox(height: 12),
-            _buildFareRow(langCtrl.tr('macau_pass'), '\$3.0', isDark),
-            const SizedBox(height: 12),
-            _buildFareRow(langCtrl.tr('student_card'), '\$1.5', isDark),
-            const SizedBox(height: 12),
-            _buildFareRow(langCtrl.tr('elderly_disabled'), '\$0.0', isDark),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(langCtrl.tr('btn_close'), style: const TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFareRow(String type, String price, bool isDark) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(type, style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 15)),
-        Text(price, style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 16, fontWeight: FontWeight.bold)),
-      ],
-    );
-  }
-
   Future<void> _showTimetableDialog(BusController busCtrl) {
     if (!FeatureFlags.showTimetable) return Future.value();
     return TimetableDialog.show(
@@ -347,7 +329,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     );
   }
 
-  List<Map<String, String>> _getUpcomingBusesInfo(BusController busCtrl, LanguageController langCtrl) {
+  List<Map<String, String>> _getUpcomingBusesInfo(BusController busCtrl, LanguageController langCtrl, {required bool elderly}) {
     if (!busCtrl.showLiveArrivals) return [];
     if (busCtrl.etaData == null && busCtrl.allBusesList.isEmpty) return [];
     
@@ -412,16 +394,27 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
            );
            
            if (diff == 1) {
-             status = estimatedMins > 0 
-                 ? langCtrl.tr('arriving_next_mins').replaceAll('@mins', estimatedMins.toString()) 
-                 : langCtrl.tr('arriving_next');
+             status = approachingStatus(
+               elderly: elderly,
+               stopsAway: 1,
+               estimatedMins: estimatedMins,
+               tr: langCtrl.tr,
+             );
            } else {
-             status = estimatedMins > 0 
-                 ? langCtrl.tr('stops_away_mins').replaceAll('@stops', diff.toString()).replaceAll('@mins', estimatedMins.toString()) 
-                 : langCtrl.tr('stops_away').replaceAll('@stops', diff.toString());
+             status = approachingStatus(
+               elderly: elderly,
+               stopsAway: diff,
+               estimatedMins: estimatedMins,
+               tr: langCtrl.tr,
+             );
            }
         } else {
-           status = langCtrl.tr('arriving_soon');
+           status = approachingStatus(
+             elderly: elderly,
+             stopsAway: 0,
+             estimatedMins: 0,
+             tr: langCtrl.tr,
+           );
         }
         upcoming.add({'status': status, 'plate': bus.busLicense.trim()});
         if (upcoming.length >= 2) break; 
@@ -446,7 +439,16 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
           'plate': '',
         });
       } else if (busCtrl.etaData != null) {
-        upcoming.add({'status': cleanEta.isEmpty ? langCtrl.tr('click_to_update') : AppTranslations.localizeEtaStatus(cleanEta, langCtrl.tr), 'plate': officialPlate.trim()});
+        upcoming.add({
+          'status': cleanEta.isEmpty
+              ? langCtrl.tr('click_to_update')
+              : presentArrivalStatus(
+                  elderly: elderly,
+                  status: AppTranslations.localizeEtaStatus(cleanEta, langCtrl.tr),
+                  tr: langCtrl.tr,
+                ),
+          'plate': officialPlate.trim(),
+        });
       }
     }
     
@@ -526,7 +528,9 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                   onPressed: () {
                                     Navigator.pop(dialogCtx); busCtrl.setAlightingStop(stop.seq); 
                                     locCtrl.toggleLocationTracking((loc) { busCtrl.checkAlightingAlarm(loc); });
-                                    ScaffoldMessenger.of(context).showSnackBar(RouteLiquidGlassNavStyle.snackBar(context: context, content: Text(langCtrl.tr('gps_opened')), backgroundColor: Colors.green));
+                                    if (!ElderlyAccess.enabled(context, listen: false)) {
+                                      ScaffoldMessenger.of(context).showSnackBar(RouteLiquidGlassNavStyle.snackBar(context: context, content: Text(langCtrl.tr('gps_opened')), backgroundColor: Colors.green));
+                                    }
                                     Navigator.pop(context); 
                                   },
                                   child: Text(langCtrl.tr('open'), style: const TextStyle(color: Colors.blueAccent, fontSize: 16, fontWeight: FontWeight.bold)),
@@ -606,6 +610,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
 
     final isFavorite = busCtrl.favoriteRoutes.contains(busCtrl.currentRoute);
     final hasRoute = busCtrl.currentRoute.isNotEmpty;
+    final elderly = ElderlyAccess.enabled(context);
 
     final alertStops = busCtrl.stopsList
         .where((stop) => busCtrl.showRouteNotices && _hasAnyStopWarning(stop))
@@ -613,7 +618,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
 
     List<Widget> combinedAlertWidgets = [];
 
-    if (busCtrl.showRouteNotices) {
+    if (busCtrl.showRouteNotices && !elderly) {
     for (var alert in _routeAlerts) {
       combinedAlertWidgets.add(
         Padding(
@@ -722,7 +727,8 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
 
           Column(
             children: [
-              ClipRect(
+              PreserveChrome(
+              child: ClipRect(
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
                   child: Container(
@@ -739,9 +745,9 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                               hasRoute ? busCtrl.currentRoute : '--', 
                               style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 64, fontWeight: FontWeight.bold, height: 1.0),
                             ),
-                            if (hasRoute) 
+                            if (hasRoute && !elderly) 
                               InkWell(
-                                onTap: () => _showFareDialog(context, isDark),
+                                onTap: () => showBusFareDialog(context),
                                 borderRadius: BorderRadius.circular(12),
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -865,7 +871,23 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                   ),
                 ),
               ),
+              ),
               Divider(height: 1, color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.1)),
+              if (elderly)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const ElderlyMoreScreen()),
+                        );
+                      },
+                      child: Text(langCtrl.tr('more_options'), softWrap: true),
+                    ),
+                  ),
+                ),
               
               Expanded(
                 child: busCtrl.isLoadingStops 
@@ -932,7 +954,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0), 
                                               child: Builder(
                                                 builder: (context) {
-                                                  final upcomingInfo = _getUpcomingBusesInfo(busCtrl, langCtrl);
+                                                  final upcomingInfo = _getUpcomingBusesInfo(busCtrl, langCtrl, elderly: elderly);
                                                   return Column(
                                                     crossAxisAlignment: CrossAxisAlignment.start,
                                                     children: [
@@ -979,6 +1001,15 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                                           ),
                                                         ],
                                                       ),
+                                                      if (elderly && busCtrl.showRouteNotices && _hasAnyStopWarning(stop))
+                                                        Padding(
+                                                          padding: const EdgeInsets.only(top: 6),
+                                                          child: Text(
+                                                            langCtrl.tr('elderly_stop_closed'),
+                                                            softWrap: true,
+                                                            style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w800, fontSize: 18, height: 1.3),
+                                                          ),
+                                                        ),
                                                       const SizedBox(height: 8), 
                                                       
                                                       IntrinsicHeight(
@@ -1017,25 +1048,60 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                                                   else if (upcomingInfo.isNotEmpty) ...[
                                                                     const SizedBox(height: 8),
                                                                     ...upcomingInfo.asMap().entries.map((entry) {
-                                                                      int idx = entry.key; var busInfo = entry.value; bool isSecondBus = idx == 1; 
-                                                                      return Padding(
-                                                                        padding: EdgeInsets.only(top: isSecondBus ? 6.0 : 0.0),
-                                                                        child: Row(
-                                                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                                          crossAxisAlignment: CrossAxisAlignment.center,
-                                                                          children: [
-                                                                            Expanded(
-                                                                              child: Text(
-                                                                                busInfo['status'] ?? '', 
-                                                                                style: TextStyle(color: isDark ? (isSecondBus ? Colors.amber.shade200 : Colors.amber) : (isSecondBus ? Colors.orange.shade500 : Colors.orange.shade700), fontWeight: FontWeight.bold, fontSize: isSecondBus ? 13 : 15)
-                                                                              )
-                                                                            ),
-                                                                            if (busInfo['plate'] != null && busInfo['plate']!.isNotEmpty) 
-                                                                              Text(
-                                                                                '${langCtrl.tr('bus_plate')}${busInfo['plate']}', // 🌟 多國語言車牌
-                                                                                style: TextStyle(color: isDark ? (isSecondBus ? Colors.grey[500] : Colors.grey[400]) : (isSecondBus ? Colors.grey[600] : Colors.grey[800]), fontSize: 12, fontWeight: FontWeight.normal)
+                                                                      int idx = entry.key; var busInfo = entry.value; bool isSecondBus = idx == 1;
+                                                                      final statusText = busInfo['status'] ?? '';
+                                                                      final statusColor = isDark ? (isSecondBus ? Colors.amber.shade200 : Colors.amber) : (isSecondBus ? Colors.orange.shade500 : Colors.orange.shade700);
+                                                                      final plate = busInfo['plate'];
+                                                                      if (!elderly) {
+                                                                        return Padding(
+                                                                          padding: EdgeInsets.only(top: isSecondBus ? 6.0 : 0.0),
+                                                                          child: Row(
+                                                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                                            crossAxisAlignment: CrossAxisAlignment.center,
+                                                                            children: [
+                                                                              Expanded(
+                                                                                child: Text(
+                                                                                  statusText, 
+                                                                                  style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: isSecondBus ? 13 : 15)
+                                                                                )
                                                                               ),
-                                                                          ],
+                                                                              if (plate != null && plate.isNotEmpty) 
+                                                                                Text(
+                                                                                  '${langCtrl.tr('bus_plate')}$plate',
+                                                                                  style: TextStyle(color: isDark ? (isSecondBus ? Colors.grey[500] : Colors.grey[400]) : (isSecondBus ? Colors.grey[600] : Colors.grey[800]), fontSize: 12, fontWeight: FontWeight.normal)
+                                                                                ),
+                                                                            ],
+                                                                          ),
+                                                                        );
+                                                                      }
+                                                                      final spoken = statusText;
+                                                                      return Padding(
+                                                                        key: ValueKey('arrival-$idx'),
+                                                                        padding: EdgeInsets.only(top: isSecondBus ? 10.0 : 0.0),
+                                                                        child: GestureDetector(
+                                                                          onTap: spoken.isEmpty
+                                                                              ? null
+                                                                              : () {
+                                                                                  ArrivalSpeaker.shared.speak(spoken, langCtrl.currentLanguage);
+                                                                                },
+                                                                          child: Column(
+                                                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                                                            children: [
+                                                                              Text(
+                                                                                spoken,
+                                                                                softWrap: true,
+                                                                                style: TextStyle(color: statusColor, fontWeight: FontWeight.w800, fontSize: isSecondBus ? 20 : 22, height: 1.3),
+                                                                              ),
+                                                                              if (plate != null && plate.isNotEmpty) ...[
+                                                                                const SizedBox(height: 4),
+                                                                                Text(
+                                                                                  '${langCtrl.tr('bus_plate')}$plate',
+                                                                                  softWrap: true,
+                                                                                  style: TextStyle(color: isDark ? Colors.white : const Color(0xFF111111), fontSize: 18, fontWeight: FontWeight.w700, height: 1.3),
+                                                                                ),
+                                                                              ],
+                                                                            ],
+                                                                          ),
                                                                         ),
                                                                       );
                                                                     }),
@@ -1068,7 +1134,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                               InkWell(
                                 onTap: () { busCtrl.selectStop(stop.seq); busCtrl.fetchBusETA(); },
                                 child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), 
+                                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: elderly ? 16 : 6), 
                                   child: Row(
                                     crossAxisAlignment: CrossAxisAlignment.center,
                                     children: [
@@ -1092,6 +1158,15 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                                 ),
                                               ],
                                             ),
+                                            if (elderly && busCtrl.showRouteNotices && _hasAnyStopWarning(stop))
+                                              Padding(
+                                                padding: const EdgeInsets.only(top: 6),
+                                                child: Text(
+                                                  langCtrl.tr('elderly_stop_closed'),
+                                                  softWrap: true,
+                                                  style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w800, fontSize: 18, height: 1.3),
+                                                ),
+                                              ),
                                           ]
                                         )
                                       ),
