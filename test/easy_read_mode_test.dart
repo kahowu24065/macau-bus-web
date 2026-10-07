@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:macau_bus_app/constants/app_translations.dart';
 import 'package:macau_bus_app/controllers/easy_read_mode_controller.dart';
+import 'package:macau_bus_app/controllers/language_controller.dart';
 import 'package:macau_bus_app/services/arrival_speaker.dart';
 import 'package:macau_bus_app/theme/easy_read_theme.dart';
 import 'package:macau_bus_app/utils/easy_read_arrival.dart';
@@ -214,6 +216,28 @@ void main() {
     expect(ArrivalSpeaker.localesFor('zhHans').first, 'zh-CN');
     expect(ArrivalSpeaker.localesFor('pt').first, 'pt-PT');
     expect(ArrivalSpeaker.localesFor('en').first, 'en-US');
+  });
+
+  testWidgets('easy read more keeps special routes, the full list, and fares', (tester) async {
+    SharedPreferences.setMockInitialValues({'language_code': 'zh'});
+    final lang = LanguageController();
+    await tester.pumpWidget(
+      ChangeNotifierProvider<LanguageController>.value(
+        value: lang,
+        child: const MaterialApp(home: EasyReadMoreScreen()),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('特別班次'), findsOneWidget);
+    expect(find.text('🚌 全澳巴士路線總覽'), findsOneWidget);
+    expect(find.text('車資表'), findsOneWidget);
+    expect(find.text('路線規劃'), findsNothing);
+    expect(find.text('改道通告'), findsNothing);
+    expect(find.text('時間表'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    lang.dispose();
   });
 
   test('route catalog lines keep the description on its own field', () {

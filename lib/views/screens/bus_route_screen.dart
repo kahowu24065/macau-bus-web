@@ -90,6 +90,22 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
   }
 
   Future<void> _openStopWarning(dynamic stop) async {
+    if (EasyReadAccess.enabled(context, listen: false)) {
+      final langCtrl = context.read<LanguageController>();
+      final stopCode = stop.code?.toString() ?? '';
+      final stopName = stop.getLocalizedName(langCtrl.currentLanguage);
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => StopDetourDetailPage(
+            stopCode: stopCode,
+            stopName: stopName,
+          ),
+        ),
+      );
+      return;
+    }
+
     final alertUrl = stop.alertUrl?.toString() ?? '';
     final stopCode = stop.code?.toString().trim().toUpperCase() ?? '';
 
@@ -556,22 +572,26 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
   }
 
   Widget _buildHeaderIcon(IconData icon, String label, bool isDark, VoidCallback onTap, {Color? color}) {
+    final easyRead = EasyReadAccess.enabled(context);
+    final labelColor = color ?? (isDark ? Colors.white70 : Colors.black87);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 4.0),
+        padding: EdgeInsets.symmetric(horizontal: easyRead ? 2 : 4, vertical: 4),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.start,
           children: [
             Icon(icon, color: color ?? (isDark ? Colors.white : Colors.black), size: 24),
-            const SizedBox(height: 4), 
-            Text(
-              label, 
-              textAlign: TextAlign.center,
-              style: TextStyle(color: color ?? (isDark ? Colors.white70 : Colors.black87), fontSize: 11),
-            ),
+            const SizedBox(height: 4),
+            easyRead
+                ? _FittingHeaderLabel(text: label, color: labelColor)
+                : Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: labelColor, fontSize: 11),
+                  ),
           ],
         ),
       ),
@@ -779,12 +799,12 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                             children: [
                               Text(
                                 '${langCtrl.tr('direction_to')} ',
-                                style: const TextStyle(color: Colors.grey, fontSize: 15),
+                                style: TextStyle(color: Colors.grey, fontSize: easyRead ? 18 : 15),
                               ),
                               Expanded(
                                 child: FitMarqueeText(
                                   currentTerminal,
-                                  style: const TextStyle(color: Colors.grey, fontSize: 15),
+                                  style: TextStyle(color: Colors.grey, fontSize: easyRead ? 18 : 15),
                                 ),
                               ),
                             ],
@@ -873,22 +893,6 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
               ),
               ),
               Divider(height: 1, color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.1)),
-              if (easyRead)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const EasyReadMoreScreen()),
-                        );
-                      },
-                      child: Text(langCtrl.tr('more_options'), softWrap: true),
-                    ),
-                  ),
-                ),
-              
               Expanded(
                 child: busCtrl.isLoadingStops 
                   ? const Center(child: CircularProgressIndicator(color: Colors.amber)) 
@@ -903,6 +907,8 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                         itemBuilder: (context, index) {
                           final stop = busCtrl.stopsList[index]; 
                           final isSelected = busCtrl.selectedStopSeq == stop.seq;
+                          final stopInfoSize = easyRead ? 19.0 : 16.0;
+                          final seqWidth = easyRead ? 56.0 : 28.0;
                           final hasBoardingAlarm = busCtrl.boardingStopSeq == stop.seq;
                           final hasAlightingAlarm = busCtrl.alightingStopSeq == stop.seq;
                           final isAlarmActive = hasBoardingAlarm || hasAlightingAlarm;
@@ -963,13 +969,13 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                                         crossAxisAlignment: CrossAxisAlignment.center, 
                                                         children: [
                                                           SizedBox(
-                                                            width: 28,
-                                                            child: Text('${stop.seq}.', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 16, fontWeight: FontWeight.bold)),
+                                                            width: seqWidth,
+                                                            child: Text('${stop.seq}.', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: stopInfoSize, fontWeight: FontWeight.bold)),
                                                           ),
                                                           Expanded(
                                                             child: Text(
                                                               '${stop.getLocalizedName(langCtrl.currentLanguage)} (${stop.code})', 
-                                                              style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 16, fontWeight: FontWeight.bold)
+                                                              style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: stopInfoSize, fontWeight: FontWeight.bold)
                                                             ),
                                                           ),
                                                           const SizedBox(width: 8),
@@ -1147,13 +1153,13 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                               crossAxisAlignment: CrossAxisAlignment.start,
                                               children: [
                                                 SizedBox(
-                                                  width: 28,
-                                                  child: Text('${stop.seq}.', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 16, fontWeight: FontWeight.w500)),
+                                                  width: seqWidth,
+                                                  child: Text('${stop.seq}.', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: stopInfoSize, fontWeight: FontWeight.w500)),
                                                 ),
                                                 Expanded(
                                                   child: Text(
                                                     '${stop.getLocalizedName(langCtrl.currentLanguage)} (${stop.code})', 
-                                                    style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 16, fontWeight: FontWeight.w500)
+                                                    style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: stopInfoSize, fontWeight: FontWeight.w500)
                                                   ),
                                                 ),
                                               ],
@@ -1201,6 +1207,115 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
         ],
       ),
     );
+  }
+}
+
+/// Easy Read header captions. Prefer 14pt on one line. On a narrow phone a
+/// long word such as "Timetable" or "Localizar" wraps onto two balanced lines
+/// instead of shrinking back to the normal 11pt size or clipping.
+class _FittingHeaderLabel extends StatelessWidget {
+  const _FittingHeaderLabel({required this.text, required this.color});
+
+  final String text;
+  final Color color;
+
+  static const double _preferred = 14;
+  static const double _floor = 11;
+  static const double _height = 1.15;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxWidth = constraints.maxWidth;
+        final direction = Directionality.of(context);
+        final scaler = MediaQuery.textScalerOf(context);
+        final base = DefaultTextStyle.of(context).style;
+        var size = _preferred;
+        var chosen = text;
+        if (maxWidth.isFinite && maxWidth > 0) {
+          var fitted = false;
+          for (var step = 0; step <= 6; step++) {
+            final font = _preferred - step * 0.5;
+            final style = _style(base, font);
+            if (_fits(text, style, maxWidth, direction, scaler, lines: 1)) {
+              size = font;
+              chosen = text;
+              fitted = true;
+              break;
+            }
+            final split = _twoLines(text);
+            if (_fits(split, style, maxWidth, direction, scaler, lines: 2)) {
+              size = font;
+              chosen = split;
+              fitted = true;
+              break;
+            }
+          }
+          if (!fitted) {
+            size = _floor;
+            chosen = _twoLines(text);
+          }
+        }
+        return Text(
+          chosen,
+          textAlign: TextAlign.center,
+          softWrap: true,
+          maxLines: chosen.contains('\n') ? 2 : 1,
+          style: _style(base, size),
+        );
+      },
+    );
+  }
+
+  TextStyle _style(TextStyle base, double fontSize) {
+    return base.merge(TextStyle(color: color, fontSize: fontSize, height: _height));
+  }
+
+  bool _fits(
+    String value,
+    TextStyle style,
+    double maxWidth,
+    TextDirection direction,
+    TextScaler scaler, {
+    required int lines,
+  }) {
+    final parts = value.split('\n');
+    if (parts.length > lines) return false;
+    for (final part in parts) {
+      final painter = TextPainter(
+        text: TextSpan(text: part, style: style),
+        textDirection: direction,
+        textScaler: scaler,
+        maxLines: 1,
+      )..layout(maxWidth: double.infinity);
+      if (painter.width > maxWidth + 0.5) return false;
+    }
+    return true;
+  }
+
+  /// Word split when there are spaces; otherwise a mid-word break so a single
+  /// long label can use two lines without being clipped.
+  static String _twoLines(String text) {
+    final trimmed = text.trim();
+    final words = trimmed.split(RegExp(r'\s+'));
+    if (words.length >= 2) {
+      var best = 1;
+      var bestDiff = 1 << 30;
+      for (var i = 1; i < words.length; i++) {
+        final left = words.take(i).join(' ').length;
+        final right = words.skip(i).join(' ').length;
+        final diff = (left - right).abs();
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          best = i;
+        }
+      }
+      return '${words.take(best).join(' ')}\n${words.skip(best).join(' ')}';
+    }
+    if (trimmed.length < 2) return trimmed;
+    final mid = trimmed.length ~/ 2;
+    return '${trimmed.substring(0, mid)}\n${trimmed.substring(mid)}';
   }
 }
 

@@ -28,6 +28,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
   dynamic _lastFetchedLoc;
   List<dynamic> _nearbyStopsCache = [];
   bool _isFetchingNearby = false;
+  final _stackKey = GlobalKey();
+  final _searchFieldKey = GlobalKey();
+  double? _suggestionTop;
+
+  /// Small gap under the search field. About half the old fixed offset.
+  static const double _suggestionGap = 8;
+
+  void _scheduleSuggestionAnchor() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final field = _searchFieldKey.currentContext?.findRenderObject() as RenderBox?;
+      final stack = _stackKey.currentContext?.findRenderObject() as RenderBox?;
+      if (field == null || stack == null || !field.hasSize || !stack.hasSize) return;
+      final bottom = field.localToGlobal(Offset(0, field.size.height), ancestor: stack);
+      final next = bottom.dy + _suggestionGap;
+      if (_suggestionTop != null && (next - _suggestionTop!).abs() < 0.5) return;
+      setState(() => _suggestionTop = next);
+    });
+  }
 
   @override
   void initState() {
@@ -530,6 +549,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       busCtrl.fetchAllRoutes(lang: langCtrl.currentLanguage);
     });
 
+    _scheduleSuggestionAnchor();
     final inputText = keyboardCtrl.routeController.text;
     bool showSuggestions = keyboardCtrl.isOpen && inputText.isNotEmpty;
     List<String> routeSuggestions = [];
@@ -541,6 +561,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent, 
       body: Stack(
+        key: _stackKey,
         children: [
           Column(
             children: [
@@ -556,6 +577,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       children: [
                         Expanded(
                           child: SizedBox(
+                            key: _searchFieldKey,
                             height: 42,
                             child: TextField(
                               controller: keyboardCtrl.routeController, 
@@ -622,9 +644,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ],
           ),
 
-          if (showSuggestions && routeSuggestions.isNotEmpty)
+          if (showSuggestions && routeSuggestions.isNotEmpty && _suggestionTop != null)
             Positioned(
-              top: 128, left: 16, right: 16,
+              key: const Key('route-suggestions'),
+              top: _suggestionTop, left: 16, right: 16,
               child: Container(
                 constraints: BoxConstraints(maxHeight: math.max(100.0, MediaQuery.of(context).size.height - 400)), 
                 child: Material(

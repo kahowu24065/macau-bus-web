@@ -399,4 +399,28 @@ void main() {
     );
     expect(find.text('06:00 - 07:00'), findsOneWidget);
   });
+
+  testWidgets('frequency label and minutes share the card right edge', (tester) async {
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    Future<void> check(Size size, String language, String label) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      await _pumpDialog(tester, route: '1A', direction: 0, language: language);
+      final card = tester.getRect(find.byKey(const ValueKey('timetable-band-0')));
+      final labelRect = tester.getRect(find.text(label).first);
+      final valueRect = tester.getRect(find.text('9 - 11'));
+      final iconRect = tester.getRect(find.byIcon(Icons.schedule).first);
+      final edge = card.right - 14;
+      expect(labelRect.right, closeTo(edge, 1), reason: language);
+      expect(valueRect.right, closeTo(edge, 1), reason: language);
+      expect(labelRect.right, closeTo(valueRect.right, 1), reason: language);
+      expect(labelRect.left - iconRect.right, closeTo(4, 1), reason: language);
+    }
+
+    await check(const Size(390, 844), 'zh', '班次（分鐘）');
+    await check(const Size(800, 600), 'en', 'Frequency (mins)');
+    await check(const Size(390, 844), 'pt', 'Frequência (min)');
+  });
 }
