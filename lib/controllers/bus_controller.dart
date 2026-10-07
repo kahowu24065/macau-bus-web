@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/bus_stop.dart';
 import '../models/bus.dart';
 import '../services/bus_api_service.dart';
+import '../services/open_data_config.dart';
 import '../constants/feature_flags.dart';
 import '../services/gpx_service.dart';
 import '../services/notification_service.dart';
@@ -81,6 +82,12 @@ class BusController extends ChangeNotifier {
   static const Duration _gpxDiskTtl = Duration(days: 30);
   static const Duration _routesDiskTtl = Duration(days: 1);
 
+  /// v2: open-data pole codes (`M198/2`). v1 (`cache_stops_...`) may still hold
+  /// DSAT-era codes such as bare `M198` and is left unread.
+  /// Favourites are route ids (`favorite_routes`), and boarding alarms are
+  /// route + direction + stop sequence, so a pole-code change does not drop them.
+  static const String _stopsCacheKeyPrefix = 'cache_stops_v2';
+
   /// v2: bridge decks stay in the polyline. v1 (`cache_route_shape_$route_$dir`)
   /// stored the pre-1.0.27 split, which dropped Lotus Bridge and Ponte Macau.
   /// Those entries are left unread so a 30-day cache cannot redraw the gap.
@@ -113,6 +120,19 @@ class BusController extends ChangeNotifier {
     loadFavorites();
     _restoreTrackingState(); 
     _loadSimpleModePreference();
+    OpenDataConfig.instance.addListener(_onOpenDataConfig);
+    unawaited(OpenDataConfig.instance.ensureLoaded());
+  }
+
+  bool get showLiveArrivals => OpenDataConfig.instance.showLiveArrivals;
+  bool get showRouteNotices => OpenDataConfig.instance.showRouteNotices;
+
+  void _onOpenDataConfig() {
+    if (!showLiveArrivals && (allBusesList.isNotEmpty || _legMotion.isNotEmpty)) {
+      allBusesList = [];
+      _legMotion.clear();
+    }
+    notifyListeners();
   }
 
   Future<void> _loadSimpleModePreference() async {
@@ -283,6 +303,7 @@ class BusController extends ChangeNotifier {
 
   @override
   void dispose() {
+    OpenDataConfig.instance.removeListener(_onOpenDataConfig);
     _autoRefreshTimer?.cancel();
     super.dispose();
   }
@@ -861,7 +882,7 @@ class BusController extends ChangeNotifier {
     // 🌟 採用記憶體中嘅 currentLang 確保同步精準
     final lang = currentLang;
     
-    final String cacheKey = 'cache_stops_${currentRoute}_${currentDirection}_$lang';
+    final String cacheKey = '${_stopsCacheKeyPrefix}_${currentRoute}_${currentDirection}_$lang';
     final String? cachedData = prefs.getString(cacheKey);
     final bool stopsFresh = cachedData != null && _isDiskCacheFresh(prefs, cacheKey, _stopsDiskTtl);
     bool hasCache = false;
@@ -1055,21 +1076,30 @@ class BusController extends ChangeNotifier {
 
       isLoadingETA = false;
       if (result['success'] == true) {
+        if (result['realtimeFlagKnown'] == true) {
+          OpenDataConfig.instance.applyEtaFlag(result['realtimeAvailable'] == true);
+        }
         etaData = result['etaData'];
-        allBusesList = result['allBuses'];
+        timetableDetails = result['timetableDetails'];
         _etaShownRoute = route;
         _etaShownDir = dir;
-
-        timetableDetails = result['timetableDetails'];
         errorMessage = null;
 
-        if (_skipNextBoardingAlarmCheck) {
-          _skipNextBoardingAlarmCheck = false;
+        if (showLiveArrivals) {
+          allBusesList = result['allBuses'];
+          if (_skipNextBoardingAlarmCheck) {
+            _skipNextBoardingAlarmCheck = false;
+          } else {
+            await _checkBoardingAlarm();
+          }
         } else {
-          await _checkBoardingAlarm();
+          allBusesList = [];
+          _legMotion.clear();
+          _skipNextBoardingAlarmCheck = false;
         }
 
         if (!isAutoRefresh || _autoRefreshTimer == null) startAutoRefresh();
+        unawaited(OpenDataConfig.instance.ensureLoaded());
       } else {
         if (stopsList.isEmpty) {
           errorMessage = result['message'];

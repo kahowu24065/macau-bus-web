@@ -4,7 +4,7 @@
   "source_site": "https://www.dsat.gov.mo/",
   "route_list_url": "https://www.dsat.gov.mo/dsat/bus_route.aspx",
   "fetched_at": "2026-10-05T23:47:21+08:00",
-  "route_count": 97,
+  "route_count": 101,
   "source_note": "Official DSAT route PDFs (bus_route.aspx / download_route.aspx). TimetableDialog reads each route's app_frequency (服務時間 / 班次(分鐘)). Headway ranges, not a departure clock, except routes that publish exact times (71S). PDF text excerpts are omitted.",
   "routes": {
     "1": {
@@ -798,7 +798,7 @@
         ],
         "sections": [
           {
-            "title": "特別日期 / Horário especial",
+            "title": "2026年9月25-27日及2026年10月1-7日",
             "title_pt": "2026/09/25~27 , 10/01~07",
             "directions": [
               {
@@ -1183,7 +1183,7 @@
           "label_pt": "CIRCULAR",
           "service_days": {
             "weekday_mon_fri_except_public_holidays": {
-              "label_pt": "2. a 6.ªs feiras (excepto feriados públicos)",
+              "label_pt": "2.ªs a 6.ªs feiras (excepto feriados públicos)",
               "frequencies": [
                 {
                   "from": "06:00",
@@ -1219,8 +1219,8 @@
                 }
               ]
             },
-            "sunday_and_public_holidays": {
-              "label_pt": "Domingos e feriados públicos",
+            "saturday_except_public_holidays": {
+              "label_pt": "Sábados (excepto feriados públicos)",
               "frequencies": [
                 {
                   "from": "06:00",
@@ -1231,19 +1231,24 @@
                   ]
                 },
                 {
-                  "from": "06:00",
-                  "to": "20:00",
-                  "headway_min": [
-                    10,
-                    12
-                  ]
-                },
-                {
                   "from": "20:00",
                   "to": "01:15",
                   "headway_min": [
                     12,
                     15
+                  ]
+                }
+              ]
+            },
+            "sunday_and_public_holidays": {
+              "label_pt": "Domingos e feriados públicos",
+              "frequencies": [
+                {
+                  "from": "06:00",
+                  "to": "20:00",
+                  "headway_min": [
+                    10,
+                    12
                   ]
                 },
                 {
@@ -1269,7 +1274,7 @@
         "sections": [
           {
             "title": "星期一至五（公眾假期除外）",
-            "title_pt": "2. a 6.ªs feiras (excepto feriados públicos)",
+            "title_pt": "2.ªs a 6.ªs feiras (excepto feriados públicos)",
             "directions": [
               {
                 "direction_label": "CIRCULAR",
@@ -1295,8 +1300,8 @@
             ]
           },
           {
-            "title": "星期日及公眾假期",
-            "title_pt": "Domingos e feriados públicos",
+            "title": "星期六（公眾假期除外）",
+            "title_pt": "Sábados (excepto feriados públicos)",
             "directions": [
               {
                 "direction_label": "CIRCULAR",
@@ -1306,12 +1311,23 @@
                     "班次(分鐘)": "10-15"
                   },
                   {
-                    "服務時間": "06:00-20:00",
-                    "班次(分鐘)": "10-12"
-                  },
-                  {
                     "服務時間": "20:00-01:15",
                     "班次(分鐘)": "12-15"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "title": "星期日及公眾假期",
+            "title_pt": "Domingos e feriados públicos",
+            "directions": [
+              {
+                "direction_label": "CIRCULAR",
+                "rows": [
+                  {
+                    "服務時間": "06:00-20:00",
+                    "班次(分鐘)": "10-12"
                   },
                   {
                     "服務時間": "20:00-01:15",
@@ -2382,6 +2398,77 @@
       "special_notes": null,
       "parse_ok": true
     },
+    "17S1": {
+      "route": "17S1",
+      "route_name_pt": "CENTRO DE CIÊNCIA DE MACAU → PRAÇA DAS PORTAS DO CERCO",
+      "fare_mop": 6.0,
+      "bidirectional": false,
+      "circular": false,
+      "route_type_pt": "PERCURSO DE SENTIDO ÚNICO",
+      "source_url": "https://www.dsat.gov.mo/dsat/download_route.aspx?route=busroute_17S1",
+      "route_page_url": "https://www.dsat.gov.mo/dsat/route_display.aspx?route=busroute_17S1",
+      "pdf_filename": "busroute_17S1.pdf",
+      "pdf_title": "17S1_20260912_無你在此",
+      "pdf_date_stamp": "2026-09-12",
+      "fetched_at": "2026-10-05T23:47:21+08:00",
+      "disclaimer": "Frequencies transcribed from the official DSAT PDF text extraction; not for production navigation. Schedules may change. Typhoon note from PDF included. Hotline 2827-1122.",
+      "schedule_format": "frequency_bands",
+      "directions": [
+        {
+          "id": "to_praca_das_portas_do_cerco",
+          "terminal_from": "CENTRO DE CIÊNCIA DE MACAU",
+          "terminal_to": "PRAÇA DAS PORTAS DO CERCO",
+          "label_pt": "PARA PRAÇA DAS PORTAS DO CERCO",
+          "service_days": {
+            "special_dated": {
+              "label_pt": "2026/09/12, 19, 25 , 10/01, 04",
+              "frequencies": [
+                {
+                  "from": "21:30",
+                  "to": "23:00",
+                  "headway_min": [
+                    10,
+                    30
+                  ]
+                }
+              ]
+            }
+          },
+          "exact_departure_times": null,
+          "notes": "Dated one-way service. 2026/09/12, 19, 25 , 10/01, 04 Frequência ajustada em função de situações imprevistas"
+        }
+      ],
+      "app_frequency": {
+        "columns": [
+          "服務時間",
+          "班次(分鐘)"
+        ],
+        "sections": [
+          {
+            "title": "2026年9月12日、19日、25日及2026年10月1日、4日",
+            "title_pt": "2026/09/12, 19, 25 , 10/01, 04",
+            "directions": [
+              {
+                "direction_label": "PARA PRAÇA DAS PORTAS DO CERCO",
+                "rows": [
+                  {
+                    "服務時間": "21:30-23:00",
+                    "班次(分鐘)": "10-30"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "typhoon_note_pt": "Durante a passagem do tufão, as últimas partidas de autocarros partem uma hora após o içamento do sinal n.º 8",
+      "hotline": "2827-1122",
+      "special_notes": [
+        "Frequência ajustada em função de situações imprevistas",
+        "2026/09/12, 19, 25 , 10/01, 04"
+      ],
+      "parse_ok": true
+    },
     "17T": {
       "route": "17T",
       "route_name_pt": "PORTAS DO CERCO ↔ R. TOMÁS VIEIRA",
@@ -2404,8 +2491,8 @@
           "terminal_to": null,
           "label_pt": "CIRCULAR",
           "service_days": {
-            "special": {
-              "label_pt": "Horário especial / especial",
+            "special_dated": {
+              "label_pt": "2026/09/19~20, 09/25~27 , 10/01~07",
               "frequencies": [
                 {
                   "from": "09:00",
@@ -2419,7 +2506,7 @@
             }
           },
           "exact_departure_times": null,
-          "notes": "PDF shows frequency bands; first/last vehicle implied by band edges when PRIMEIRO/ÚLTIMO headers lack separate times. Frequência ajustada em função de situações imprevistas"
+          "notes": "PDF shows frequency bands; first/last vehicle implied by band edges when PRIMEIRO/ÚLTIMO headers lack separate times. Frequência ajustada em função de situações imprevistas 2026/09/19~20, 09/25~27 , 10/01~07"
         }
       ],
       "app_frequency": {
@@ -2429,8 +2516,8 @@
         ],
         "sections": [
           {
-            "title": "特別班次 / Horário especial",
-            "title_pt": "Horário especial / especial",
+            "title": "2026年9月19-20日、25-27日及2026年10月1-7日",
+            "title_pt": "2026/09/19~20, 09/25~27 , 10/01~07",
             "directions": [
               {
                 "direction_label": "CIRCULAR",
@@ -2448,7 +2535,8 @@
       "typhoon_note_pt": "Durante a passagem do tufão, as últimas partidas de autocarros partem uma hora após o içamento do sinal n.º 8",
       "hotline": "2827-1122",
       "special_notes": [
-        "Frequência ajustada em função de situações imprevistas"
+        "Frequência ajustada em função de situações imprevistas",
+        "2026/09/19~20, 09/25~27 , 10/01~07"
       ],
       "parse_ok": true
     },
@@ -2470,7 +2558,7 @@
       "directions": [
         {
           "id": "to_barra",
-          "terminal_from": null,
+          "terminal_from": "RUA DOS CURRAIS",
           "terminal_to": "BARRA",
           "label_pt": "PARA BARRA",
           "service_days": {
@@ -2508,7 +2596,43 @@
                     18,
                     22
                   ]
+                }
+              ]
+            },
+            "sunday_and_public_holidays": {
+              "label_pt": "Domingos e feriados públicos",
+              "frequencies": [
+                {
+                  "from": "06:00",
+                  "to": "20:00",
+                  "headway_min": [
+                    18,
+                    22
+                  ]
                 },
+                {
+                  "from": "20:00",
+                  "to": "01:10",
+                  "headway_min": [
+                    20,
+                    24
+                  ]
+                }
+              ]
+            }
+          },
+          "exact_departure_times": null,
+          "notes": "PDF shows frequency bands; first/last vehicle implied by band edges when PRIMEIRO/ÚLTIMO headers lack separate times."
+        },
+        {
+          "id": "to_rua_dos_currais",
+          "terminal_from": "BARRA",
+          "terminal_to": "RUA DOS CURRAIS",
+          "label_pt": "PARA RUA DOS CURRAIS",
+          "service_days": {
+            "weekday_mon_sat_except_public_holidays": {
+              "label_pt": "2.ªs feiras a Sábados (excepto feriados públicos)",
+              "frequencies": [
                 {
                   "from": "05:45",
                   "to": "10:00",
@@ -2546,22 +2670,6 @@
             "sunday_and_public_holidays": {
               "label_pt": "Domingos e feriados públicos",
               "frequencies": [
-                {
-                  "from": "06:00",
-                  "to": "20:00",
-                  "headway_min": [
-                    18,
-                    22
-                  ]
-                },
-                {
-                  "from": "20:00",
-                  "to": "01:10",
-                  "headway_min": [
-                    20,
-                    24
-                  ]
-                },
                 {
                   "from": "05:45",
                   "to": "20:00",
@@ -2613,7 +2721,12 @@
                   {
                     "服務時間": "20:00-01:10",
                     "班次(分鐘)": "18-22"
-                  },
+                  }
+                ]
+              },
+              {
+                "direction_label": "PARA RUA DOS CURRAIS",
+                "rows": [
                   {
                     "服務時間": "05:45-10:00",
                     "班次(分鐘)": "14-18"
@@ -2648,7 +2761,12 @@
                   {
                     "服務時間": "20:00-01:10",
                     "班次(分鐘)": "20-24"
-                  },
+                  }
+                ]
+              },
+              {
+                "direction_label": "PARA RUA DOS CURRAIS",
+                "rows": [
                   {
                     "服務時間": "05:45-20:00",
                     "班次(分鐘)": "18-22"
@@ -2883,8 +3001,8 @@
                 }
               ]
             },
-            "sunday_and_public_holidays": {
-              "label_pt": "Domingos e feriados públicos",
+            "saturday_except_public_holidays": {
+              "label_pt": "Sábados (excepto feriados públicos)",
               "frequencies": [
                 {
                   "from": "07:00",
@@ -2895,27 +3013,11 @@
                   ]
                 },
                 {
-                  "from": "07:00",
-                  "to": "16:00",
-                  "headway_min": [
-                    10,
-                    16
-                  ]
-                },
-                {
                   "from": "09:00",
                   "to": "15:00",
                   "headway_min": [
                     12,
                     16
-                  ]
-                },
-                {
-                  "from": "16:00",
-                  "to": "19:00",
-                  "headway_min": [
-                    8,
-                    14
                   ]
                 },
                 {
@@ -2932,6 +3034,27 @@
                   "headway_min": [
                     15,
                     18
+                  ]
+                }
+              ]
+            },
+            "sunday_and_public_holidays": {
+              "label_pt": "Domingos e feriados públicos",
+              "frequencies": [
+                {
+                  "from": "07:00",
+                  "to": "16:00",
+                  "headway_min": [
+                    10,
+                    16
+                  ]
+                },
+                {
+                  "from": "16:00",
+                  "to": "19:00",
+                  "headway_min": [
+                    8,
+                    14
                   ]
                 },
                 {
@@ -2991,8 +3114,8 @@
                 }
               ]
             },
-            "sunday_and_public_holidays": {
-              "label_pt": "Domingos e feriados públicos",
+            "saturday_except_public_holidays": {
+              "label_pt": "Sábados (excepto feriados públicos)",
               "frequencies": [
                 {
                   "from": "07:00",
@@ -3003,27 +3126,11 @@
                   ]
                 },
                 {
-                  "from": "07:00",
-                  "to": "16:00",
-                  "headway_min": [
-                    10,
-                    16
-                  ]
-                },
-                {
                   "from": "09:00",
                   "to": "15:00",
                   "headway_min": [
                     12,
                     16
-                  ]
-                },
-                {
-                  "from": "16:00",
-                  "to": "19:00",
-                  "headway_min": [
-                    8,
-                    14
                   ]
                 },
                 {
@@ -3040,6 +3147,27 @@
                   "headway_min": [
                     15,
                     18
+                  ]
+                }
+              ]
+            },
+            "sunday_and_public_holidays": {
+              "label_pt": "Domingos e feriados públicos",
+              "frequencies": [
+                {
+                  "from": "07:00",
+                  "to": "16:00",
+                  "headway_min": [
+                    10,
+                    16
+                  ]
+                },
+                {
+                  "from": "16:00",
+                  "to": "19:00",
+                  "headway_min": [
+                    8,
+                    14
                   ]
                 },
                 {
@@ -3112,8 +3240,8 @@
             ]
           },
           {
-            "title": "星期日及公眾假期",
-            "title_pt": "Domingos e feriados públicos",
+            "title": "星期六（公眾假期除外）",
+            "title_pt": "Sábados (excepto feriados públicos)",
             "directions": [
               {
                 "direction_label": "PARA BARRA",
@@ -3123,24 +3251,12 @@
                     "班次(分鐘)": "8-14"
                   },
                   {
-                    "服務時間": "07:00-16:00",
-                    "班次(分鐘)": "10-16"
-                  },
-                  {
                     "服務時間": "09:00-15:00",
                     "班次(分鐘)": "12-16"
                   },
                   {
-                    "服務時間": "16:00-19:00",
-                    "班次(分鐘)": "8-14"
-                  },
-                  {
                     "服務時間": "15:00-19:00",
                     "班次(分鐘)": "8-14"
-                  },
-                  {
-                    "服務時間": "19:00-22:00",
-                    "班次(分鐘)": "15-18"
                   },
                   {
                     "服務時間": "19:00-22:00",
@@ -3156,16 +3272,8 @@
                     "班次(分鐘)": "8-14"
                   },
                   {
-                    "服務時間": "07:00-16:00",
-                    "班次(分鐘)": "10-16"
-                  },
-                  {
                     "服務時間": "09:00-15:00",
                     "班次(分鐘)": "12-16"
-                  },
-                  {
-                    "服務時間": "16:00-19:00",
-                    "班次(分鐘)": "8-14"
                   },
                   {
                     "服務時間": "15:00-19:00",
@@ -3174,6 +3282,42 @@
                   {
                     "服務時間": "19:00-22:00",
                     "班次(分鐘)": "15-18"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "title": "星期日及公眾假期",
+            "title_pt": "Domingos e feriados públicos",
+            "directions": [
+              {
+                "direction_label": "PARA BARRA",
+                "rows": [
+                  {
+                    "服務時間": "07:00-16:00",
+                    "班次(分鐘)": "10-16"
+                  },
+                  {
+                    "服務時間": "16:00-19:00",
+                    "班次(分鐘)": "8-14"
+                  },
+                  {
+                    "服務時間": "19:00-22:00",
+                    "班次(分鐘)": "15-18"
+                  }
+                ]
+              },
+              {
+                "direction_label": "PARA RUA DA SERENIDADE",
+                "rows": [
+                  {
+                    "服務時間": "07:00-16:00",
+                    "班次(分鐘)": "10-16"
+                  },
+                  {
+                    "服務時間": "16:00-19:00",
+                    "班次(分鐘)": "8-14"
                   },
                   {
                     "服務時間": "19:00-22:00",
@@ -3663,6 +3807,14 @@
               "label_pt": "Domingos e feriados públicos",
               "frequencies": [
                 {
+                  "from": "06:15",
+                  "to": "19:00",
+                  "headway_min": [
+                    6,
+                    12
+                  ]
+                },
+                {
                   "from": "19:00",
                   "to": "00:00",
                   "headway_min": [
@@ -3822,6 +3974,10 @@
               {
                 "direction_label": "PARA BARRA",
                 "rows": [
+                  {
+                    "服務時間": "06:15-19:00",
+                    "班次(分鐘)": "6-12"
+                  },
                   {
                     "服務時間": "19:00-00:00",
                     "班次(分鐘)": "10-15"
@@ -4191,7 +4347,7 @@
         ],
         "sections": [
           {
-            "title": "特別日期 / Horário especial",
+            "title": "2026年9月25-27日及2026年10月1-7日",
             "title_pt": "2026/09/25~27 , 10/01~07",
             "directions": [
               {
@@ -4406,8 +4562,8 @@
                 }
               ]
             },
-            "sunday_and_public_holidays": {
-              "label_pt": "Domingos e feriados públicos",
+            "saturday_except_public_holidays": {
+              "label_pt": "Sábados (excepto feriados públicos)",
               "frequencies": [
                 {
                   "from": "06:30",
@@ -4426,14 +4582,6 @@
                   ]
                 },
                 {
-                  "from": "06:30",
-                  "to": "23:30",
-                  "headway_min": [
-                    12,
-                    15
-                  ]
-                },
-                {
                   "from": "15:00",
                   "to": "20:00",
                   "headway_min": [
@@ -4443,6 +4591,19 @@
                 },
                 {
                   "from": "20:00",
+                  "to": "23:30",
+                  "headway_min": [
+                    12,
+                    15
+                  ]
+                }
+              ]
+            },
+            "sunday_and_public_holidays": {
+              "label_pt": "Domingos e feriados públicos",
+              "frequencies": [
+                {
+                  "from": "06:30",
                   "to": "23:30",
                   "headway_min": [
                     12,
@@ -4490,8 +4651,8 @@
             ]
           },
           {
-            "title": "星期日及公眾假期",
-            "title_pt": "Domingos e feriados públicos",
+            "title": "星期六（公眾假期除外）",
+            "title_pt": "Sábados (excepto feriados públicos)",
             "directions": [
               {
                 "direction_label": "CIRCULAR",
@@ -4505,15 +4666,26 @@
                     "班次(分鐘)": "10-15"
                   },
                   {
-                    "服務時間": "06:30-23:30",
-                    "班次(分鐘)": "12-15"
-                  },
-                  {
                     "服務時間": "15:00-20:00",
                     "班次(分鐘)": "10-12"
                   },
                   {
                     "服務時間": "20:00-23:30",
+                    "班次(分鐘)": "12-15"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "title": "星期日及公眾假期",
+            "title_pt": "Domingos e feriados públicos",
+            "directions": [
+              {
+                "direction_label": "CIRCULAR",
+                "rows": [
+                  {
+                    "服務時間": "06:30-23:30",
                     "班次(分鐘)": "12-15"
                   }
                 ]
@@ -4586,8 +4758,8 @@
                 }
               ]
             },
-            "sunday_and_public_holidays": {
-              "label_pt": "Domingos e feriados públicos",
+            "saturday_except_public_holidays": {
+              "label_pt": "Sábados (excepto feriados públicos)",
               "frequencies": [
                 {
                   "from": "06:00",
@@ -4597,6 +4769,35 @@
                     10
                   ]
                 },
+                {
+                  "from": "10:00",
+                  "to": "15:00",
+                  "headway_min": [
+                    10,
+                    15
+                  ]
+                },
+                {
+                  "from": "15:00",
+                  "to": "20:00",
+                  "headway_min": [
+                    6,
+                    9
+                  ]
+                },
+                {
+                  "from": "20:00",
+                  "to": "01:15",
+                  "headway_min": [
+                    15,
+                    18
+                  ]
+                }
+              ]
+            },
+            "sunday_and_public_holidays": {
+              "label_pt": "Domingos e feriados públicos",
+              "frequencies": [
                 {
                   "from": "06:00",
                   "to": "10:00",
@@ -4610,23 +4811,7 @@
                   "to": "15:00",
                   "headway_min": [
                     10,
-                    15
-                  ]
-                },
-                {
-                  "from": "10:00",
-                  "to": "15:00",
-                  "headway_min": [
-                    10,
                     12
-                  ]
-                },
-                {
-                  "from": "15:00",
-                  "to": "20:00",
-                  "headway_min": [
-                    6,
-                    9
                   ]
                 },
                 {
@@ -4635,14 +4820,6 @@
                   "headway_min": [
                     8,
                     12
-                  ]
-                },
-                {
-                  "from": "20:00",
-                  "to": "01:15",
-                  "headway_min": [
-                    15,
-                    18
                   ]
                 },
                 {
@@ -4694,8 +4871,8 @@
             ]
           },
           {
-            "title": "星期日及公眾假期",
-            "title_pt": "Domingos e feriados públicos",
+            "title": "星期六（公眾假期除外）",
+            "title_pt": "Sábados (excepto feriados públicos)",
             "directions": [
               {
                 "direction_label": "CIRCULAR",
@@ -4705,12 +4882,31 @@
                     "班次(分鐘)": "8-10"
                   },
                   {
-                    "服務時間": "06:00-10:00",
-                    "班次(分鐘)": "10-13"
-                  },
-                  {
                     "服務時間": "10:00-15:00",
                     "班次(分鐘)": "10-15"
+                  },
+                  {
+                    "服務時間": "15:00-20:00",
+                    "班次(分鐘)": "6-9"
+                  },
+                  {
+                    "服務時間": "20:00-01:15",
+                    "班次(分鐘)": "15-18"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "title": "星期日及公眾假期",
+            "title_pt": "Domingos e feriados públicos",
+            "directions": [
+              {
+                "direction_label": "CIRCULAR",
+                "rows": [
+                  {
+                    "服務時間": "06:00-10:00",
+                    "班次(分鐘)": "10-13"
                   },
                   {
                     "服務時間": "10:00-15:00",
@@ -4718,15 +4914,7 @@
                   },
                   {
                     "服務時間": "15:00-20:00",
-                    "班次(分鐘)": "6-9"
-                  },
-                  {
-                    "服務時間": "15:00-20:00",
                     "班次(分鐘)": "8-12"
-                  },
-                  {
-                    "服務時間": "20:00-01:15",
-                    "班次(分鐘)": "15-18"
                   },
                   {
                     "服務時間": "20:00-01:15",
@@ -5159,8 +5347,8 @@
           "terminal_to": null,
           "label_pt": "CIRCULAR",
           "service_days": {
-            "special": {
-              "label_pt": "Horário especial / especial",
+            "weekday_mon_sat_except_statutory_holidays": {
+              "label_pt": "2.ªs feiras a Sábados (excepto feriados obrigatórios)",
               "frequencies": [
                 {
                   "from": "06:30",
@@ -5179,6 +5367,11 @@
                   ]
                 }
               ]
+            },
+            "sunday_and_statutory_holidays": {
+              "label_pt": "Domingos e feriados obrigatórios",
+              "frequencies": [],
+              "suspended": true
             }
           },
           "exact_departure_times": null,
@@ -5192,8 +5385,8 @@
         ],
         "sections": [
           {
-            "title": "特別班次 / Horário especial",
-            "title_pt": "Horário especial / especial",
+            "title": "星期一至六（強制性假日除外）",
+            "title_pt": "2.ªs feiras a Sábados (excepto feriados obrigatórios)",
             "directions": [
               {
                 "direction_label": "CIRCULAR",
@@ -5205,6 +5398,21 @@
                   {
                     "服務時間": "17:00-19:00",
                     "班次(分鐘)": "8-13"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "title": "星期日及強制性假日",
+            "title_pt": "Domingos e feriados obrigatórios",
+            "directions": [
+              {
+                "direction_label": "CIRCULAR",
+                "rows": [
+                  {
+                    "服務時間": "—",
+                    "班次(分鐘)": "服務暫停 / SERVIÇO SUSPENSO"
                   }
                 ]
               }
@@ -5677,8 +5885,8 @@
           "terminal_to": null,
           "label_pt": "CIRCULAR",
           "service_days": {
-            "special": {
-              "label_pt": "Horário especial / especial",
+            "special_dated": {
+              "label_pt": "2026/09/25~27 , 10/01~07",
               "frequencies": [
                 {
                   "from": "10:30",
@@ -5692,7 +5900,7 @@
             }
           },
           "exact_departure_times": null,
-          "notes": "PDF shows frequency bands; first/last vehicle implied by band edges when PRIMEIRO/ÚLTIMO headers lack separate times. Frequência ajustada em função de situações imprevistas"
+          "notes": "PDF shows frequency bands; first/last vehicle implied by band edges when PRIMEIRO/ÚLTIMO headers lack separate times. Frequência ajustada em função de situações imprevistas 2026/09/25~27 , 10/01~07"
         }
       ],
       "app_frequency": {
@@ -5702,8 +5910,8 @@
         ],
         "sections": [
           {
-            "title": "特別班次 / Horário especial",
-            "title_pt": "Horário especial / especial",
+            "title": "2026年9月25-27日及2026年10月1-7日",
+            "title_pt": "2026/09/25~27 , 10/01~07",
             "directions": [
               {
                 "direction_label": "CIRCULAR",
@@ -5721,7 +5929,79 @@
       "typhoon_note_pt": "Durante a passagem do tufão, as últimas partidas de autocarros partem 15 minutos após o içamento do sinal n.º 8",
       "hotline": "2827-1122",
       "special_notes": [
-        "Frequência ajustada em função de situações imprevistas"
+        "Frequência ajustada em função de situações imprevistas",
+        "2026/09/25~27 , 10/01~07"
+      ],
+      "parse_ok": true
+    },
+    "26S": {
+      "route": "26S",
+      "route_name_pt": "TORRE DE MACAU → AV. VALE DAS BORBOLETAS",
+      "fare_mop": 6.0,
+      "bidirectional": false,
+      "circular": false,
+      "route_type_pt": "PERCURSO DE SENTIDO ÚNICO",
+      "source_url": "https://www.dsat.gov.mo/dsat/download_route.aspx?route=busroute_26S",
+      "route_page_url": "https://www.dsat.gov.mo/dsat/route_display.aspx?route=busroute_26S",
+      "pdf_filename": "busroute_26S.pdf",
+      "pdf_title": "26S_20260912_無你在此",
+      "pdf_date_stamp": "2026-09-12",
+      "fetched_at": "2026-10-05T23:47:21+08:00",
+      "disclaimer": "Frequencies transcribed from the official DSAT PDF text extraction; not for production navigation. Schedules may change. Typhoon note from PDF included. Hotline 2827-1122.",
+      "schedule_format": "frequency_bands",
+      "directions": [
+        {
+          "id": "to_av_vale_das_borboletas",
+          "terminal_from": "TORRE DE MACAU",
+          "terminal_to": "AV. VALE DAS BORBOLETAS",
+          "label_pt": "PARA AV. VALE DAS BORBOLETAS",
+          "service_days": {
+            "special_dated": {
+              "label_pt": "2026/09/12, 19, 25 , 10/01, 04",
+              "frequencies": [
+                {
+                  "from": "21:30",
+                  "to": "23:00",
+                  "headway_min": [
+                    10,
+                    30
+                  ]
+                }
+              ]
+            }
+          },
+          "exact_departure_times": null,
+          "notes": "Dated one-way service. 2026/09/12, 19, 25 , 10/01, 04 Frequência ajustada em função de situações imprevistas"
+        }
+      ],
+      "app_frequency": {
+        "columns": [
+          "服務時間",
+          "班次(分鐘)"
+        ],
+        "sections": [
+          {
+            "title": "2026年9月12日、19日、25日及2026年10月1日、4日",
+            "title_pt": "2026/09/12, 19, 25 , 10/01, 04",
+            "directions": [
+              {
+                "direction_label": "PARA AV. VALE DAS BORBOLETAS",
+                "rows": [
+                  {
+                    "服務時間": "21:30-23:00",
+                    "班次(分鐘)": "10-30"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "typhoon_note_pt": "Durante a passagem do tufão, as últimas partidas de autocarros partem 20 minutos antes do içamento do sinal n.º 8",
+      "hotline": "2827-1122",
+      "special_notes": [
+        "Frequência ajustada em função de situações imprevistas",
+        "2026/09/12, 19, 25 , 10/01, 04"
       ],
       "parse_ok": true
     },
@@ -7097,8 +7377,8 @@
           "terminal_to": null,
           "label_pt": "CIRCULAR",
           "service_days": {
-            "special": {
-              "label_pt": "Horário especial / especial",
+            "weekday_mon_sat_except_statutory_holidays": {
+              "label_pt": "2.ªs feiras a Sábados (excepto feriados obrigatórios)",
               "frequencies": [
                 {
                   "from": "06:30",
@@ -7117,6 +7397,11 @@
                   ]
                 }
               ]
+            },
+            "sunday_and_statutory_holidays": {
+              "label_pt": "Domingos e feriados obrigatórios",
+              "frequencies": [],
+              "suspended": true
             }
           },
           "exact_departure_times": null,
@@ -7130,8 +7415,8 @@
         ],
         "sections": [
           {
-            "title": "特別班次 / Horário especial",
-            "title_pt": "Horário especial / especial",
+            "title": "星期一至六（強制性假日除外）",
+            "title_pt": "2.ªs feiras a Sábados (excepto feriados obrigatórios)",
             "directions": [
               {
                 "direction_label": "CIRCULAR",
@@ -7143,6 +7428,21 @@
                   {
                     "服務時間": "15:00-20:00",
                     "班次(分鐘)": "6-8"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "title": "星期日及強制性假日",
+            "title_pt": "Domingos e feriados obrigatórios",
+            "directions": [
+              {
+                "direction_label": "CIRCULAR",
+                "rows": [
+                  {
+                    "服務時間": "—",
+                    "班次(分鐘)": "服務暫停 / SERVIÇO SUSPENSO"
                   }
                 ]
               }
@@ -8469,6 +8769,77 @@
       "special_notes": null,
       "parse_ok": true
     },
+    "3AS": {
+      "route": "3AS",
+      "route_name_pt": "PRACETA 24 DE JUNHO → PORTAS DO CERCO",
+      "fare_mop": 6.0,
+      "bidirectional": false,
+      "circular": false,
+      "route_type_pt": "PERCURSO DE SENTIDO ÚNICO",
+      "source_url": "https://www.dsat.gov.mo/dsat/download_route.aspx?route=busroute_3AS",
+      "route_page_url": "https://www.dsat.gov.mo/dsat/route_display.aspx?route=busroute_3AS",
+      "pdf_filename": "busroute_3AS.pdf",
+      "pdf_title": "3AS(2026-09-12)_复制",
+      "pdf_date_stamp": "2026-09-12",
+      "fetched_at": "2026-10-05T23:47:21+08:00",
+      "disclaimer": "Frequencies transcribed from the official DSAT PDF text extraction; not for production navigation. Schedules may change. Typhoon note from PDF included. Hotline 2885-0060.",
+      "schedule_format": "frequency_bands",
+      "directions": [
+        {
+          "id": "to_portas_do_cerco",
+          "terminal_from": "PRACETA 24 DE JUNHO",
+          "terminal_to": "PORTAS DO CERCO",
+          "label_pt": "PARA PORTAS DO CERCO",
+          "service_days": {
+            "special_dated": {
+              "label_pt": "2026/09/12, 19, 25 , 10/01, 04",
+              "frequencies": [
+                {
+                  "from": "21:30",
+                  "to": "23:00",
+                  "headway_min": [
+                    15,
+                    20
+                  ]
+                }
+              ]
+            }
+          },
+          "exact_departure_times": null,
+          "notes": "Dated one-way service. 2026/09/12, 19, 25 , 10/01, 04 Frequência ajustada em função de situações imprevistas"
+        }
+      ],
+      "app_frequency": {
+        "columns": [
+          "服務時間",
+          "班次(分鐘)"
+        ],
+        "sections": [
+          {
+            "title": "2026年9月12日、19日、25日及2026年10月1日、4日",
+            "title_pt": "2026/09/12, 19, 25 , 10/01, 04",
+            "directions": [
+              {
+                "direction_label": "PARA PORTAS DO CERCO",
+                "rows": [
+                  {
+                    "服務時間": "21:30-23:00",
+                    "班次(分鐘)": "15-20"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "typhoon_note_pt": "Durante a passagem do tufão, as últimas partidas de autocarros partem uma hora após o içamento do sinal n.º 8",
+      "hotline": "2885-0060",
+      "special_notes": [
+        "Frequência ajustada em função de situações imprevistas",
+        "2026/09/12, 19, 25 , 10/01, 04"
+      ],
+      "parse_ok": true
+    },
     "3AX": {
       "route": "3AX",
       "route_name_pt": "AV. DE JUNHO ↔ PORTAS DO CERCO",
@@ -8491,8 +8862,8 @@
           "terminal_to": null,
           "label_pt": "CIRCULAR",
           "service_days": {
-            "special": {
-              "label_pt": "Horário especial / especial",
+            "weekday_mon_sat_except_statutory_holidays": {
+              "label_pt": "2.ªs feiras a Sábados (excepto feriados obrigatórios)",
               "frequencies": [
                 {
                   "from": "07:00",
@@ -8519,6 +8890,11 @@
                   ]
                 }
               ]
+            },
+            "sunday_and_statutory_holidays": {
+              "label_pt": "Domingos e feriados obrigatórios",
+              "frequencies": [],
+              "suspended": true
             }
           },
           "exact_departure_times": null,
@@ -8532,8 +8908,8 @@
         ],
         "sections": [
           {
-            "title": "特別班次 / Horário especial",
-            "title_pt": "Horário especial / especial",
+            "title": "星期一至六（強制性假日除外）",
+            "title_pt": "2.ªs feiras a Sábados (excepto feriados obrigatórios)",
             "directions": [
               {
                 "direction_label": "CIRCULAR",
@@ -8549,6 +8925,21 @@
                   {
                     "服務時間": "17:00-20:00",
                     "班次(分鐘)": "8-10"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "title": "星期日及強制性假日",
+            "title_pt": "Domingos e feriados obrigatórios",
+            "directions": [
+              {
+                "direction_label": "CIRCULAR",
+                "rows": [
+                  {
+                    "服務時間": "—",
+                    "班次(分鐘)": "服務暫停 / SERVIÇO SUSPENSO"
                   }
                 ]
               }
@@ -8631,7 +9022,7 @@
         ],
         "sections": [
           {
-            "title": "特別日期 / Horário especial",
+            "title": "2026年9月25-27日及2026年10月1-7日",
             "title_pt": "2026/09/25~27 , 10/01~07",
             "directions": [
               {
@@ -8899,8 +9290,8 @@
                 }
               ]
             },
-            "sunday_and_public_holidays": {
-              "label_pt": "Domingos e feriados públicos",
+            "saturday_except_public_holidays": {
+              "label_pt": "Sábados (excepto feriados públicos)",
               "frequencies": [
                 {
                   "from": "06:00",
@@ -8919,14 +9310,6 @@
                   ]
                 },
                 {
-                  "from": "06:00",
-                  "to": "20:00",
-                  "headway_min": [
-                    12,
-                    15
-                  ]
-                },
-                {
                   "from": "10:00",
                   "to": "20:00",
                   "headway_min": [
@@ -8940,6 +9323,19 @@
                   "headway_min": [
                     15,
                     18
+                  ]
+                }
+              ]
+            },
+            "sunday_and_public_holidays": {
+              "label_pt": "Domingos e feriados públicos",
+              "frequencies": [
+                {
+                  "from": "06:00",
+                  "to": "20:00",
+                  "headway_min": [
+                    12,
+                    15
                   ]
                 },
                 {
@@ -8995,8 +9391,8 @@
             ]
           },
           {
-            "title": "星期日及公眾假期",
-            "title_pt": "Domingos e feriados públicos",
+            "title": "星期六（公眾假期除外）",
+            "title_pt": "Sábados (excepto feriados públicos)",
             "directions": [
               {
                 "direction_label": "CIRCULAR",
@@ -9010,16 +9406,27 @@
                     "班次(分鐘)": "8-10"
                   },
                   {
-                    "服務時間": "06:00-20:00",
-                    "班次(分鐘)": "12-15"
-                  },
-                  {
                     "服務時間": "10:00-20:00",
                     "班次(分鐘)": "10-12"
                   },
                   {
                     "服務時間": "20:00-00:10",
                     "班次(分鐘)": "15-18"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "title": "星期日及公眾假期",
+            "title_pt": "Domingos e feriados públicos",
+            "directions": [
+              {
+                "direction_label": "CIRCULAR",
+                "rows": [
+                  {
+                    "服務時間": "06:00-20:00",
+                    "班次(分鐘)": "12-15"
                   },
                   {
                     "服務時間": "20:00-00:10",
@@ -9936,8 +10343,8 @@
           "terminal_to": null,
           "label_pt": "CIRCULAR",
           "service_days": {
-            "special": {
-              "label_pt": "Horário especial / especial",
+            "weekday_mon_sat_except_statutory_holidays": {
+              "label_pt": "2.ªs feiras a Sábados (excepto feriados obrigatórios)",
               "frequencies": [
                 {
                   "from": "06:00",
@@ -9988,6 +10395,11 @@
                   ]
                 }
               ]
+            },
+            "sunday_and_statutory_holidays": {
+              "label_pt": "Domingos e feriados obrigatórios",
+              "frequencies": [],
+              "suspended": true
             }
           },
           "exact_departure_times": null,
@@ -10001,8 +10413,8 @@
         ],
         "sections": [
           {
-            "title": "特別班次 / Horário especial",
-            "title_pt": "Horário especial / especial",
+            "title": "星期一至六（強制性假日除外）",
+            "title_pt": "2.ªs feiras a Sábados (excepto feriados obrigatórios)",
             "directions": [
               {
                 "direction_label": "CIRCULAR",
@@ -10030,6 +10442,21 @@
                   {
                     "服務時間": "19:00-20:00",
                     "班次(分鐘)": "8-12"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "title": "星期日及強制性假日",
+            "title_pt": "Domingos e feriados obrigatórios",
+            "directions": [
+              {
+                "direction_label": "CIRCULAR",
+                "rows": [
+                  {
+                    "服務時間": "—",
+                    "班次(分鐘)": "服務暫停 / SERVIÇO SUSPENSO"
                   }
                 ]
               }
@@ -10273,6 +10700,77 @@
       "typhoon_note_pt": "Durante a passagem do tufão, as últimas partidas de autocarros partem 15 minutos após o içamento do sinal n.º 8",
       "hotline": "2885-0060",
       "special_notes": null,
+      "parse_ok": true
+    },
+    "52S": {
+      "route": "52S",
+      "route_name_pt": "PRAÇA FERREIRA AMARAL ↔ JARDINS DO OCEANO",
+      "fare_mop": 6.0,
+      "bidirectional": false,
+      "circular": true,
+      "route_type_pt": "PERCURSO CIRCULAR",
+      "source_url": "https://www.dsat.gov.mo/dsat/download_route.aspx?route=busroute_52S",
+      "route_page_url": "https://www.dsat.gov.mo/dsat/route_display.aspx?route=busroute_52S",
+      "pdf_filename": "busroute_52S.pdf",
+      "pdf_title": "52S(2026-09-12)_复制",
+      "pdf_date_stamp": "2026-09-12",
+      "fetched_at": "2026-10-05T23:47:21+08:00",
+      "disclaimer": "Frequencies transcribed from the official DSAT PDF text extraction; not for production navigation. Schedules may change. Typhoon note from PDF included. Hotline 2885-0060.",
+      "schedule_format": "frequency_bands",
+      "directions": [
+        {
+          "id": "to_circular",
+          "terminal_from": "PRAÇA FERREIRA AMARAL",
+          "terminal_to": "JARDINS DO OCEANO",
+          "label_pt": "CIRCULAR",
+          "service_days": {
+            "special_dated": {
+              "label_pt": "2026/09/12, 19, 25 , 10/01, 04",
+              "frequencies": [
+                {
+                  "from": "20:30",
+                  "to": "23:00",
+                  "headway_min": [
+                    15,
+                    20
+                  ]
+                }
+              ]
+            }
+          },
+          "exact_departure_times": null,
+          "notes": "Dated one-way service. 2026/09/12, 19, 25 , 10/01, 04 Frequência ajustada em função de situações imprevistas"
+        }
+      ],
+      "app_frequency": {
+        "columns": [
+          "服務時間",
+          "班次(分鐘)"
+        ],
+        "sections": [
+          {
+            "title": "2026年9月12日、19日、25日及2026年10月1日、4日",
+            "title_pt": "2026/09/12, 19, 25 , 10/01, 04",
+            "directions": [
+              {
+                "direction_label": "CIRCULAR",
+                "rows": [
+                  {
+                    "服務時間": "20:30-23:00",
+                    "班次(分鐘)": "15-20"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "typhoon_note_pt": "Durante a passagem do tufão, as últimas partidas de autocarros partem 15 minutos após o içamento do sinal n.º 8",
+      "hotline": "2885-0060",
+      "special_notes": [
+        "Frequência ajustada em função de situações imprevistas",
+        "2026/09/12, 19, 25 , 10/01, 04"
+      ],
       "parse_ok": true
     },
     "55": {
@@ -11451,8 +11949,8 @@
           "terminal_to": null,
           "label_pt": "CIRCULAR",
           "service_days": {
-            "weekday_mon_sat_except_public_holidays": {
-              "label_pt": "2.ªs feiras a Sábados ( Excepto Feriados Obrigatórios * )",
+            "weekday_mon_sat_except_statutory_holidays": {
+              "label_pt": "2.ªs feiras a Sábados (excepto feriados obrigatórios)",
               "frequencies": [
                 {
                   "from": "06:15",
@@ -11463,6 +11961,11 @@
                   ]
                 }
               ]
+            },
+            "sunday_and_statutory_holidays": {
+              "label_pt": "Domingos e feriados obrigatórios",
+              "frequencies": [],
+              "suspended": true
             }
           },
           "exact_departure_times": null,
@@ -11476,8 +11979,8 @@
         ],
         "sections": [
           {
-            "title": "星期一至六（公眾假期除外）",
-            "title_pt": "2.ªs feiras a Sábados ( Excepto Feriados Obrigatórios * )",
+            "title": "星期一至六（強制性假日除外）",
+            "title_pt": "2.ªs feiras a Sábados (excepto feriados obrigatórios)",
             "directions": [
               {
                 "direction_label": "CIRCULAR",
@@ -11485,6 +11988,21 @@
                   {
                     "服務時間": "06:15-23:30",
                     "班次(分鐘)": "15-18"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "title": "星期日及強制性假日",
+            "title_pt": "Domingos e feriados obrigatórios",
+            "directions": [
+              {
+                "direction_label": "CIRCULAR",
+                "rows": [
+                  {
+                    "服務時間": "—",
+                    "班次(分鐘)": "服務暫停 / SERVIÇO SUSPENSO"
                   }
                 ]
               }
@@ -11893,8 +12411,8 @@
           "terminal_to": null,
           "label_pt": "CIRCULAR",
           "service_days": {
-            "weekday_mon_fri_except_public_holidays": {
-              "label_pt": "2. a 6.ªs feiras",
+            "weekday_mon_fri_except_public_holidays_and_um_vacation": {
+              "label_pt": "2.ª a 6.ª feiras (excepto feriados públicos e os feriados da Universidade de Macau)",
               "frequencies": [
                 {
                   "from": "17:00",
@@ -11905,6 +12423,11 @@
                   ]
                 }
               ]
+            },
+            "saturday_sunday_public_holidays_and_um_vacation": {
+              "label_pt": "Sábados, Domingos, feriados públicos e os feriados da Universidade de Macau",
+              "frequencies": [],
+              "suspended": true
             }
           },
           "exact_departure_times": null,
@@ -11918,8 +12441,8 @@
         ],
         "sections": [
           {
-            "title": "星期一至五（公眾假期除外）",
-            "title_pt": "2. a 6.ªs feiras",
+            "title": "星期一至五（公眾假期及澳門大學休假日除外）",
+            "title_pt": "2.ª a 6.ª feiras (excepto feriados públicos e os feriados da Universidade de Macau)",
             "directions": [
               {
                 "direction_label": "CIRCULAR",
@@ -11927,6 +12450,21 @@
                   {
                     "服務時間": "17:00-19:30",
                     "班次(分鐘)": "15-20"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "title": "星期六、日、公眾假期及澳門大學休假日",
+            "title_pt": "Sábados, Domingos, feriados públicos e os feriados da Universidade de Macau",
+            "directions": [
+              {
+                "direction_label": "CIRCULAR",
+                "rows": [
+                  {
+                    "服務時間": "—",
+                    "班次(分鐘)": "服務暫停 / SERVIÇO SUSPENSO"
                   }
                 ]
               }
@@ -13589,8 +14127,8 @@
           "terminal_to": null,
           "label_pt": "CIRCULAR",
           "service_days": {
-            "weekday_mon_fri_except_public_holidays": {
-              "label_pt": "2.ªs a 6.ªs feiras (Excepto Feriados Obrigatórios*)",
+            "weekday_mon_fri_except_statutory_holidays": {
+              "label_pt": "2.ªs a 6.ªs feiras (excepto feriados obrigatórios)",
               "frequencies": [
                 {
                   "from": "06:30",
@@ -13601,6 +14139,11 @@
                   ]
                 }
               ]
+            },
+            "saturday_sunday_and_statutory_holidays": {
+              "label_pt": "Sábados, Domingos e feriados obrigatórios",
+              "frequencies": [],
+              "suspended": true
             }
           },
           "exact_departure_times": null,
@@ -13614,8 +14157,8 @@
         ],
         "sections": [
           {
-            "title": "星期一至五（公眾假期除外）",
-            "title_pt": "2.ªs a 6.ªs feiras (Excepto Feriados Obrigatórios*)",
+            "title": "星期一至五（強制性假日除外）",
+            "title_pt": "2.ªs a 6.ªs feiras (excepto feriados obrigatórios)",
             "directions": [
               {
                 "direction_label": "CIRCULAR",
@@ -13623,6 +14166,21 @@
                   {
                     "服務時間": "06:30-20:00",
                     "班次(分鐘)": "25-30"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "title": "星期六、日及強制性假日",
+            "title_pt": "Sábados, Domingos e feriados obrigatórios",
+            "directions": [
+              {
+                "direction_label": "CIRCULAR",
+                "rows": [
+                  {
+                    "服務時間": "—",
+                    "班次(分鐘)": "服務暫停 / SERVIÇO SUSPENSO"
                   }
                 ]
               }
@@ -14475,8 +15033,8 @@
           "terminal_to": null,
           "label_pt": "CIRCULAR",
           "service_days": {
-            "weekday_mon_fri_except_public_holidays": {
-              "label_pt": "2.ªs a 6.ªs feiras ( Excepto Feriados Obrigatórios *)",
+            "weekday_mon_fri_except_statutory_holidays": {
+              "label_pt": "2.ªs a 6.ªs feiras (excepto feriados obrigatórios)",
               "frequencies": [
                 {
                   "from": "07:00",
@@ -14495,6 +15053,11 @@
                   ]
                 }
               ]
+            },
+            "saturday_sunday_and_statutory_holidays": {
+              "label_pt": "Sábados, Domingos e feriados obrigatórios",
+              "frequencies": [],
+              "suspended": true
             }
           },
           "exact_departure_times": null,
@@ -14508,8 +15071,8 @@
         ],
         "sections": [
           {
-            "title": "星期一至五（公眾假期除外）",
-            "title_pt": "2.ªs a 6.ªs feiras ( Excepto Feriados Obrigatórios *)",
+            "title": "星期一至五（強制性假日除外）",
+            "title_pt": "2.ªs a 6.ªs feiras (excepto feriados obrigatórios)",
             "directions": [
               {
                 "direction_label": "CIRCULAR",
@@ -14521,6 +15084,21 @@
                   {
                     "服務時間": "15:00-21:00",
                     "班次(分鐘)": "8-12"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "title": "星期六、日及強制性假日",
+            "title_pt": "Sábados, Domingos e feriados obrigatórios",
+            "directions": [
+              {
+                "direction_label": "CIRCULAR",
+                "rows": [
+                  {
+                    "服務時間": "—",
+                    "班次(分鐘)": "服務暫停 / SERVIÇO SUSPENSO"
                   }
                 ]
               }

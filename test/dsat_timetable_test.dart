@@ -48,18 +48,83 @@ void main() {
   });
 
   test('the bundled file covers the DSAT scrape, including exact clocks', () {
-    expect(DsatTimetable.routeCount, 97);
+    expect(DsatTimetable.routeCount, 101);
     expect(DsatTimetable.hasRoute('2'), isTrue);
-    expect(DsatTimetable.sectionsFor('2', 0), isNotEmpty);
+
+    final toBarraSun = DsatTimetable.sectionsFor('2', 0).last;
+    expect(toBarraSun.title, '星期日及公眾假期');
+    expect(toBarraSun.items.first.time, '06:15-19:00');
+    expect(toBarraSun.items.first.freq, '6 - 12');
+    expect(toBarraSun.items.last.time, '19:00-00:00');
+    expect(DsatTimetable.sectionsFor('2', 1).last.items.first.time, '06:30-19:00');
 
     final departures = DsatTimetable.sectionsFor('71S', 0);
     expect(departures.first.items.first.time, '08:25');
     expect(departures.first.items.first.freq, '—');
     expect(departures.last.items.single.freq, '服務暫停 / SERVIÇO SUSPENSO');
     expect(DsatTimetable.sectionsFor('71S', 1).first.items.first.time, '07:35');
+  });
 
-    expect(DsatTimetable.hasRoute('3AS'), isFalse);
-    expect(DsatTimetable.sectionsFor('3AS', 0), isEmpty);
+  test('corrected circular and dated routes keep the published bands', () {
+    final peak = DsatTimetable.sectionsFor('25BS', 0);
+    expect(peak.map((s) => s.title), [
+      '星期一至六（強制性假日除外）',
+      '星期日及強制性假日',
+    ]);
+    expect(peak.first.items.map((i) => i.time), ['06:30-09:30', '17:00-19:00']);
+    expect(peak.last.items.single.freq, '服務暫停 / SERVIÇO SUSPENSO');
+    expect(DsatTimetable.sectionsFor('25BS', 1).map((s) => s.title), peak.map((s) => s.title));
+
+    expect(DsatTimetable.sectionsFor('26AT', 0).single.title, '2026年9月25-27日及2026年10月1-7日');
+    expect(DsatTimetable.sectionsFor('26AT', 0).single.items.single.freq, '15 - 30');
+
+    const night = '2026年9月12日、19日、25日及2026年10月1日、4日';
+    final oneWay = DsatTimetable.sectionsFor('3AS', 0);
+    expect(oneWay.single.title, night);
+    expect(oneWay.single.items.single.time, '21:30-23:00');
+    expect(oneWay.single.items.single.freq, '15 - 20');
+    expect(DsatTimetable.sectionsFor('3AS', 1).single.title, night);
+    expect(DsatTimetable.sectionsFor('17S1', 0).single.items.single.freq, '10 - 30');
+    expect(DsatTimetable.sectionsFor('26S', 0).single.items.single.time, '21:30-23:00');
+    expect(DsatTimetable.sectionsFor('52S', 0).single.items.single.time, '20:30-23:00');
+    expect(DsatTimetable.sectionsFor('52S', 0).single.items.single.freq, '15 - 20');
+    expect(DsatTimetable.sectionsFor('52S', 1).single.title, DsatTimetable.sectionsFor('52S', 0).single.title);
+  });
+
+  test('PDF corrections split Saturday and name suspended days', () {
+    expect(DsatTimetable.sectionsFor('6B', 0).map((s) => s.title), [
+      '星期一至六（強制性假日除外）',
+      '星期日及強制性假日',
+    ]);
+    expect(DsatTimetable.sectionsFor('6B', 0).last.items.single.freq, '服務暫停 / SERVIÇO SUSPENSO');
+
+    final route4 = DsatTimetable.sectionsFor('4', 0);
+    expect(route4.map((s) => s.title), [
+      '星期一至五（公眾假期除外）',
+      '星期六（公眾假期除外）',
+      '星期日及公眾假期',
+    ]);
+    expect(route4[1].items[2].time, '10:00-20:00');
+    expect(route4[1].items[2].freq, '10 - 12');
+    expect(route4.last.items.first.time, '06:00-20:00');
+    expect(route4.last.items.first.freq, '12 - 15');
+
+    final toBarra = DsatTimetable.sectionsFor('18', 0);
+    final toCurrais = DsatTimetable.sectionsFor('18', 1);
+    expect(toBarra.first.items.map((i) => i.time), [
+      '06:00-10:00',
+      '10:00-15:00',
+      '15:00-20:00',
+      '20:00-01:10',
+    ]);
+    expect(toCurrais.first.items.first.time, '05:45-10:00');
+    expect(toCurrais.last.items.last.time, '20:00-00:40');
+
+    expect(DsatTimetable.sectionsFor('701XS', 0).last.items.single.freq, '服務暫停 / SERVIÇO SUSPENSO');
+    expect(DsatTimetable.sectionsFor('H2', 0).last.title, '星期六、日及強制性假日');
+    expect(DsatTimetable.sectionsFor('101XS', 0).single.title, '2026年9月25-27日及2026年10月1-7日');
+    expect(DsatTimetable.sectionsFor('18B', 1)[1].title, '星期六（公眾假期除外）');
+    expect(DsatTimetable.sectionsFor('18B', 0).last.items.first.time, '07:00-16:00');
   });
 
   test('bundled service windows stay first and last times', () async {

@@ -183,6 +183,7 @@ class RouteResultHelper {
                 itemBuilder: (c, index) {
                   return Consumer<NavigationController>(
                     builder: (context, nav, child) {
+                  final showLiveArrivals = context.watch<BusController>().showLiveArrivals;
                   final it = itineraries[index]; 
                   final legs = it.legs;
                   return ListView.separated(
@@ -212,6 +213,7 @@ class RouteResultHelper {
                       
                       final routeName = leg.routeName; 
                       
+                      final showLive = showLiveArrivals;
                       final etaRaw = leg.realtimeEta ?? '';
                       final etaStr = AppTranslations.localizeEtaStatus(
                         etaRaw,
@@ -262,20 +264,26 @@ class RouteResultHelper {
                                 Text(
                                   isNoService
                                       ? langCtrl.tr('no_service_ghost')
-                                      : (leg.showScheduledDeparture && !maybeEnded && leg.startTime != null)
-                                          ? langCtrl.tr('eta_scheduled_depart').replaceAll('@time', Itinerary.macauHm(leg.startTime!))
-                                          : '${langCtrl.tr('realtime_eta')}${etaPending ? langCtrl.tr('eta_updating') : etaStr}',
+                                      : !showLive
+                                          ? langCtrl.tr('realtime_pending')
+                                          : (leg.showScheduledDeparture && !maybeEnded && leg.startTime != null)
+                                              ? langCtrl.tr('eta_scheduled_depart').replaceAll('@time', Itinerary.macauHm(leg.startTime!))
+                                              : '${langCtrl.tr('realtime_eta')}${etaPending ? langCtrl.tr('eta_updating') : etaStr}',
+                                  softWrap: true,
                                   style: TextStyle(
                                     color: isNoService
                                         ? Colors.redAccent
-                                        : (maybeEnded
-                                            ? Colors.orangeAccent[700]
-                                            : (leg.showScheduledDeparture ? Colors.lightBlueAccent[700] : Colors.greenAccent[700])),
-                                    fontSize: 12,
+                                        : !showLive
+                                            ? (isDark ? Colors.grey[300] : Colors.grey[800])
+                                            : (maybeEnded
+                                                ? Colors.orangeAccent[700]
+                                                : (leg.showScheduledDeparture ? Colors.lightBlueAccent[700] : Colors.greenAccent[700])),
+                                    fontSize: !showLive ? 13 : 12,
+                                    height: 1.35,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                                if (leg.liveCheck == 'confirmed')
+                                if (showLive && leg.liveCheck == 'confirmed')
                                   Padding(
                                     padding: const EdgeInsets.only(top: 2.0),
                                     child: Text(

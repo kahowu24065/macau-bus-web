@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -17,6 +18,7 @@ import '../../controllers/bus_controller.dart';
 import '../../controllers/background_controller.dart';
 import '../../controllers/language_controller.dart';
 import '../../controllers/navigation_controller.dart';
+import '../../services/open_data_config.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -74,6 +76,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showMarkdownDialog(BuildContext context, bool isDark, LanguageController langCtrl, String titleKey, String filePrefix, IconData icon, Color iconColor) {
+    final showAttribution = filePrefix == 'disclaimer';
+    if (showAttribution) {
+      unawaited(OpenDataConfig.instance.ensureLoaded(force: true));
+    }
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -94,16 +100,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
               if (snapshot.connectionState == ConnectionState.waiting) return const SizedBox(height: 100, child: Center(child: CupertinoActivityIndicator()));
               if (snapshot.hasError) return Text('Error\n${snapshot.error}', style: const TextStyle(color: Colors.redAccent));
               
+              final bodyStyle = TextStyle(color: isDark ? const Color(0xFFD1D1D6) : Colors.black87, fontSize: 14, height: 1.5, fontFamily: 'Inter');
               return SingleChildScrollView(
-                child: MarkdownBody(
-                  data: snapshot.data ?? '',
-                  selectable: true,
-                  styleSheet: MarkdownStyleSheet(
-                    p: TextStyle(color: isDark ? const Color(0xFFD1D1D6) : Colors.black87, fontSize: 14, height: 1.5, fontFamily: 'Inter'),
-                    h1: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 20, fontWeight: FontWeight.bold, fontFamily: 'Inter'),
-                    h2: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Inter'),
-                    listBullet: TextStyle(color: isDark ? Colors.amber : Colors.orange),
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    MarkdownBody(
+                      data: snapshot.data ?? '',
+                      selectable: true,
+                      styleSheet: MarkdownStyleSheet(
+                        p: bodyStyle,
+                        h1: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 20, fontWeight: FontWeight.bold, fontFamily: 'Inter'),
+                        h2: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Inter'),
+                        listBullet: TextStyle(color: isDark ? Colors.amber : Colors.orange),
+                      ),
+                    ),
+                    if (showAttribution) ...[
+                      const SizedBox(height: 16),
+                      ListenableBuilder(
+                        listenable: OpenDataConfig.instance,
+                        builder: (context, _) => Text(
+                          OpenDataConfig.instance.attributionBlock(langCtrl.currentLanguage),
+                          softWrap: true,
+                          style: bodyStyle,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               );
             },
