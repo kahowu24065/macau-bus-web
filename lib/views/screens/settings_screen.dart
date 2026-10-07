@@ -333,11 +333,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _legalLinks(BuildContext context, bool isDark, LanguageController langCtrl) {
+    // Same grey in both modes. Easy Read does not lift these two links.
     final style = TextStyle(
-      color: _readable,
+      color: _subText,
       fontSize: 12,
-      decoration: TextDecoration.underline,
-      decorationColor: _readable,
+      decoration: TextDecoration.none,
       fontFamily: 'Inter',
     );
     return Wrap(
@@ -345,7 +345,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         InkWell(onTap: _openTerms, child: Text(langCtrl.tr('terms_of_use'), style: style)),
-        Text('   •   ', style: TextStyle(color: _readable, fontSize: 12)),
+        Text('   •   ', style: TextStyle(color: _subText, fontSize: 12)),
         InkWell(
           onTap: () => _showMarkdownDialog(context, isDark, langCtrl, 'privacy_policy', 'privacy', Icons.privacy_tip, Colors.amber),
           child: Text(langCtrl.tr('privacy_policy'), style: style),
@@ -778,10 +778,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           InkWell(onTap: () => _showMarkdownDialog(context, isDark, langCtrl, 'about_us', 'about', Icons.info_outline, Colors.blueAccent), child: Text(langCtrl.tr('about_us'), style: TextStyle(color: _readable, fontSize: 12))),
                           Text('   •   ', style: TextStyle(color: _readable, fontSize: 12)),
                           InkWell(onTap: () => _showMarkdownDialog(context, isDark, langCtrl, 'disclaimer', 'disclaimer', Icons.gavel, Colors.redAccent), child: Text(langCtrl.tr('disclaimer'), style: TextStyle(color: _readable, fontSize: 12))),
-                          Text('   •   ', style: TextStyle(color: _readable, fontSize: 12)),
-                          InkWell(onTap: () => _showMarkdownDialog(context, isDark, langCtrl, 'privacy_policy', 'privacy', Icons.privacy_tip, Colors.amber), child: Text(langCtrl.tr('privacy_policy'), style: TextStyle(color: _readable, fontSize: 12))),
-                          Text('   •   ', style: TextStyle(color: _readable, fontSize: 12)),
-                          InkWell(onTap: _openTerms, child: Text(langCtrl.tr('terms_of_use'), style: TextStyle(color: _readable, fontSize: 12))),
                         ],
                       ),
                     ),
