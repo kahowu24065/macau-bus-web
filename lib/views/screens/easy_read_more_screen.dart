@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../controllers/bus_controller.dart';
 import '../../controllers/language_controller.dart';
 import '../../controllers/navigation_controller.dart';
 import '../../services/bus_api_service.dart';
-import '../routing/open_route_planner.dart';
 import '../widgets/fare_dialog.dart';
 
 class RouteCatalogLine {
@@ -70,11 +68,6 @@ class EasyReadMoreScreen extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             _MoreCard(
-              icon: Icons.directions,
-              title: lang.tr('routing_title'),
-              onTap: () => openRoutePlanner(context),
-            ),
-            _MoreCard(
               icon: Icons.star_outline,
               title: lang.tr('routes_special'),
               onTap: () => Navigator.of(context).push(
@@ -82,24 +75,10 @@ class EasyReadMoreScreen extends StatelessWidget {
               ),
             ),
             _MoreCard(
-              icon: Icons.warning_amber_rounded,
-              title: lang.tr('easy_read_diversion'),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const _DiversionPage()),
-              ),
-            ),
-            _MoreCard(
               icon: Icons.list_alt,
               title: lang.tr('all_routes_title'),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const _AllRoutesPage()),
-              ),
-            ),
-            _MoreCard(
-              icon: Icons.info_outline,
-              title: lang.tr('timetable'),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const _SourceNotesPage()),
               ),
             ),
             _MoreCard(
@@ -294,192 +273,29 @@ class _SpecialRoutesPage extends StatelessWidget {
   }
 }
 
-class _SourceNotesPage extends StatelessWidget {
-  const _SourceNotesPage();
-
-  @override
-  Widget build(BuildContext context) {
-    final lang = context.watch<LanguageController>();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final fg = isDark ? Colors.white : const Color(0xFF111111);
-    final style = TextStyle(color: fg, fontSize: 22, fontWeight: FontWeight.w700, height: 1.4);
-    return Scaffold(
-      backgroundColor: isDark ? Colors.black : Colors.white,
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-          children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: IconButton(
-                iconSize: 32,
-                onPressed: () => Navigator.of(context).maybePop(),
-                icon: Icon(Icons.arrow_back, color: fg),
-              ),
-            ),
-            Text(
-              lang.tr('timetable'),
-              softWrap: true,
-              style: TextStyle(color: fg, fontSize: 32, fontWeight: FontWeight.w800, height: 1.2),
-            ),
-            const SizedBox(height: 20),
-            Text(lang.tr('timetable_source_note'), softWrap: true, style: style),
-            const SizedBox(height: 20),
-            Text(lang.tr('route_shape_source_note'), softWrap: true, style: style),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DiversionPage extends StatefulWidget {
-  const _DiversionPage();
-
-  @override
-  State<_DiversionPage> createState() => _DiversionPageState();
-}
-
-class _DiversionPageState extends State<_DiversionPage> {
-  Future<RouteAlertsFetch>? _alerts;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final route = context.read<BusController>().currentRoute;
-    _alerts ??= route.isEmpty ? null : BusApiService.fetchRouteAlerts(route);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final lang = context.watch<LanguageController>();
-    final busCtrl = context.watch<BusController>();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final fg = isDark ? Colors.white : const Color(0xFF111111);
-    final route = busCtrl.currentRoute;
-    return Scaffold(
-      backgroundColor: isDark ? Colors.black : Colors.white,
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            IconButton(
-              iconSize: 32,
-              onPressed: () => Navigator.of(context).maybePop(),
-              icon: Icon(Icons.arrow_back, color: fg),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Text(
-                lang.tr('easy_read_diversion'),
-                softWrap: true,
-                style: TextStyle(color: fg, fontSize: 32, fontWeight: FontWeight.w800, height: 1.2),
-              ),
-            ),
-            Expanded(
-              child: route.isEmpty
-                  ? Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(
-                        lang.tr('easy_read_pick_route'),
-                        softWrap: true,
-                        style: TextStyle(color: fg, fontSize: 22, fontWeight: FontWeight.w700, height: 1.35),
-                      ),
-                    )
-                  : FutureBuilder<RouteAlertsFetch>(
-                      future: _alerts,
-                      builder: (context, snapshot) {
-                        final alerts = snapshot.data?.alerts ?? const <Map<String, dynamic>>[];
-                        final closures = busCtrl.stopsList.where((stop) => stop.hasAlert).toList();
-                        if (snapshot.connectionState == ConnectionState.waiting && alerts.isEmpty && closures.isEmpty) {
-                          return const Center(child: CircularProgressIndicator(color: Colors.amber));
-                        }
-                        if (alerts.isEmpty && closures.isEmpty) {
-                          return Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Text(
-                              lang.tr('easy_read_no_diversion'),
-                              softWrap: true,
-                              style: TextStyle(color: fg, fontSize: 22, fontWeight: FontWeight.w700, height: 1.35),
-                            ),
-                          );
-                        }
-                        return ListView(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                          children: [
-                            for (final stop in closures) ...[
-                              Text(
-                                '${stop.seq}. ${stop.getLocalizedName(lang.currentLanguage)}',
-                                softWrap: true,
-                                style: TextStyle(color: fg, fontSize: 22, fontWeight: FontWeight.w800, height: 1.3),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                lang.tr('easy_read_stop_closed'),
-                                softWrap: true,
-                                style: const TextStyle(color: Colors.redAccent, fontSize: 20, fontWeight: FontWeight.w800, height: 1.3),
-                              ),
-                              const SizedBox(height: 8),
-                              Align(
-                                alignment: Alignment.centerLeft,
-                                child: FilledButton(
-                                  onPressed: () => Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => _DetourDetailPage(stopCode: stop.code, stopName: stop.getLocalizedName(lang.currentLanguage)),
-                                    ),
-                                  ),
-                                  child: Text(lang.tr('easy_read_diversion')),
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-                            ],
-                            for (final alert in alerts) ...[
-                              Text(
-                                (alert['title'] ?? lang.tr('route_notice')).toString(),
-                                softWrap: true,
-                                style: TextStyle(color: fg, fontSize: 22, fontWeight: FontWeight.w800, height: 1.3),
-                              ),
-                              if ((alert['link'] ?? '').toString().isNotEmpty) ...[
-                                const SizedBox(height: 8),
-                                Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: FilledButton(
-                                    onPressed: () async {
-                                      final url = Uri.tryParse(alert['link'].toString());
-                                      if (url == null) return;
-                                      if (await canLaunchUrl(url)) {
-                                        await launchUrl(url, mode: LaunchMode.externalApplication);
-                                      }
-                                    },
-                                    child: Text(lang.tr('open')),
-                                  ),
-                                ),
-                              ],
-                              const SizedBox(height: 20),
-                            ],
-                          ],
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DetourDetailPage extends StatefulWidget {
-  const _DetourDetailPage({required this.stopCode, required this.stopName});
+/// One stop's diversion notice: suspended stops and temporary replacements.
+class StopDetourDetailPage extends StatefulWidget {
+  const StopDetourDetailPage({
+    super.key,
+    required this.stopCode,
+    required this.stopName,
+  });
 
   final String stopCode;
   final String stopName;
 
+  /// Tests supply a notice here so the page does not call the network.
+  static Future<Map<String, dynamic>?> Function({
+    required String route,
+    required String stationCode,
+    required String lang,
+  })? debugLoad;
+
   @override
-  State<_DetourDetailPage> createState() => _DetourDetailPageState();
+  State<StopDetourDetailPage> createState() => _StopDetourDetailPageState();
 }
 
-class _DetourDetailPageState extends State<_DetourDetailPage> {
+class _StopDetourDetailPageState extends State<StopDetourDetailPage> {
   late final Future<Map<String, dynamic>?> _detail;
 
   @override
@@ -487,11 +303,14 @@ class _DetourDetailPageState extends State<_DetourDetailPage> {
     super.initState();
     final route = context.read<BusController>().currentRoute;
     final lang = context.read<LanguageController>().currentLanguage;
-    _detail = BusApiService.fetchStopDetour(
-      route: route,
-      stationCode: widget.stopCode,
-      lang: lang,
-    );
+    final load = StopDetourDetailPage.debugLoad;
+    _detail = load != null
+        ? load(route: route, stationCode: widget.stopCode, lang: lang)
+        : BusApiService.fetchStopDetour(
+            route: route,
+            stationCode: widget.stopCode,
+            lang: lang,
+          );
   }
 
   @override

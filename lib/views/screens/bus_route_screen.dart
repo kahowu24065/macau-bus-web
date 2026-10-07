@@ -90,6 +90,22 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
   }
 
   Future<void> _openStopWarning(dynamic stop) async {
+    if (EasyReadAccess.enabled(context, listen: false)) {
+      final langCtrl = context.read<LanguageController>();
+      final stopCode = stop.code?.toString() ?? '';
+      final stopName = stop.getLocalizedName(langCtrl.currentLanguage);
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => StopDetourDetailPage(
+            stopCode: stopCode,
+            stopName: stopName,
+          ),
+        ),
+      );
+      return;
+    }
+
     final alertUrl = stop.alertUrl?.toString() ?? '';
     final stopCode = stop.code?.toString().trim().toUpperCase() ?? '';
 

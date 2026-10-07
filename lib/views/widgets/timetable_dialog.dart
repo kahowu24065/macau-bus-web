@@ -536,25 +536,7 @@ class _BandCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    const Icon(Icons.schedule, color: _gold, size: 15),
-                    const SizedBox(width: 4),
-                    Flexible(
-                      child: Text(
-                        freqLabel,
-                        textAlign: TextAlign.end,
-                        style: const TextStyle(
-                          color: _gold,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          height: 1.2,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                _FreqHeading(label: freqLabel),
                 const SizedBox(height: 4),
                 Text(
                   freq,
@@ -571,6 +553,60 @@ class _BandCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Clock plus frequency label, hugged to the card's right edge.
+/// The minutes value below uses the same edge.
+class _FreqHeading extends StatelessWidget {
+  const _FreqHeading({required this.label});
+
+  final String label;
+
+  static const _style = TextStyle(
+    color: _gold,
+    fontSize: 12,
+    fontWeight: FontWeight.w600,
+    height: 1.2,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const iconSize = 15.0;
+        const gap = 4.0;
+        final room = constraints.maxWidth - iconSize - gap;
+        final maxText = room.isFinite && room > 0 ? room : double.infinity;
+        final painter = TextPainter(
+          text: TextSpan(text: label, style: _style),
+          textAlign: TextAlign.right,
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.textScalerOf(context),
+          maxLines: 4,
+        )..layout(maxWidth: maxText);
+        final measured = painter.size.width;
+        painter.dispose();
+        final textWidth = measured > maxText && maxText.isFinite ? maxText : measured;
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const Icon(Icons.schedule, color: _gold, size: iconSize),
+            const SizedBox(width: gap),
+            SizedBox(
+              width: textWidth,
+              child: Text(
+                label,
+                textAlign: TextAlign.right,
+                softWrap: true,
+                style: _style,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

@@ -14,6 +14,8 @@ import 'package:macau_bus_app/models/bus_stop.dart';
 import 'package:macau_bus_app/services/arrival_speaker.dart';
 import 'package:macau_bus_app/services/open_data_config.dart';
 import 'package:macau_bus_app/views/screens/bus_route_screen.dart';
+import 'package:macau_bus_app/views/screens/easy_read_more_screen.dart';
+import 'package:macau_bus_app/views/widgets/blinking_warning_icon.dart';
 
 class _FakeSpeech implements SpeechEngine {
   String? spoken;
@@ -134,6 +136,75 @@ void main() {
     await tester.pump();
     expect(fake.spoken, '4 分鐘後到');
     expect(fake.language, 'zh-HK');
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    bus.dispose();
+    lang.dispose();
+  });
+
+  testWidgets('easy read warning icon opens that stop diversion page', (tester) async {
+    tester.view.physicalSize = const Size(400, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    StopDetourDetailPage.debugLoad = ({
+      required String route,
+      required String stationCode,
+      required String lang,
+    }) async {
+      return {
+        'suspendStops': ['站$stationCode'],
+        'alternativeStops': ['臨時站'],
+      };
+    };
+    addTearDown(() => StopDetourDetailPage.debugLoad = null);
+
+    OpenDataConfig.instance.debugApply(
+      configRealtime: true,
+      configRouteNotices: true,
+      etaRealtime: true,
+    );
+    final lang = LanguageController();
+    final bus = BusController();
+    bus.setRoute('3');
+    bus.stopsList = [
+      for (var i = 1; i <= 4; i++)
+        i == 2 ? _stop(i).copyWith(hasAlert: true) : _stop(i),
+    ];
+    bus.selectedStopSeq = 4;
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<BusController>.value(value: bus),
+          ChangeNotifierProvider<LanguageController>.value(value: lang),
+          ChangeNotifierProvider(create: (_) => LocationController()),
+          ChangeNotifierProvider(create: (_) => BackgroundController()),
+          ChangeNotifierProvider(create: (_) => NavigationController()),
+          ChangeNotifierProvider(create: (_) => EasyReadModeController.fixed(true)),
+        ],
+        child: MaterialApp(
+          theme: ThemeData.dark(),
+          home: const BusRouteScreen(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    final icon = find.byType(BlinkingWarningIcon);
+    expect(icon, findsOneWidget);
+    await tester.ensureVisible(icon);
+    await tester.pump();
+    await tester.tap(icon);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(StopDetourDetailPage), findsOneWidget);
+    expect(find.text('暫停停靠站點：'), findsOneWidget);
+    expect(find.text('臨時 / 替代站點：'), findsOneWidget);
+    expect(find.text('改道通告'), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
     bus.dispose();
