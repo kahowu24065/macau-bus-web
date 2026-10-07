@@ -52,7 +52,7 @@ void main() {
     expect(find.text('星期日及公眾假期'), findsOneWidget);
     expect(find.text('06:00-07:00'), findsOneWidget);
     expect(find.text('9 - 11'), findsOneWidget);
-    expect(find.text('班次來自交通事務局（DSAT）官方路線資料（頻率區間）'), findsOneWidget);
+    expect(find.text('班次來自交通事務局（DSAT）官方路線資料'), findsOneWidget);
     expect(find.text('關閉'), findsOneWidget);
 
     final dialog = tester.widget<AlertDialog>(find.byType(AlertDialog));
@@ -80,7 +80,7 @@ void main() {
     expect(find.text('1A Timetable'), findsOneWidget);
     expect(find.text('Mon–Sat (except public holidays)'), findsOneWidget);
     expect(find.text('Sun & public holidays'), findsOneWidget);
-    expect(find.text('Frequencies from official DSAT route information (headway ranges)'), findsOneWidget);
+    expect(find.text('Frequencies from official DSAT route information'), findsOneWidget);
     expect(find.text('9 - 11'), findsOneWidget);
   });
 }
