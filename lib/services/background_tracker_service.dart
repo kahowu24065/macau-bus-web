@@ -128,10 +128,18 @@ class BackgroundTrackerService {
       ),
     );
 
-    final String route = prefs.getString('track_route') ?? '';
-    if (route.isEmpty && await service.isRunning()) {
-      service.invoke('stopService');
+    // Boarding reminders are estimated on the server. Do not keep a background
+    // poll of /bus-eta alive from an older session.
+    try {
+      if (await service.isRunning()) {
+        service.invoke('stopService');
+      }
+    } catch (e) {
+      debugPrint('stop leftover boarding tracker: $e');
     }
+    await prefs.remove('track_route');
+    await prefs.remove('track_dir');
+    await prefs.remove('track_stop_seq');
   }
 
   static Future<void> startTracking({

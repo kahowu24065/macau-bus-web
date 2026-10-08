@@ -63,3 +63,25 @@ curl -sS -o /dev/null -w '%{http_code}\n' 'http://127.0.0.1:PORT/api/bus-gpx?rou
 ```
 
 The shape request should be HTTP 200 with `"source":"ROUTE_NETWORK"`. The old GPX path should be HTTP 410. Then the same `/api/route-shape` URL must answer on `https://macaubus-kat1.com` (Cloudflare in front of this origin). The app draws those `points` and does not fall back to any other host.
+
+## Boarding reminder
+
+The phone sends one `POST /api/boarding-reminder` with the single chosen bus's coordinates and the stop coordinates it already has. Copy `server/boarding_reminder.js` to `~/macau-bus/boarding_reminder.js` and mount it on the same app as `/api/bus-stops`:
+
+```js
+const { mountBoardingReminder } = require('./boarding_reminder');
+
+mountBoardingReminder(app, {
+  shapeDir: "/home/ubuntu/macau-bus",
+});
+```
+
+`express.json()` must already be parsing the body. The module does not call motransportinfo. It estimates from `segment_times.json` (or `SEGMENT_TIMES_PATH`). That file is the per-segment average travel times the live server already uses; it is not in this git repo. `travelSeconds` includes lights and congestion. `dwellSeconds` is the dwell at `toSeq` and is not added at the target stop. If the file is missing, the route returns `segment_times_missing` and the app does not arm the reminder.
+
+```json
+{ "3A": { "0": [ { "fromSeq": 1, "toSeq": 2, "travelSeconds": 90, "dwellSeconds": 20 } ] } }
+```
+
+When the estimate first reaches about 5 minutes, the process sends an Apple Live Activity push (`apns-push-type: liveactivity`, topic `mo.mbka.bus.push-type.liveactivity`). The content is predicted minutes, not a stop count. An end push is sent when that estimate says the bus has reached the stop. Both timers are in memory, so the Node process has to stay up. `POST /api/boarding-reminder/cancel` clears them. The same `reminderId` does not schedule a second pair of timers.
+
+Apple push is sent only when `APNS_KEY_ID`, `APNS_TEAM_ID`, and `APNS_KEY_P8` or `APNS_KEY_PATH` are set. `APNS_USE_SANDBOX=1` uses the sandbox host. Do not invent a key. Without those values the reminder is still stored and `pushConfigured` is false.

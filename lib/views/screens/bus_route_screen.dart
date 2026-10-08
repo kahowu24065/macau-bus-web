@@ -8,7 +8,10 @@ import '../widgets/fit_marquee_text.dart'; // 🌟 走馬燈（只在超出寬�
 import '../../controllers/bus_controller.dart';
 import '../../controllers/location_controller.dart';
 import '../../controllers/navigation_controller.dart';
-import '../../services/gps_service.dart'; 
+import 'package:geolocator/geolocator.dart';
+import '../../services/gps_service.dart';
+import '../../services/alighting_location_service.dart';
+import '../../utils/alighting_location.dart'; 
 import '../../services/bus_api_service.dart';
 import '../../services/open_data_config.dart';
 import '../../utils/bus_eta_estimate.dart';
@@ -545,7 +548,30 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     return stop.name.toString().trim();
   }
 
+  Future<void> _explainAlightingAlways(BuildContext context, LanguageController langCtrl, bool isDark) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(langCtrl.tr('alighting_always_title'), style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 18, fontWeight: FontWeight.bold)),
+        content: Text(langCtrl.tr('alighting_always_desc'), style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 15, height: 1.4)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogCtx), child: Text(langCtrl.tr('cancel'), style: const TextStyle(color: Colors.grey, fontSize: 16))),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogCtx);
+              Geolocator.openAppSettings();
+            },
+            child: Text(langCtrl.tr('open_settings'), style: const TextStyle(color: Colors.blueAccent, fontSize: 16, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showAlarmBottomSheet(BuildContext context, dynamic stop, BusController busCtrl, LocationController locCtrl, bool isDark) {
+    final hostContext = context;
     final langCtrl = context.read<LanguageController>();
     final localizedName = stop.getLocalizedName(langCtrl.currentLanguage);
     
@@ -572,9 +598,26 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                     title: Text(hasBoarding ? langCtrl.tr('cancel_boarding_alarm') : langCtrl.tr('boarding_alarm'), style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold)),
                     subtitle: Text(langCtrl.tr('boarding_alarm_desc'), style: const TextStyle(color: Colors.grey, fontSize: 12)),
                     trailing: Icon(hasBoarding ? Icons.check_circle : Icons.chevron_right, color: hasBoarding ? Colors.amber : Colors.grey),
-                    onTap: () {
-                      if (hasBoarding) { busCtrl.setBoardingStop(null); } else { busCtrl.setBoardingStop(stop.seq); }
+                    onTap: () async {
+                      if (hasBoarding) {
+                        await busCtrl.setBoardingStop(null);
+                        if (context.mounted) Navigator.pop(context);
+                        return;
+                      }
+                      final outcome = await busCtrl.setBoardingStop(stop.seq);
+                      if (!context.mounted) return;
                       Navigator.pop(context);
+                      final messageKey = outcome.messageKey;
+                      if (messageKey != null && hostContext.mounted) {
+                        ScaffoldMessenger.of(hostContext).showSnackBar(
+                          RouteLiquidGlassNavStyle.snackBar(
+                            context: hostContext,
+                            content: Text(langCtrl.tr(messageKey)),
+                            backgroundColor: Colors.redAccent,
+                            duration: const Duration(seconds: 4),
+                          ),
+                        );
+                      }
                     },
                   ),
                   Divider(height: 1, color: isDark ? Colors.white10 : Colors.black12),
@@ -583,38 +626,82 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                     title: Text(hasAlighting ? langCtrl.tr('cancel_alighting_alarm') : langCtrl.tr('alighting_alarm'), style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold)),
                     subtitle: Text(langCtrl.tr('alighting_alarm_desc'), style: const TextStyle(color: Colors.grey, fontSize: 12)),
                     trailing: Icon(hasAlighting ? Icons.check_circle : Icons.chevron_right, color: hasAlighting ? Colors.blueAccent : Colors.grey),
-                    onTap: () {
-                      if (hasAlighting) { 
-                        busCtrl.setAlightingStop(null); 
+                    onTap: () async {
+                      if (hasAlighting) {
+                        busCtrl.setAlightingStop(null);
+                        if (context.mounted) Navigator.pop(context);
+                        return;
+                      }
+                      if (!locCtrl.isFollowingUser) {
+                        final bool? openGps = await showDialog<bool>(
+                          context: context,
+                          builder: (dialogCtx) => AlertDialog(
+                            backgroundColor: isDark ? const Color(0xFF2A2A2A) : Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            title: Row(children: [const Icon(Icons.location_off, color: Colors.redAccent, size: 24), const SizedBox(width: 10), Expanded(child: Text(langCtrl.tr('need_gps'), style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 18, fontWeight: FontWeight.bold)))]),
+                            content: Text(langCtrl.tr('need_gps_desc'), style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 15, height: 1.4)),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(dialogCtx, false), child: Text(langCtrl.tr('cancel'), style: const TextStyle(color: Colors.grey, fontSize: 16))),
+                              TextButton(
+                                onPressed: () => Navigator.pop(dialogCtx, true),
+                                child: Text(langCtrl.tr('open'), style: const TextStyle(color: Colors.blueAccent, fontSize: 16, fontWeight: FontWeight.bold)),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (openGps != true || !context.mounted) return;
+                      }
+                      final decision = await AlightingLocationService.requestForAlightingReminder();
+                      if (!context.mounted) return;
+                      final action = decision.action;
+                      if (action == AlightingPermissionAction.denied) {
                         Navigator.pop(context);
-                      } else { 
-                        if (!locCtrl.isFollowingUser) {
-                          showDialog(
-                            context: context,
-                            builder: (dialogCtx) => AlertDialog(
-                              backgroundColor: isDark ? const Color(0xFF2A2A2A) : Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                              title: Row(children: [const Icon(Icons.location_off, color: Colors.redAccent, size: 24), const SizedBox(width: 10), Expanded(child: Text(langCtrl.tr('need_gps'), style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 18, fontWeight: FontWeight.bold)))]),
-                              content: Text(langCtrl.tr('need_gps_desc'), style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 15, height: 1.4)),
-                              actions: [
-                                TextButton(onPressed: () => Navigator.pop(dialogCtx), child: Text(langCtrl.tr('cancel'), style: const TextStyle(color: Colors.grey, fontSize: 16))),
-                                TextButton(
-                                  onPressed: () {
-                                    Navigator.pop(dialogCtx); busCtrl.setAlightingStop(stop.seq); 
-                                    locCtrl.toggleLocationTracking((loc) { busCtrl.checkAlightingAlarm(loc); });
-                                    if (!EasyReadAccess.enabled(context, listen: false)) {
-                                      ScaffoldMessenger.of(context).showSnackBar(RouteLiquidGlassNavStyle.snackBar(context: context, content: Text(langCtrl.tr('gps_opened')), backgroundColor: Colors.green));
-                                    }
-                                    Navigator.pop(context); 
-                                  },
-                                  child: Text(langCtrl.tr('open'), style: const TextStyle(color: Colors.blueAccent, fontSize: 16, fontWeight: FontWeight.bold)),
-                                ),
-                              ],
-                            )
-                          );
-                        } else {
-                          busCtrl.setAlightingStop(stop.seq);
-                          Navigator.pop(context);
+                        if (hostContext.mounted) {
+                          ScaffoldMessenger.of(hostContext).showSnackBar(RouteLiquidGlassNavStyle.snackBar(
+                            context: hostContext,
+                            content: Text(langCtrl.tr('gps_failed')),
+                            backgroundColor: Colors.redAccent,
+                          ));
                         }
+                        return;
+                      }
+                      if (action == AlightingPermissionAction.settingsOnly) {
+                        Navigator.pop(context);
+                        if (hostContext.mounted) {
+                          await _explainAlightingAlways(hostContext, langCtrl, isDark);
+                        }
+                        return;
+                      }
+                      busCtrl.setAlightingStop(stop.seq);
+                      try {
+                        await locCtrl.trackForAlighting(
+                          (loc) { busCtrl.checkAlightingAlarm(loc); },
+                          background: action == AlightingPermissionAction.ready,
+                        );
+                      } catch (_) {
+                        busCtrl.setAlightingStop(null);
+                        if (context.mounted) Navigator.pop(context);
+                        if (hostContext.mounted) {
+                          ScaffoldMessenger.of(hostContext).showSnackBar(RouteLiquidGlassNavStyle.snackBar(
+                            context: hostContext,
+                            content: Text(langCtrl.tr('gps_failed')),
+                            backgroundColor: Colors.redAccent,
+                          ));
+                        }
+                        return;
+                      }
+                      if (!context.mounted) return;
+                      Navigator.pop(context);
+                      if (!hostContext.mounted) return;
+                      if (action == AlightingPermissionAction.foregroundAndSettings) {
+                        await _explainAlightingAlways(hostContext, langCtrl, isDark);
+                        return;
+                      }
+                      if (!EasyReadAccess.enabled(hostContext, listen: false)) {
+                        ScaffoldMessenger.of(hostContext).showSnackBar(RouteLiquidGlassNavStyle.snackBar(
+                          context: hostContext,
+                          content: Text(langCtrl.tr('gps_opened')),
+                          backgroundColor: Colors.green,
+                        ));
                       }
                     },
                   ),

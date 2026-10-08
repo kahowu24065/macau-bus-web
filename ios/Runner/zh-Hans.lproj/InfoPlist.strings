@@ -1,3 +1,3 @@
 "NSLocationWhenInUseUsageDescription" = "巴士预报需要使用你的位置，以显示附近车站、计算路线及提供到站／下车提示。";
 "NSPhotoLibraryUsageDescription" = "巴士预报需要访问照片，让你选择自定义背景图片。";
-"NSLocationAlwaysAndWhenInUseUsageDescription" = "巴士预报只会在你使用 App 时获取位置，用于查找附近车站及规划路线。";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "下车提醒需要在后台使用你的位置，在你接近下车站时通知你。";

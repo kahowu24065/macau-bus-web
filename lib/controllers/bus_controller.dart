@@ -11,6 +11,9 @@ import '../constants/feature_flags.dart';
 import '../services/gpx_service.dart';
 import '../services/notification_service.dart';
 import '../services/background_tracker_service.dart';
+import '../services/boarding_reminder_client.dart';
+import '../services/live_activity_bridge.dart';
+import '../utils/boarding_bus_choice.dart';
 import '../data/local_route_catalog.dart';
 
 
@@ -36,7 +39,13 @@ class BusController extends ChangeNotifier {
   String? pendingAlarmTitle;
   String? pendingAlarmBody;
 
-  int countdownSeconds = 5;
+  /// Seconds between automatic `/bus-eta` polls while a route stays open.
+  /// The server reuses one transport-bureau snapshot for about this long,
+  /// so auto-refresh should not ask more often than that. A manual refresh
+  /// still calls [fetchBusETA] immediately.
+  static const int etaAutoRefreshSeconds = 10;
+
+  int countdownSeconds = etaAutoRefreshSeconds;
   Timer? _autoRefreshTimer;
   bool _etaInFlight = false;
   int _etaRequestId = 0;
@@ -76,7 +85,23 @@ class BusController extends ChangeNotifier {
   LatLng? customMapStart;
   LatLng? customMapEnd;
 
-  bool _skipNextBoardingAlarmCheck = false;
+  final Map<String, BoardingPoint> _lastBusFix = {};
+  String? _boardingReminderId;
+  bool _boardingRestorePosted = false;
+
+  static const String _reminderIdKey = 'boarding_reminder_id';
+  static const String _reminderRouteKey = 'boarding_reminder_route';
+  static const String _reminderDirKey = 'boarding_reminder_dir';
+  static const String _reminderStopKey = 'boarding_reminder_stop';
+  static const String _reminderLicenseKey = 'boarding_reminder_license';
+  static const String _reminderLatKey = 'boarding_reminder_lat';
+  static const String _reminderLngKey = 'boarding_reminder_lng';
+  static const String _reminderNameKey = 'boarding_reminder_stop_name';
+  static const String _reminderStartedKey = 'boarding_reminder_started_at';
+  static const String _reminderTokenKey = 'boarding_reminder_activity_token';
+  static const String _reminderPushStartKey = 'boarding_reminder_push_to_start';
+  static const String _reminderStopsKey = 'boarding_reminder_stops';
+  static const String _reminderLangKey = 'boarding_reminder_lang';
 
   static const Duration _stopsDiskTtl = Duration(days: 1);
   static const Duration _gpxDiskTtl = Duration(days: 30);
@@ -143,12 +168,17 @@ class BusController extends ChangeNotifier {
 
   Future<void> _restoreTrackingState() async {
     final prefs = await SharedPreferences.getInstance();
-    final savedRoute = prefs.getString('track_route');
-    final savedDir = prefs.getInt('track_dir');
-    final savedStopSeq = prefs.getInt('track_stop_seq');
+    final savedRoute = prefs.getString(_reminderRouteKey);
+    final savedDir = prefs.getInt(_reminderDirKey);
+    final savedStopSeq = prefs.getInt(_reminderStopKey);
 
     if (savedRoute != null && savedRoute == currentRoute && savedDir == currentDirection && savedStopSeq != null) {
       boardingStopSeq = savedStopSeq;
+      _boardingReminderId = prefs.getString(_reminderIdKey);
+      if (!_boardingRestorePosted && _boardingReminderId != null) {
+        _boardingRestorePosted = true;
+        unawaited(_repostBoardingReminder());
+      }
     } else {
       boardingStopSeq = null;
     }
@@ -447,29 +477,253 @@ class BusController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setBoardingStop(int? seq) async {
-    boardingStopSeq = seq;
-    _skipNextBoardingAlarmCheck = seq != null;
-    final prefs = await SharedPreferences.getInstance();
+  /// Arms one server-side estimate for the nearest bus, or clears it.
+  ///
+  /// The phone does not poll and does not estimate minutes. A failure leaves
+  /// the reminder off and returns a translation key for the screen to show.
+  Future<BoardingReminderOutcome> setBoardingStop(int? seq) async {
+    if (seq == null) {
+      await _clearBoardingReminder();
+      return const BoardingReminderOutcome.cleared();
+    }
 
-    if (seq != null) {
-      await prefs.setString('track_route', currentRoute);
-      await prefs.setInt('track_dir', currentDirection);
-      await prefs.setInt('track_stop_seq', seq);
-
-      alightingStopSeq = null;
-      BackgroundTrackerService.startTracking(
-        route: currentRoute,
-        direction: currentDirection,
-        targetStopSeq: seq,
+    final stop = _stopBySeq(seq);
+    final choice = chooseBoardingBus(
+      buses: [
+        for (final bus in allBusesList)
+          BoardingBusInput(
+            license: bus.busLicense,
+            lat: bus.lat,
+            lng: bus.lng,
+            currentStopSeq: bus.currentStopSeq,
+            atStop: bus.atStop,
+          ),
+      ],
+      targetSeq: seq,
+      target: stop == null ? null : BoardingPoint(stop.lat, stop.lng, seq: stop.seq),
+      stops: [
+        for (final item in stopsList)
+          BoardingPoint(item.lat, item.lng, seq: item.seq),
+      ],
+      routePoints: [
+        for (final point in gpxRoutePoints)
+          BoardingPoint(point.latitude, point.longitude),
+      ],
+      lastRecorded: _lastBusFix,
+    );
+    if (!choice.ok) {
+      return BoardingReminderOutcome.failed(
+        boardingChoiceMessageKey(choice.failure ?? BoardingChoiceFailure.noApproachingBus),
       );
+    }
+
+    final stopName = stop == null ? '' : stop.getLocalizedName(currentLang);
+    final pushToStart = await LiveActivityBridge.pushToStartToken();
+    String? activityToken;
+    if (pushToStart == null) {
+      activityToken = await LiveActivityBridge.startActivity(
+        route: currentRoute,
+        stopName: stopName,
+        minutes: 0,
+        text: stopName,
+      );
+    }
+
+    final reminderId = 'br-${DateTime.now().microsecondsSinceEpoch}';
+    final stopsPayload = [
+      for (final item in stopsList) {'seq': item.seq, 'lat': item.lat, 'lng': item.lng},
+    ];
+    final response = await BoardingReminderClient.register({
+      'reminderId': reminderId,
+      'route': currentRoute,
+      'dir': currentDirection,
+      'targetSeq': seq,
+      'stopName': stopName,
+      'busLicense': choice.license,
+      'lat': choice.lat,
+      'lng': choice.lng,
+      'lang': currentLang,
+      if (activityToken != null) 'activityToken': activityToken,
+      if (pushToStart != null) 'pushToStartToken': pushToStart,
+      'stops': stopsPayload,
+    });
+    if (!response.ok) {
+      await LiveActivityBridge.end();
+      return BoardingReminderOutcome.failed(boardingServerMessageKey(response.code));
+    }
+
+    if (activityToken != null && response.text != null) {
+      await LiveActivityBridge.update(
+        minutes: response.minutes ?? 0,
+        text: response.text!,
+      );
+    }
+
+    _boardingRestorePosted = true;
+    _boardingReminderId = reminderId;
+    boardingStopSeq = seq;
+    alightingStopSeq = null;
+    _listenForActivityToken(reminderId);
+    await _saveBoardingReminder(
+      reminderId: reminderId,
+      seq: seq,
+      license: choice.license!,
+      lat: choice.lat!,
+      lng: choice.lng!,
+      stopName: stopName,
+      startedAt: response.startedAt,
+      activityToken: activityToken,
+      pushToStart: pushToStart,
+      stopsPayload: stopsPayload,
+    );
+    await _stopLegacyBoardingPoll();
+    notifyListeners();
+    return const BoardingReminderOutcome.started();
+  }
+
+  BusStop? _stopBySeq(int seq) {
+    for (final stop in stopsList) {
+      if (stop.seq == seq) return stop;
+    }
+    return null;
+  }
+
+  void _rememberBusFixes(List<Bus> buses) {
+    for (final bus in buses) {
+      if (bus.busLicense.isEmpty) continue;
+      if (!boardingCoordsUsable(bus.lat, bus.lng)) continue;
+      _lastBusFix[bus.busLicense] = BoardingPoint(bus.lat, bus.lng);
+    }
+  }
+
+  void _listenForActivityToken(String reminderId) {
+    LiveActivityBridge.onActivityToken = (token) {
+      if (_boardingReminderId != reminderId || token.isEmpty) return;
+      unawaited(BoardingReminderClient.register({
+        'reminderId': reminderId,
+        'activityToken': token,
+      }));
+    };
+  }
+
+  Future<void> _saveBoardingReminder({
+    required String reminderId,
+    required int seq,
+    required String license,
+    required double lat,
+    required double lng,
+    required String stopName,
+    required int? startedAt,
+    required String? activityToken,
+    required String? pushToStart,
+    required List<Map<String, dynamic>> stopsPayload,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_reminderIdKey, reminderId);
+    await prefs.setString(_reminderRouteKey, currentRoute);
+    await prefs.setInt(_reminderDirKey, currentDirection);
+    await prefs.setInt(_reminderStopKey, seq);
+    await prefs.setString(_reminderLicenseKey, license);
+    await prefs.setDouble(_reminderLatKey, lat);
+    await prefs.setDouble(_reminderLngKey, lng);
+    await prefs.setString(_reminderNameKey, stopName);
+    await prefs.setInt(_reminderStartedKey, startedAt ?? DateTime.now().millisecondsSinceEpoch);
+    await prefs.setString(_reminderLangKey, currentLang);
+    await prefs.setString(_reminderStopsKey, jsonEncode(stopsPayload));
+    if (activityToken != null) {
+      await prefs.setString(_reminderTokenKey, activityToken);
     } else {
+      await prefs.remove(_reminderTokenKey);
+    }
+    if (pushToStart != null) {
+      await prefs.setString(_reminderPushStartKey, pushToStart);
+    } else {
+      await prefs.remove(_reminderPushStartKey);
+    }
+  }
+
+  Future<void> _repostBoardingReminder() async {
+    final prefs = await SharedPreferences.getInstance();
+    final body = _reminderBodyFromPrefs(prefs);
+    if (body == null) return;
+    _boardingReminderId = body['reminderId'] as String?;
+    _listenForActivityToken(_boardingReminderId ?? '');
+    final response = await BoardingReminderClient.register(body);
+    if (response.code == 'passed' || response.code == 'segment_times_missing') {
+      await _clearBoardingReminder();
+    }
+  }
+
+  Map<String, dynamic>? _reminderBodyFromPrefs(SharedPreferences prefs) {
+    final id = prefs.getString(_reminderIdKey);
+    final lat = prefs.getDouble(_reminderLatKey);
+    final lng = prefs.getDouble(_reminderLngKey);
+    final seq = prefs.getInt(_reminderStopKey);
+    if (id == null || lat == null || lng == null || seq == null) return null;
+    List<dynamic> stops = const [];
+    final rawStops = prefs.getString(_reminderStopsKey);
+    if (rawStops != null) {
+      try {
+        final decoded = jsonDecode(rawStops);
+        if (decoded is List) stops = decoded;
+      } catch (_) {}
+    }
+    return {
+      'reminderId': id,
+      'route': prefs.getString(_reminderRouteKey) ?? currentRoute,
+      'dir': prefs.getInt(_reminderDirKey) ?? currentDirection,
+      'targetSeq': seq,
+      'stopName': prefs.getString(_reminderNameKey) ?? '',
+      'busLicense': prefs.getString(_reminderLicenseKey) ?? '',
+      'lat': lat,
+      'lng': lng,
+      'lang': prefs.getString(_reminderLangKey) ?? currentLang,
+      'startedAt': prefs.getInt(_reminderStartedKey),
+      if ((prefs.getString(_reminderTokenKey) ?? '').isNotEmpty)
+        'activityToken': prefs.getString(_reminderTokenKey),
+      if ((prefs.getString(_reminderPushStartKey) ?? '').isNotEmpty)
+        'pushToStartToken': prefs.getString(_reminderPushStartKey),
+      'stops': stops,
+    };
+  }
+
+  Future<void> _clearBoardingReminder() async {
+    final prefs = await SharedPreferences.getInstance();
+    final id = _boardingReminderId ?? prefs.getString(_reminderIdKey);
+    boardingStopSeq = null;
+    _boardingReminderId = null;
+    LiveActivityBridge.onActivityToken = null;
+    await LiveActivityBridge.end();
+    if (id != null && id.isNotEmpty) {
+      await BoardingReminderClient.cancel(id);
+    }
+    await prefs.remove(_reminderIdKey);
+    await prefs.remove(_reminderRouteKey);
+    await prefs.remove(_reminderDirKey);
+    await prefs.remove(_reminderStopKey);
+    await prefs.remove(_reminderLicenseKey);
+    await prefs.remove(_reminderLatKey);
+    await prefs.remove(_reminderLngKey);
+    await prefs.remove(_reminderNameKey);
+    await prefs.remove(_reminderStartedKey);
+    await prefs.remove(_reminderTokenKey);
+    await prefs.remove(_reminderPushStartKey);
+    await prefs.remove(_reminderStopsKey);
+    await prefs.remove(_reminderLangKey);
+    await _stopLegacyBoardingPoll();
+    notifyListeners();
+  }
+
+  Future<void> _stopLegacyBoardingPoll() async {
+    try {
+      await BackgroundTrackerService.stopTracking();
+    } catch (e) {
+      debugPrint('stop boarding poll: $e');
+      final prefs = await SharedPreferences.getInstance();
       await prefs.remove('track_route');
       await prefs.remove('track_dir');
       await prefs.remove('track_stop_seq');
-      BackgroundTrackerService.stopTracking();
     }
-    notifyListeners();
   }
 
   void setAlightingStop(int? seq) {
@@ -486,7 +740,7 @@ class BusController extends ChangeNotifier {
 
   void startAutoRefresh() {
     stopAutoRefresh();
-    countdownSeconds = 5;
+    countdownSeconds = etaAutoRefreshSeconds;
     notifyListeners();
 
     _autoRefreshTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -496,7 +750,7 @@ class BusController extends ChangeNotifier {
         countdownSeconds--;
         notifyListeners();
       } else {
-        countdownSeconds = 5;
+        countdownSeconds = etaAutoRefreshSeconds;
         fetchBusETA(isAutoRefresh: true);
       }
     });
@@ -973,38 +1227,6 @@ class BusController extends ChangeNotifier {
     }
   }
 
-  Future<void> _checkBoardingAlarm() async {
-    if (boardingStopSeq == null || allBusesList.isEmpty) return;
-    for (var bus in allBusesList) {
-      int currentSeq = bus.currentStopSeq;
-      if (currentSeq > 0) {
-        int stopsAway = boardingStopSeq! - currentSeq;
-        if (stopsAway >= 0 && stopsAway <= 2) {
-          final int alarmStopSeq = boardingStopSeq!;
-          boardingStopSeq = null;
-
-          final bool claimed = await NotificationService.claimBoardingAlarm();
-          if (!claimed) {
-            await BackgroundTrackerService.stopTracking();
-            notifyListeners();
-            break;
-          }
-
-          pendingAlarmTitle = tr?.call('board_ready_title') ?? '🚌 準備上車！';
-          String rawBody = tr?.call('board_ready_body') ?? '@route 路線即將抵達第 @stop 站，請準備前往站點。';
-          pendingAlarmBody = rawBody
-              .replaceAll('@stop', alarmStopSeq.toString())
-              .replaceAll('@route', currentRoute);
-
-          await NotificationService.showAlarm(pendingAlarmTitle!, pendingAlarmBody!);
-          await BackgroundTrackerService.stopTracking();
-          notifyListeners();
-          break;
-        }
-      }
-    }
-  }
-
   void checkAlightingAlarm(LatLng? userLocation) {
     if (alightingStopSeq == null || userLocation == null || stopsList.isEmpty) return;
 
@@ -1087,16 +1309,11 @@ class BusController extends ChangeNotifier {
 
         if (showLiveArrivals) {
           allBusesList = result['allBuses'];
+          _rememberBusFixes(allBusesList);
           advanceBusMotion();
-          if (_skipNextBoardingAlarmCheck) {
-            _skipNextBoardingAlarmCheck = false;
-          } else {
-            await _checkBoardingAlarm();
-          }
         } else {
           allBusesList = [];
           _legMotion.clear();
-          _skipNextBoardingAlarmCheck = false;
         }
 
         if (!isAutoRefresh || _autoRefreshTimer == null) startAutoRefresh();
@@ -1172,8 +1389,11 @@ class BusController extends ChangeNotifier {
     return null;
   }
 
-  /// 跟最新 GPS。車速 0（或低過約 2km/h）就停低；
-  /// 只有車郁緊先由嗰個 GPS 位再推前，最多一個輪詢間隔。
+  /// 地圖圖示：呢個車速或以下當停低，唔沿路線推前。
+  static const double _mapIconStopKmh = 5;
+
+  /// 跟最新 GPS。車速 0（或 5km/h 或以下）就停低；
+  /// 只有車郁緊先由嗰個 GPS 位再推前，大約 1 至 2 秒，然後停低等下一個定位。
   /// 超過 10 秒冇新資料就停，唔好再沿用舊車速。
   /// [now] 畀測試固定個鐘；平時用而家。
   bool advanceBusMotion([DateTime? now]) {
@@ -1256,7 +1476,7 @@ class BusController extends ChangeNotifier {
   }
 
   /// 新一次 GPS：投影到呢段路線，約 1 秒滑過去。
-  /// 之後車速 > 2km/h 先由嗰點再推，最多 6 秒；車停就停。
+  /// 之後車速 > 5km/h 先由嗰點再推，大約 2 秒；車停就停。
   ({_BusLegMotion motion, bool moved}) _stepLeg({
     required Bus bus,
     required DateTime now,
@@ -1266,9 +1486,9 @@ class BusController extends ChangeNotifier {
     required double cap,
     required _BusLegMotion? prev,
   }) {
-    const stopKmh = 2.0;
+    const stopKmh = _mapIconStopKmh;
     const easeSeconds = 1.0;
-    const extrapolateSeconds = 6.0;
+    const extrapolateSeconds = 2.0;
     const staleSeconds = 10.0;
 
     final fresh = prev == null || !prev.matchesFix(bus);
@@ -1433,7 +1653,7 @@ class BusController extends ChangeNotifier {
   }
 
   double displaySpeedKmh(Bus bus) {
-    if (bus.speed <= 2) return 0;
+    if (bus.speed <= _mapIconStopKmh) return 0;
     return bus.speed;
   }
 

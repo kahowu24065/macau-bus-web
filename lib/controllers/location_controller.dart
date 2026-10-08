@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
@@ -55,6 +56,44 @@ class LocationController extends ChangeNotifier {
         if (isFollowingUser) onLocationUpdated(LatLng(position.latitude, position.longitude));
       });
 
+      isFollowingUser = true;
+      isLocating = false;
+      notifyListeners();
+    } catch (e) {
+      isLocating = false;
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  /// Location updates for the alighting reminder. [background] is only used
+  /// after Always authorization, so map following stays While Using.
+  Future<void> trackForAlighting(
+    void Function(LatLng) onLocationUpdated, {
+    required bool background,
+  }) async {
+    isLocating = true;
+    notifyListeners();
+    try {
+      final bool useBackground = background && defaultTargetPlatform == TargetPlatform.iOS;
+      final LocationSettings settings = useBackground
+          ? AppleSettings(
+              accuracy: LocationAccuracy.high,
+              distanceFilter: 2,
+              allowBackgroundLocationUpdates: true,
+              showBackgroundLocationIndicator: true,
+              pauseLocationUpdatesAutomatically: false,
+            )
+          : const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 2);
+      final Position pos = await Geolocator.getCurrentPosition(locationSettings: settings);
+      _updateLocation(pos);
+      onLocationUpdated(LatLng(pos.latitude, pos.longitude));
+      await _positionStream?.cancel();
+      _positionStream = null;
+      _positionStream = Geolocator.getPositionStream(locationSettings: settings).listen((Position position) {
+        _updateLocation(position);
+        if (isFollowingUser) onLocationUpdated(LatLng(position.latitude, position.longitude));
+      });
       isFollowingUser = true;
       isLocating = false;
       notifyListeners();
