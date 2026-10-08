@@ -110,12 +110,16 @@ class ArrivalSpeaker {
     return defaultTargetPlatform == TargetPlatform.iOS;
   }
 
-  /// Preferred voice, then installed fallbacks. Traditional Chinese is
-  /// Cantonese. Simplified Chinese is Mandarin and never falls back to zh-HK.
+  /// Preferred voice, then installed fallbacks.
+  ///
+  /// Traditional Chinese is Cantonese (`zh-HK` / `yue-HK`) only. iOS `zh-TW`
+  /// and `zh-CN` are Mandarin, so they are not fallbacks: a missing Cantonese
+  /// voice must not speak Mei-Jia or Ting-Ting. Simplified Chinese is Mandarin
+  /// and never falls back to zh-HK.
   static List<String> localesFor(String langCode) {
     switch (langCode) {
       case 'zh':
-        return const ['zh-HK', 'zh-TW', 'zh-CN'];
+        return const ['zh-HK', 'yue-HK'];
       case 'zhHans':
         return const ['zh-CN', 'zh-Hans'];
       case 'pt':
@@ -127,19 +131,52 @@ class ArrivalSpeaker {
     }
   }
 
-  /// A voice whose locale matches [locale]. Simplified Chinese only accepts
-  /// a zh-CN voice, never Cantonese zh-HK.
+  static String _normLocale(String locale) => locale.toLowerCase().replaceAll('_', '-');
+
+  static bool _isCantoneseLocale(String locale) {
+    final loc = _normLocale(locale);
+    return loc == 'zh-hk' ||
+        loc.startsWith('zh-hk-') ||
+        loc == 'yue-hk' ||
+        loc.startsWith('yue-hk-') ||
+        loc == 'zh-yue' ||
+        loc.startsWith('zh-yue-');
+  }
+
+  static bool _isMandarinLocale(String locale) {
+    final loc = _normLocale(locale);
+    return loc == 'zh-cn' || loc.startsWith('zh-cn-') || loc == 'zh-hans' || loc.startsWith('zh-hans');
+  }
+
+  static bool _isSinji(Map<String, String> voice) {
+    final blob = '${voice['name'] ?? ''} ${voice['identifier'] ?? ''}'
+        .toLowerCase()
+        .replaceAll(RegExp(r'[\s_\-]'), '');
+    return blob.contains('sinji');
+  }
+
+  /// A voice for [locale]. Cantonese prefers Sin-ji and never a zh-CN or
+  /// zh-TW voice. Simplified Chinese only accepts a zh-CN voice.
   static Map<String, String>? iosVoiceFor(List<Map<String, String>> voices, String locale) {
-    final want = locale.toLowerCase().replaceAll('_', '-');
-    final mandarin = want == 'zh-cn' || want == 'zh-hans' || want.startsWith('zh-hans');
+    final want = _normLocale(locale);
+    final cantonese = _isCantoneseLocale(want);
+    final mandarin = _isMandarinLocale(want);
     Map<String, String>? match;
     for (final voice in voices) {
-      final loc = (voice['locale'] ?? '').toLowerCase().replaceAll('_', '-');
-      if (loc.isEmpty) continue;
-      if (mandarin) {
-        if (loc == 'zh-cn' || loc.startsWith('zh-cn-')) match ??= voice;
+      final loc = _normLocale(voice['locale'] ?? '');
+      final ident = _normLocale(voice['identifier'] ?? '');
+      if (cantonese) {
+        final cantoneseVoice = _isCantoneseLocale(loc) || ident.contains('zh-hk') || ident.contains('yue-hk');
+        if (!cantoneseVoice || _isMandarinLocale(loc)) continue;
+        if (_isSinji(voice)) return voice;
+        match ??= voice;
         continue;
       }
+      if (mandarin) {
+        if (_isMandarinLocale(loc)) match ??= voice;
+        continue;
+      }
+      if (loc.isEmpty) continue;
       if (loc == want || loc.startsWith('$want-')) match ??= voice;
     }
     return match;
@@ -206,13 +243,25 @@ class ArrivalSpeaker {
     return null;
   }
 
-  /// Applies the locale after the fallback search. Simplified Chinese always
-  /// awaits `zh-CN` first so a previous Cantonese setting cannot stick.
-  /// Returns the locale that was actually applied.
+  /// Applies the locale after the fallback search, awaited immediately before
+  /// the voice is selected and before [SpeechEngine.speak].
+  ///
+  /// Traditional Chinese always awaits `zh-HK` first so a Mandarin voice left
+  /// by an earlier speak cannot stick. Simplified Chinese always awaits
+  /// `zh-CN` first so a Cantonese voice cannot stick.
   Future<String?> _applyLanguage(SpeechEngine speech, String langCode, String chosen) async {
+    if (langCode == 'zh') {
+      if (await _setLanguage(speech, 'zh-HK')) return 'zh-HK';
+      if (chosen != 'zh-HK' && _isCantoneseLocale(chosen) && await _setLanguage(speech, chosen)) {
+        return chosen;
+      }
+      return null;
+    }
     if (langCode == 'zhHans') {
       if (await _setLanguage(speech, 'zh-CN')) return 'zh-CN';
-      if (chosen != 'zh-CN' && await _setLanguage(speech, chosen)) return chosen;
+      if (chosen != 'zh-CN' && _isMandarinLocale(chosen) && await _setLanguage(speech, chosen)) {
+        return chosen;
+      }
       return null;
     }
     if (await _setLanguage(speech, chosen)) return chosen;

@@ -125,6 +125,62 @@ void main() {
     expect(ctrl.speakArrivals, isFalse);
   });
 
+  testWidgets('speech language sits under the readout switch and stays hidden when it is off', (tester) async {
+    tester.view.physicalSize = const Size(400, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _pumpSettings(tester, easyRead: false);
+    expect(find.text('讀出語言'), findsNothing);
+
+    Future<void> tapSwitch(String title) async {
+      final tile = find.ancestor(of: find.text(title), matching: find.byType(ListTile)).first;
+      await tester.ensureVisible(tile);
+      await tester.pump();
+      await tester.tap(find.descendant(of: tile, matching: find.byType(CupertinoSwitch)));
+      await tester.pump();
+    }
+
+    await tapSwitch('讀出到站資訊');
+    expect(find.text('讀出語言'), findsOneWidget);
+    expect(find.text('廣東話'), findsOneWidget);
+    final readout = tester.getTopLeft(find.text('讀出到站資訊'));
+    final language = tester.getTopLeft(find.text('讀出語言'));
+    final theme = tester.getTopLeft(find.text('切換日夜模式'));
+    expect(language.dy, greaterThan(readout.dy));
+    expect(theme.dy, greaterThan(language.dy));
+    final normalTitle = tester.widget<Text>(find.text('讀出語言'));
+    expect(normalTitle.style?.fontSize, 15);
+    expect(normalTitle.style?.fontWeight, FontWeight.w500);
+
+    final tile = find.ancestor(of: find.text('讀出語言'), matching: find.byType(ListTile)).first;
+    await tester.ensureVisible(tile);
+    await tester.tap(tile);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.widgetWithText(CupertinoActionSheetAction, '普通話'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('普通話'), findsOneWidget);
+    expect(find.text('廣東話'), findsNothing);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('speech_language'), 'zhHans');
+
+    await tapSwitch('讀出到站資訊');
+    expect(find.text('讀出語言'), findsNothing);
+    expect(find.text('普通話'), findsNothing);
+
+    await tapSwitch('讀出到站資訊');
+    expect(find.text('普通話'), findsOneWidget);
+
+    await tapSwitch('易讀模式');
+    final easyTitle = tester.widget<Text>(find.text('讀出語言'));
+    expect(easyTitle.style?.fontSize, 15);
+    expect(easyTitle.style?.fontWeight, FontWeight.w700);
+    expect(tester.widget<Text>(find.text('普通話')).style?.fontSize, 14);
+  });
+
   for (final easyRead in [false, true]) {
     testWidgets(
       'member legal links stay grey and unlined when easy read is $easyRead',

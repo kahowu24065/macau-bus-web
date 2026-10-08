@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/bus_stop.dart';
 import '../models/bus.dart';
+import '../utils/bus_eta_estimate.dart';
 import 'package:flutter/foundation.dart';
 import '../config/api_config.dart';
 
@@ -124,6 +125,8 @@ class BusApiService {
       final json = jsonDecode(res.body);
       if (json['success'] == true) {
         List<Bus> buses = ((json['allBuses'] ?? []) as List).map((b) => Bus.fromJson(b as Map<String, dynamic>)).toList();
+        final dataList = json['dataList'] is List ? json['dataList'] as List : const <dynamic>[];
+        buses = attachDataListEta(buses, dataList, extra: json['data']);
         return {
           'success': true,
           'etaData': json['data'],

@@ -402,6 +402,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
           (busCtrl.selectedStopSeq! - a.currentStopSeq).compareTo(busCtrl.selectedStopSeq! - b.currentStopSeq));
       
       int firstBusDiff = -1;
+      int? referenceMinutes = firstBusMins;
       
       for (var bus in approachingBuses) {
         int diff = busCtrl.selectedStopSeq! - bus.currentStopSeq;
@@ -409,13 +410,15 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
         String status = '';
         if (diff > 0) {
            final bool isFirst = upcoming.isEmpty;
-           final int estimatedMins = approachingEtaMinutes(
+           final int? estimated = approachingEtaMinutes(
              busEtaMinutes: bus.etaMinutes,
              isFirst: isFirst,
              stopsAway: diff,
              firstStopsAway: firstBusDiff,
-             firstStatusMinutes: firstBusMins,
+             firstStatusMinutes: isFirst ? firstBusMins : referenceMinutes,
            );
+           if (isFirst && estimated != null) referenceMinutes = estimated;
+           final int estimatedMins = estimated ?? 0;
            
            if (diff == 1) {
              status = approachingStatus(
@@ -503,17 +506,43 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     LanguageController langCtrl, {
     required bool easyRead,
     required bool speakArrivals,
-    required String stopName,
+    required dynamic stop,
   }) {
     if (!speakArrivals) return;
     final upcoming = _getUpcomingBusesInfo(busCtrl, langCtrl, easyRead: easyRead);
     if (upcoming.isEmpty) return;
     final status = (upcoming.first['status'] ?? '').trim();
-    if (status.isEmpty) return;
+    _speakArrivalStatus(langCtrl, speakArrivals: true, stop: stop, status: status);
+  }
+
+  void _speakArrivalStatus(
+    LanguageController langCtrl, {
+    required bool speakArrivals,
+    required dynamic stop,
+    required String status,
+  }) {
+    if (!speakArrivals) return;
+    final spokenStatus = status.trim();
+    if (spokenStatus.isEmpty) return;
+    final speechLang = EasyReadAccess.speechLanguage(context, langCtrl.currentLanguage, listen: false);
     ArrivalSpeaker.shared.speak(
-      easyReadSpokenArrival(stopName: stopName, status: status, tr: langCtrl.tr),
-      langCtrl.currentLanguage,
+      easyReadSpokenArrival(
+        stopName: _speechStopName(stop, speechLang),
+        status: spokenStatus,
+        tr: (key) => AppTranslations.text(speechLang, key),
+      ),
+      speechLang,
     );
+  }
+
+  String _speechStopName(dynamic stop, String speechLang) {
+    final primary = stop.getLocalizedName(speechLang).toString().trim();
+    if (primary.isNotEmpty) return primary;
+    for (final code in const ['zh', 'zhHans', 'en', 'pt']) {
+      final other = stop.getLocalizedName(code).toString().trim();
+      if (other.isNotEmpty) return other;
+    }
+    return stop.name.toString().trim();
   }
 
   void _showAlarmBottomSheet(BuildContext context, dynamic stop, BusController busCtrl, LocationController locCtrl, bool isDark) {
@@ -990,7 +1019,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                                 langCtrl,
                                                 easyRead: easyRead,
                                                 speakArrivals: speakArrivals,
-                                                stopName: stop.getLocalizedName(langCtrl.currentLanguage),
+                                                stop: stop,
                                               );
                                             },
                                             child: Padding(
@@ -1126,11 +1155,6 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                                                           ),
                                                                         );
                                                                       }
-                                                                      final spoken = easyReadSpokenArrival(
-                                                                        stopName: stop.getLocalizedName(langCtrl.currentLanguage),
-                                                                        status: statusText,
-                                                                        tr: langCtrl.tr,
-                                                                      );
                                                                       return Padding(
                                                                         key: ValueKey('arrival-$idx'),
                                                                         padding: EdgeInsets.only(top: isSecondBus ? 10.0 : 0.0),
@@ -1138,7 +1162,12 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                                                           onTap: !speakArrivals || statusText.isEmpty
                                                                               ? null
                                                                               : () {
-                                                                                  ArrivalSpeaker.shared.speak(spoken, langCtrl.currentLanguage);
+                                                                                  _speakArrivalStatus(
+                                                                                    langCtrl,
+                                                                                    speakArrivals: true,
+                                                                                    stop: stop,
+                                                                                    status: statusText,
+                                                                                  );
                                                                                 },
                                                                           child: Column(
                                                                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1196,7 +1225,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                     langCtrl,
                                     easyRead: easyRead,
                                     speakArrivals: speakArrivals,
-                                    stopName: stop.getLocalizedName(langCtrl.currentLanguage),
+                                    stop: stop,
                                   );
                                 },
                                 child: Padding(

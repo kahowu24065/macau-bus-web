@@ -10,13 +10,19 @@ class EasyReadModeController extends ChangeNotifier {
   static const prefKey = 'easy_read_mode';
   static const speakArrivalsNormalPrefKey = 'easy_read_speak_arrivals_normal';
   static const speakArrivalsEasyPrefKey = 'easy_read_speak_arrivals_easy';
+  static const speechLanguagePrefKey = 'speech_language';
+
+  /// Cantonese, Mandarin, English, Portuguese. Stored values match app language codes.
+  static const speechLanguageChoices = ['zh', 'zhHans', 'en', 'pt'];
 
   bool enabled = false;
   bool? _speakNormal;
   bool? _speakEasy;
+  String? _speechLanguage;
   bool _enabledSet = false;
   bool _speakNormalSet = false;
   bool _speakEasySet = false;
+  bool _speechLanguageSet = false;
   late final Future<void> ready;
 
   EasyReadModeController() {
@@ -25,7 +31,8 @@ class EasyReadModeController extends ChangeNotifier {
 
   /// Does not read preferences. For tests and previews.
   /// [speakArrivals] is an explicit choice for the mode given by [enabled].
-  EasyReadModeController.fixed(this.enabled, {bool? speakArrivals}) {
+  /// [speechLanguage] is an explicit readout language. Null follows the app language.
+  EasyReadModeController.fixed(this.enabled, {bool? speakArrivals, String? speechLanguage}) {
     if (speakArrivals != null) {
       if (enabled) {
         _speakEasy = speakArrivals;
@@ -33,7 +40,40 @@ class EasyReadModeController extends ChangeNotifier {
         _speakNormal = speakArrivals;
       }
     }
+    if (speechLanguage != null && speechLanguageChoices.contains(speechLanguage)) {
+      _speechLanguage = speechLanguage;
+      _speechLanguageSet = true;
+    }
     ready = Future<void>.value();
+  }
+
+  /// Read-aloud language. Follows [appLanguage] until the user picks one.
+  String speechLanguageFor(String appLanguage) {
+    return _speechLanguage ?? defaultSpeechLanguage(appLanguage);
+  }
+
+  static String defaultSpeechLanguage(String appLanguage) {
+    switch (appLanguage) {
+      case 'zhHans':
+      case 'en':
+      case 'pt':
+        return appLanguage;
+      default:
+        return 'zh';
+    }
+  }
+
+  static String speechLanguageLabelKey(String code) {
+    switch (code) {
+      case 'zhHans':
+        return 'speech_lang_cmn';
+      case 'en':
+        return 'speech_lang_en';
+      case 'pt':
+        return 'speech_lang_pt';
+      default:
+        return 'speech_lang_yue';
+    }
   }
 
   /// Read-aloud for the mode that is active now.
@@ -47,6 +87,12 @@ class EasyReadModeController extends ChangeNotifier {
     }
     if (!_speakEasySet && prefs.containsKey(speakArrivalsEasyPrefKey)) {
       _speakEasy = prefs.getBool(speakArrivalsEasyPrefKey);
+    }
+    if (!_speechLanguageSet && prefs.containsKey(speechLanguagePrefKey)) {
+      final stored = prefs.getString(speechLanguagePrefKey);
+      if (stored != null && speechLanguageChoices.contains(stored)) {
+        _speechLanguage = stored;
+      }
     }
     notifyListeners();
   }
@@ -74,5 +120,15 @@ class EasyReadModeController extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(key, value);
+  }
+
+  Future<void> setSpeechLanguage(String value) async {
+    if (!speechLanguageChoices.contains(value)) return;
+    _speechLanguageSet = true;
+    if (_speechLanguage == value) return;
+    _speechLanguage = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(speechLanguagePrefKey, value);
   }
 }
