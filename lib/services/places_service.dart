@@ -6,9 +6,23 @@ import '../config/api_config.dart';
 class PlacesService {
   static String get baseUrl => '${ApiConfig.api}/places';
 
-  static Future<List<dynamic>> autocomplete(String query, String sessionToken) async {
+  static String googleLanguage(String lang) {
+    switch (lang) {
+      case 'zhHans':
+        return 'zh-CN';
+      case 'pt':
+        return 'pt';
+      case 'en':
+        return 'en';
+      case 'zh':
+      default:
+        return 'zh-TW';
+    }
+  }
+
+  static Future<List<dynamic>> autocomplete(String query, String sessionToken, {String language = 'zh'}) async {
     try {
-      final url = Uri.parse('$baseUrl/autocomplete?input=${Uri.encodeComponent(query)}&sessiontoken=$sessionToken');
+      final url = Uri.parse('$baseUrl/autocomplete?input=${Uri.encodeComponent(query)}&sessiontoken=$sessionToken&language=${googleLanguage(language)}');
       final res = await http.get(url).timeout(const Duration(seconds: 8));
       if (res.statusCode == 200) { final data = jsonDecode(res.body); if (data['status'] == 'OK') return data['predictions']; }
     } catch (_) {} return [];

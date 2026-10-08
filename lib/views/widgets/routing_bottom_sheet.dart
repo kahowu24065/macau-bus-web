@@ -6,6 +6,7 @@ import '../../controllers/location_controller.dart';
 import '../../controllers/navigation_controller.dart';
 import '../../controllers/language_controller.dart'; 
 import '../../services/places_service.dart';
+import '../../utils/place_suggestions.dart';
 import '../../services/otp_service.dart'; // 🌟 正規化引入獨立嘅 Service
 import '../../services/local_timetable.dart';
 import '../../models/itinerary.dart';
@@ -89,15 +90,15 @@ class _RoutingBottomSheetState extends State<RoutingBottomSheet> {
       _debounce!.cancel();
     }
     _debounce = Timer(const Duration(milliseconds: 200), () async {
+      if (!mounted) return;
       if (query.isEmpty) {
-        if (mounted) {
-          setState(() => _placeSuggestions = []);
-        }
+        setState(() => _placeSuggestions = []);
         return;
       }
-      final predictions = await PlacesService.autocomplete(query, _sessionToken);
+      final lang = context.read<LanguageController>().currentLanguage;
+      final predictions = await PlacesService.autocomplete(query, _sessionToken, language: lang);
       if (mounted) {
-        setState(() => _placeSuggestions = predictions);
+        setState(() => _placeSuggestions = PlaceSuggestions.refine(query, lang, predictions));
       }
     });
   }
