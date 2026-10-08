@@ -40,6 +40,7 @@ class _MapScreenState extends State<MapScreen> {
   double? _labelZoom;
   double? _labelRotation;
   String? _openBusLicense;
+  bool? _lastCameraEasyRead;
 
   @override
   void initState() {
@@ -138,6 +139,7 @@ class _MapScreenState extends State<MapScreen> {
 
   void _refreshMapCamera({required bool fitRoute}) {
     if (!_mapReady || !mounted) return;
+    _lastCameraEasyRead = EasyReadAccess.enabled(context, listen: false);
     try {
       if (fitRoute) {
         final nav = context.read<NavigationController>();
@@ -155,6 +157,19 @@ class _MapScreenState extends State<MapScreen> {
             ),
           );
           return;
+        }
+        if (_lastCameraEasyRead == true) {
+          final routePts = _routeFitPoints(busCtrl);
+          if (routePts.length >= 2) {
+            _mapController.fitCamera(
+              CameraFit.bounds(
+                bounds: LatLngBounds.fromPoints(routePts),
+                padding: const EdgeInsets.fromLTRB(72, 72, 72, 112),
+                maxZoom: 15,
+              ),
+            );
+            return;
+          }
         }
         final selected = busCtrl.getSelectedStopCoordinate();
         if (selected != null) {
@@ -177,6 +192,16 @@ class _MapScreenState extends State<MapScreen> {
     } catch (_) {
       // MapController not attached yet.
     }
+  }
+
+  /// Stops plus the drawn route, so Easy Read can frame the whole line.
+  List<LatLng> _routeFitPoints(BusController busCtrl) {
+    return <LatLng>[
+      for (final line in busCtrl.gpxRouteLines)
+        ...line.where((point) => point.latitude != 0 && point.longitude != 0),
+      for (final stop in busCtrl.stopsList)
+        if (stop.lat != 0.0 && stop.lng != 0.0) LatLng(stop.lat, stop.lng),
+    ];
   }
 
   /// move() is a no-op when center+zoom are unchanged, so tiles stay blank.
@@ -347,19 +372,37 @@ class _MapScreenState extends State<MapScreen> {
 
     LatLng mapCenter = const LatLng(22.1987, 113.5439);
     double initialZoom = 14.5;
+    final easyRead = EasyReadAccess.enabled(context);
+    if (_mapReady && _lastCameraEasyRead != easyRead) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _refreshMapCamera(fitRoute: true);
+      });
+    }
     if (!shouldHideOriginalRoute) {
-      final selected = busCtrl.getSelectedStopCoordinate();
-      if (selected != null) {
-        mapCenter = selected;
-        initialZoom = 16.5;
-      } else if (locCtrl.isFollowingUser && locCtrl.userLocation != null) {
-        mapCenter = locCtrl.userLocation!;
-      } else if (busCtrl.stopsList.isNotEmpty) {
-        final firstValid = busCtrl.stopsList.firstWhere(
-          (s) => s.lat != 0.0 && s.lng != 0.0,
-          orElse: () => busCtrl.stopsList.first,
-        );
-        if (firstValid.lat != 0.0) mapCenter = LatLng(firstValid.lat, firstValid.lng);
+      final routePts = _routeFitPoints(busCtrl);
+      if (easyRead && routePts.length >= 2) {
+        var lat = 0.0;
+        var lng = 0.0;
+        for (final point in routePts) {
+          lat += point.latitude;
+          lng += point.longitude;
+        }
+        mapCenter = LatLng(lat / routePts.length, lng / routePts.length);
+        initialZoom = 13;
+      } else {
+        final selected = busCtrl.getSelectedStopCoordinate();
+        if (selected != null) {
+          mapCenter = selected;
+          initialZoom = 16.5;
+        } else if (locCtrl.isFollowingUser && locCtrl.userLocation != null) {
+          mapCenter = locCtrl.userLocation!;
+        } else if (busCtrl.stopsList.isNotEmpty) {
+          final firstValid = busCtrl.stopsList.firstWhere(
+            (s) => s.lat != 0.0 && s.lng != 0.0,
+            orElse: () => busCtrl.stopsList.first,
+          );
+          if (firstValid.lat != 0.0) mapCenter = LatLng(firstValid.lat, firstValid.lng);
+        }
       }
     } else if (locCtrl.isFollowingUser && locCtrl.userLocation != null) {
       mapCenter = locCtrl.userLocation!;
@@ -382,6 +425,7 @@ class _MapScreenState extends State<MapScreen> {
                 ScaffoldMessenger.of(context).showSnackBar(RouteLiquidGlassNavStyle.snackBar(context: context, content: Text('$stopWordText ${stop.seq}: ${stop.getLocalizedName(langCtrl.currentLanguage)}')));
               },
               child: Container(
+                key: ValueKey('stop-pin-${stop.seq}'),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(color: isSelected ? Colors.amber : Colors.white, shape: BoxShape.circle, border: Border.all(color: const Color.fromARGB(255, 114, 0, 162), width: 2.5), boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 2)]),
                 child: Text('${stop.seq}', style: TextStyle(color: Colors.black, fontSize: isSelected ? 13 : 11, fontWeight: FontWeight.bold)),
@@ -403,9 +447,7 @@ class _MapScreenState extends State<MapScreen> {
         drawn.add((bus: bus, loc: loc, atStop: busCtrl.hasVisuallyArrived(bus)));
       }
       actualMapBusCount = drawn.length;
-      final easyRead = EasyReadAccess.enabled(context);
       final mapRotation = _mapReady ? _mapController.camera.rotation : 0.0;
-      final textScaler = MediaQuery.textScalerOf(context);
       for (final item in drawn) {
         final speedLabel = '${busCtrl.displaySpeedKmh(item.bus).toInt()}km/h';
         final headingName = item.atStop
@@ -429,11 +471,22 @@ class _MapScreenState extends State<MapScreen> {
           speed: speedLabel,
           atStop: item.atStop,
           easyRead: easyRead,
-          textScaler: textScaler,
         );
-        final markerWidth = open ? math.max(_BusPin.hit, tab.width) : _BusPin.hit;
-        final markerHeight = open ? (tab.height + _BusPin.gap) * 2 + _BusPin.hit : _BusPin.hit;
         final bearing = _busTravelBearing(busCtrl, item.bus, item.loc, item.atStop);
+        final chevronRadians = bearing == null
+            ? null
+            : busChevronRadians(bearingDegrees: bearing, mapRotationDegrees: mapRotation);
+        final hit = _BusPin.hitFor(easyRead);
+        final tabCenter = busMarkerTabCenter(
+          easyRead: easyRead,
+          iconSize: hit,
+          tabWidth: tab.width,
+          tabHeight: tab.height,
+          gap: _BusPin.gap,
+          chevronRadians: chevronRadians,
+        );
+        final markerWidth = open ? math.max(hit, (tabCenter.dx.abs() + tab.width / 2) * 2) : hit;
+        final markerHeight = open ? math.max(hit, (tabCenter.dy.abs() + tab.height / 2) * 2) : hit;
         busMarkers.add(Marker(
           point: item.loc,
           width: markerWidth,
@@ -449,9 +502,8 @@ class _MapScreenState extends State<MapScreen> {
             open: open,
             easyRead: easyRead,
             tabWidth: tab.width,
-            chevronRadians: bearing == null
-                ? null
-                : busChevronRadians(bearingDegrees: bearing, mapRotationDegrees: mapRotation),
+            tabHeight: tab.height,
+            chevronRadians: chevronRadians,
             onTap: () {
               setState(() {
                 _openBusLicense = _openBusLicense == item.bus.busLicense ? null : item.bus.busLicense;
@@ -910,7 +962,6 @@ class _MapScreenState extends State<MapScreen> {
     required String speed,
     required bool atStop,
     required bool easyRead,
-    required TextScaler textScaler,
   }) {
     final lines = <({String text, TextStyle style})>[
       (text: plate, style: _BusPin.plateStyle(easyRead)),
@@ -923,14 +974,18 @@ class _MapScreenState extends State<MapScreen> {
       final painter = TextPainter(
         text: TextSpan(text: line.text, style: line.style),
         textDirection: TextDirection.ltr,
-        textScaler: textScaler,
+        // The tab paints with no text scaling, so 1.35 does not stack on the
+        // Easy Read font sizes.
+        textScaler: TextScaler.noScaling,
         maxLines: 3,
       )..layout(maxWidth: _BusPin.tabTextMaxWidth);
       if (painter.width > width) width = painter.width;
       height += painter.height;
     }
     if (lines.length > 1) height += (lines.length - 1) * 2;
-    return (width: width + 24, height: height + 24);
+    // Extra slack covers font leading that TextPainter measures short of the
+    // painted paragraph, so the tab is not clipped or flexed past its box.
+    return (width: width + 24, height: height + 40);
   }
 
   double? _busTravelBearing(BusController busCtrl, Bus bus, LatLng loc, bool atStop) {
@@ -977,6 +1032,7 @@ String _busHeadingStopName(BusController busCtrl, Bus bus, bool arrived, String 
 
 class _BusPin extends StatelessWidget {
   static const hit = 44.0;
+  static const easyScale = 1.3;
   static const gap = 6.0;
   static const tabTextMaxWidth = 220.0;
   static const speedColor = Color.fromARGB(255, 114, 0, 162);
@@ -989,6 +1045,7 @@ class _BusPin extends StatelessWidget {
   final bool open;
   final bool easyRead;
   final double tabWidth;
+  final double tabHeight;
   final double? chevronRadians;
   final VoidCallback onTap;
 
@@ -1001,26 +1058,31 @@ class _BusPin extends StatelessWidget {
     required this.open,
     required this.easyRead,
     required this.tabWidth,
+    required this.tabHeight,
     required this.chevronRadians,
     required this.onTap,
   });
 
+  static double hitFor(bool easyRead) => hit * (easyRead ? easyScale : 1);
+
+  static double _font(double base, bool easyRead) => base * (easyRead ? easyScale : 1);
+
   static TextStyle plateStyle(bool easyRead) => TextStyle(
-        fontSize: easyRead ? 18 : 13,
+        fontSize: _font(13, easyRead),
         fontWeight: FontWeight.w800,
         height: 1.15,
         color: Colors.black87,
       );
 
   static TextStyle middleStyle(bool easyRead, bool atStop) => TextStyle(
-        fontSize: easyRead ? 16 : 12,
+        fontSize: _font(12, easyRead),
         fontWeight: FontWeight.w700,
         height: 1.2,
         color: atStop ? Colors.deepOrange : Colors.black87,
       );
 
   static TextStyle speedStyle(bool easyRead) => TextStyle(
-        fontSize: easyRead ? 16 : 12,
+        fontSize: _font(12, easyRead),
         fontWeight: FontWeight.w600,
         height: 1.2,
         color: speedColor,
@@ -1028,6 +1090,15 @@ class _BusPin extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final iconHit = hitFor(easyRead);
+    final tabCenter = busMarkerTabCenter(
+      easyRead: easyRead,
+      iconSize: iconHit,
+      tabWidth: tabWidth,
+      tabHeight: tabHeight,
+      gap: gap,
+      chevronRadians: chevronRadians,
+    );
     return LayoutBuilder(
       builder: (context, constraints) {
         final height = constraints.maxHeight;
@@ -1037,24 +1108,25 @@ class _BusPin extends StatelessWidget {
           children: [
             if (open)
               Positioned(
-                left: 0,
-                right: 0,
-                bottom: (height + hit) / 2 + gap,
-                child: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () {},
-                    child: _tab(),
+                left: width / 2 + tabCenter.dx - tabWidth / 2,
+                top: height / 2 + tabCenter.dy - tabHeight / 2,
+                width: tabWidth,
+                height: tabHeight,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {},
+                  child: Align(
+                    alignment: Alignment.center,
+                    child: _tab(context),
                   ),
                 ),
               ),
             Positioned(
-              left: (width - hit) / 2,
-              top: (height - hit) / 2,
-              width: hit,
-              height: hit,
-              child: _icon(),
+              left: (width - iconHit) / 2,
+              top: (height - iconHit) / 2,
+              width: iconHit,
+              height: iconHit,
+              child: _icon(iconHit),
             ),
           ],
         );
@@ -1062,54 +1134,59 @@ class _BusPin extends StatelessWidget {
     );
   }
 
-  Widget _tab() {
-    return Container(
-      key: ValueKey('bus-tab-$plate'),
-      width: tabWidth,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 3, offset: Offset(0, 1))],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(plate, textAlign: TextAlign.center, style: plateStyle(easyRead)),
-          if (middle.isNotEmpty) ...[
+  Widget _tab(BuildContext context) {
+    final media = MediaQuery.of(context);
+    return MediaQuery(
+      data: media.copyWith(textScaler: TextScaler.noScaling),
+      child: Container(
+        key: ValueKey('bus-tab-$plate'),
+        width: tabWidth,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 3, offset: Offset(0, 1))],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(plate, textAlign: TextAlign.center, style: plateStyle(easyRead)),
+            if (middle.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text(middle, textAlign: TextAlign.center, softWrap: true, style: middleStyle(easyRead, atStop)),
+            ],
             const SizedBox(height: 2),
-            Text(middle, textAlign: TextAlign.center, softWrap: true, style: middleStyle(easyRead, atStop)),
+            Text(speed, textAlign: TextAlign.center, style: speedStyle(easyRead)),
           ],
-          const SizedBox(height: 2),
-          Text(speed, textAlign: TextAlign.center, style: speedStyle(easyRead)),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _icon() {
+  Widget _icon(double iconHit) {
+    final scale = easyRead ? easyScale : 1.0;
     return SizedBox(
       key: ValueKey('bus-hit-$plate'),
-      width: hit,
-      height: hit,
+      width: iconHit,
+      height: iconHit,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: Stack(
           alignment: Alignment.center,
           children: [
-            const Icon(Icons.directions_bus, size: 30, color: Colors.white),
-            Icon(Icons.directions_bus, size: 26, color: iconColor),
+            Icon(Icons.directions_bus, size: 30 * scale, color: Colors.white),
+            Icon(Icons.directions_bus, size: 26 * scale, color: iconColor),
             if (chevronRadians != null)
               Transform.rotate(
                 key: ValueKey('bus-chevron-$plate'),
                 angle: chevronRadians!,
                 child: SizedBox(
-                  width: hit,
-                  height: hit,
+                  width: iconHit,
+                  height: iconHit,
                   child: Align(
                     alignment: Alignment.topCenter,
-                    child: Icon(Icons.navigation, size: 18, color: iconColor, shadows: const [
+                    child: Icon(Icons.navigation, size: 18 * scale, color: iconColor, shadows: const [
                       Shadow(color: Colors.white, blurRadius: 3),
                       Shadow(color: Colors.black54, blurRadius: 1),
                     ]),

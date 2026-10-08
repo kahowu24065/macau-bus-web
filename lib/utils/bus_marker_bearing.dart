@@ -41,6 +41,53 @@ double busChevronRadians({
   return (bearingDegrees + mapRotationDegrees) * math.pi / 180.0;
 }
 
+/// Screen offset from the bus icon center to an info tab that sits to the
+/// right of travel, so the route beside the bus stays visible.
+///
+/// [chevronRadians] uses the same y-down angle as [busChevronRadians]: 0 is
+/// up the screen. The distance is the smallest that keeps the tab's box at
+/// least [gap] away from the icon.
+({double dx, double dy}) busInfoTabCenter({
+  required double chevronRadians,
+  required double iconSize,
+  required double tabWidth,
+  required double tabHeight,
+  required double gap,
+}) {
+  final px = math.cos(chevronRadians);
+  final py = math.sin(chevronRadians);
+  final hx = iconSize / 2 + tabWidth / 2 + gap;
+  final hy = iconSize / 2 + tabHeight / 2 + gap;
+  final tx = px.abs() < 1e-9 ? double.infinity : hx / px.abs();
+  final ty = py.abs() < 1e-9 ? double.infinity : hy / py.abs();
+  final distance = math.min(tx, ty);
+  return (dx: distance * px, dy: distance * py);
+}
+
+/// Where the open info tab sits relative to the icon center.
+///
+/// Easy Read with a known heading uses [busInfoTabCenter]. Otherwise the tab
+/// stays above the icon.
+({double dx, double dy}) busMarkerTabCenter({
+  required bool easyRead,
+  required double iconSize,
+  required double tabWidth,
+  required double tabHeight,
+  required double gap,
+  required double? chevronRadians,
+}) {
+  if (easyRead && chevronRadians != null) {
+    return busInfoTabCenter(
+      chevronRadians: chevronRadians,
+      iconSize: iconSize,
+      tabWidth: tabWidth,
+      tabHeight: tabHeight,
+      gap: gap,
+    );
+  }
+  return (dx: 0, dy: -((iconSize + tabHeight) / 2 + gap));
+}
+
 LatLng? _aimPoint({
   required LatLng position,
   required LatLng nextStop,
