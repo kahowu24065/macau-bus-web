@@ -15,6 +15,8 @@ import UserNotifications
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
-    BoardingLiveActivityBridge.register(messenger: engineBridge.applicationRegistrar.messenger())
+    let messenger = engineBridge.applicationRegistrar.messenger()
+    BoardingLiveActivityBridge.register(messenger: messenger)
+    AlightingLocationBridge.register(messenger: messenger)
   }
 }

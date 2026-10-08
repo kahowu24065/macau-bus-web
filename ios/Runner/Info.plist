@@ -222,8 +222,12 @@
 	</array>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>巴士預報只會喺你使用 App 時取得位置，用嚟搵附近車站同規劃路線。</string>
+	<string>下車提醒需要喺背景使用你的位置，喺你接近落車站時通知你。</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>巴士預報需要使用你的位置，以顯示附近車站、計算路線及提供到站／下車提示。</string>
 	<key>NSPhotoLibraryUsageDescription</key>
