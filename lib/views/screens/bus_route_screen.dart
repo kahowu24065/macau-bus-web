@@ -388,7 +388,14 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     
     if (busCtrl.selectedStopSeq != null && hasBusesOnRoad) {
       List<Bus> approachingBuses = busCtrl.allBusesList
-          .where((b) => b.currentStopSeq > 0 && b.currentStopSeq <= busCtrl.selectedStopSeq!)
+          .where((b) {
+            if (b.currentStopSeq <= 0 || b.currentStopSeq > busCtrl.selectedStopSeq!) {
+              return false;
+            }
+            // Still tagged with this stop after leaving it. The next bus is first.
+            if (b.currentStopSeq == busCtrl.selectedStopSeq && !b.atStop) return false;
+            return true;
+          })
           .toList();
       
       approachingBuses.sort((a, b) => 

@@ -12,6 +12,8 @@ import '../../controllers/location_controller.dart';
 import '../../controllers/navigation_controller.dart';
 import '../../controllers/language_controller.dart'; 
 import '../../models/bus.dart';
+import '../../utils/easy_read_access.dart';
+import '../../utils/easy_read_arrival.dart';
 import '../../models/itinerary.dart';
 import '../../services/gps_service.dart';
 import '../../utils/route_result_helper.dart'; // 🌟 引入共用工具
@@ -399,6 +401,7 @@ class _MapScreenState extends State<MapScreen> {
         drawn.add((bus: bus, loc: loc, atStop: busCtrl.hasVisuallyArrived(bus)));
       }
       actualMapBusCount = drawn.length;
+      final easyRead = EasyReadAccess.enabled(context);
       final busPoints = [for (final item in drawn) item.loc];
       final stopPoints = [
         for (final stop in busCtrl.stopsList)
@@ -409,7 +412,14 @@ class _MapScreenState extends State<MapScreen> {
       for (var i = 0; i < drawn.length; i++) {
         final item = drawn[i];
         final speedLabel = '${busCtrl.displaySpeedKmh(item.bus).toInt()}km/h';
-        final detail = item.atStop ? langCtrl.tr('arrived_at_stop') : speedLabel;
+        final detail = item.atStop
+            ? approachingStatus(
+                easyRead: easyRead,
+                stopsAway: 0,
+                estimatedMins: 0,
+                tr: langCtrl.tr,
+              )
+            : speedLabel;
         final headingName = _busHeadingStopName(busCtrl, item.bus, item.atStop, langCtrl.currentLanguage);
         final heading = headingName.isEmpty
             ? ''

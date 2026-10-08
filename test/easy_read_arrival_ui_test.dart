@@ -412,6 +412,179 @@ void main() {
     lang.dispose();
   });
 
+  testWidgets('a bus that left the selected stop is skipped for the next bus and read-aloud', (tester) async {
+    tester.view.physicalSize = const Size(400, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    OpenDataConfig.instance.debugApply(
+      configRealtime: true,
+      configRouteNotices: true,
+      etaRealtime: true,
+    );
+    final lang = LanguageController();
+    final bus = BusController();
+    bus.setRoute('3');
+    bus.stopsList = [for (var i = 1; i <= 5; i++) _stop(i)];
+    bus.selectedStopSeq = 5;
+    bus.etaData = {'status': '約 4 分鐘'};
+    bus.allBusesList = const [
+      Bus(
+        busLicense: 'MB-LEFT',
+        lat: 22.2,
+        lng: 113.55,
+        speed: 18,
+        currentStopSeq: 5,
+        atStop: false,
+        etaMinutes: 0,
+      ),
+      Bus(
+        busLicense: 'MB-NEXT',
+        lat: 22.2,
+        lng: 113.55,
+        speed: 20,
+        currentStopSeq: 3,
+        atStop: false,
+        etaMinutes: 4,
+      ),
+    ];
+
+    Future<void> pump({required bool easyRead}) async {
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<BusController>.value(value: bus),
+            ChangeNotifierProvider<LanguageController>.value(value: lang),
+            ChangeNotifierProvider(create: (_) => LocationController()),
+            ChangeNotifierProvider(create: (_) => BackgroundController()),
+            ChangeNotifierProvider(create: (_) => NavigationController()),
+            ChangeNotifierProvider<EasyReadModeController>.value(
+              value: EasyReadModeController.fixed(easyRead, speakArrivals: true),
+            ),
+          ],
+          child: MaterialApp(
+            theme: ThemeData.dark(),
+            home: const BusRouteScreen(),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    await pump(easyRead: false);
+    expect(find.text('即將到站 / 到站中'), findsNothing);
+    expect(find.text('尚有 2 站 (約 4 分鐘)'), findsOneWidget);
+    expect(find.text('車牌: MB-LEFT'), findsNothing);
+    expect(find.text('車牌: MB-NEXT'), findsOneWidget);
+    await tester.ensureVisible(find.text('站5 (M5/2)'));
+    await tester.pump();
+    await tester.tap(find.text('站5 (M5/2)'));
+    await tester.pump();
+    expect(fake.spoken, '站5，尚有 2 站 (約 4 分鐘)');
+    expect(fake.speakCount, 1);
+
+    fake.reset();
+    await pump(easyRead: true);
+    expect(find.text('即將到站'), findsNothing);
+    expect(find.text('4 分鐘後到'), findsOneWidget);
+    expect(find.text('車牌: MB-LEFT'), findsNothing);
+    await tester.ensureVisible(find.text('站5 (M5/2)'));
+    await tester.pump();
+    await tester.tap(find.text('站5 (M5/2)'));
+    await tester.pump();
+    expect(fake.spoken, '站5，仍有4分鐘到');
+    expect(fake.speakCount, 1);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    bus.dispose();
+    lang.dispose();
+  });
+
+  testWidgets('a bus waiting at the selected stop keeps arriving text and read-aloud', (tester) async {
+    tester.view.physicalSize = const Size(400, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    OpenDataConfig.instance.debugApply(
+      configRealtime: true,
+      configRouteNotices: true,
+      etaRealtime: true,
+    );
+    final lang = LanguageController();
+    final bus = BusController();
+    bus.setRoute('3');
+    bus.stopsList = [for (var i = 1; i <= 5; i++) _stop(i)];
+    bus.selectedStopSeq = 5;
+    bus.etaData = {'status': '約 1 分鐘'};
+    bus.allBusesList = const [
+      Bus(
+        busLicense: 'MB-HERE',
+        lat: 22.2,
+        lng: 113.55,
+        speed: 0,
+        currentStopSeq: 5,
+        atStop: true,
+      ),
+      Bus(
+        busLicense: 'MB-NEXT',
+        lat: 22.2,
+        lng: 113.55,
+        speed: 20,
+        currentStopSeq: 3,
+        atStop: false,
+        etaMinutes: 6,
+      ),
+    ];
+
+    Future<void> pump({required bool easyRead}) async {
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<BusController>.value(value: bus),
+            ChangeNotifierProvider<LanguageController>.value(value: lang),
+            ChangeNotifierProvider(create: (_) => LocationController()),
+            ChangeNotifierProvider(create: (_) => BackgroundController()),
+            ChangeNotifierProvider(create: (_) => NavigationController()),
+            ChangeNotifierProvider<EasyReadModeController>.value(
+              value: EasyReadModeController.fixed(easyRead, speakArrivals: true),
+            ),
+          ],
+          child: MaterialApp(
+            theme: ThemeData.dark(),
+            home: const BusRouteScreen(),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    await pump(easyRead: false);
+    expect(find.text('即將到站 / 到站中'), findsOneWidget);
+    expect(find.text('尚有 2 站 (約 6 分鐘)'), findsOneWidget);
+    expect(find.text('車牌: MB-HERE'), findsOneWidget);
+    await tester.ensureVisible(find.text('站5 (M5/2)'));
+    await tester.pump();
+    await tester.tap(find.text('站5 (M5/2)'));
+    await tester.pump();
+    expect(fake.spoken, '站5，即將到站 / 到站中');
+
+    fake.reset();
+    await pump(easyRead: true);
+    expect(find.text('即將到站'), findsOneWidget);
+    expect(find.text('6 分鐘後到'), findsOneWidget);
+    await tester.ensureVisible(find.text('站5 (M5/2)'));
+    await tester.pump();
+    await tester.tap(find.text('站5 (M5/2)'));
+    await tester.pump();
+    expect(fake.spoken, '站5，即將到站');
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    bus.dispose();
+    lang.dispose();
+  });
+
   testWidgets('easy read warning icon opens that stop diversion page', (tester) async {
     tester.view.physicalSize = const Size(400, 1400);
     tester.view.devicePixelRatio = 1;
