@@ -82,16 +82,34 @@ void main() {
     expect(bus.displaySpeedKmh(bus.allBusesList.single), 0);
   });
 
-  test('speed below 2 km/h is stopped, including the displayed speed', () {
+  test('speed at or below 5 km/h is stopped, including the displayed speed', () {
     final bus = route();
     addTearDown(bus.dispose);
     final t0 = DateTime.utc(2026, 10, 8, 8);
-    bus.allBusesList = [_bus(lat: 22.195, speed: 1.5, seq: 1)];
+    bus.allBusesList = [_bus(lat: 22.195, speed: 5, seq: 1)];
     bus.advanceBusMotion(t0);
     final placed = bus.snapBusToStop(bus.allBusesList.single)!;
     bus.advanceBusMotion(t0.add(const Duration(seconds: 4)));
     expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, placed), lessThan(1));
     expect(bus.displaySpeedKmh(bus.allBusesList.single), 0);
+  });
+
+  test('speed just above 5 km/h still dead-reckons for about two seconds', () {
+    final bus = route();
+    addTearDown(bus.dispose);
+    final t0 = DateTime.utc(2026, 10, 8, 8);
+    bus.allBusesList = [_bus(lat: 22.195, speed: 6, seq: 1)];
+    bus.advanceBusMotion(t0);
+    final atFix = bus.snapBusToStop(bus.allBusesList.single)!;
+    expect(bus.displaySpeedKmh(bus.allBusesList.single), 6);
+
+    bus.advanceBusMotion(t0.add(const Duration(seconds: 2)));
+    final ahead = bus.snapBusToStop(bus.allBusesList.single)!;
+    expect(apart(ahead, atFix), greaterThan(2));
+    expect(apart(ahead, atFix), lessThan(6));
+
+    bus.advanceBusMotion(t0.add(const Duration(seconds: 4)));
+    expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, ahead), lessThan(1));
   });
 
   test('a later speed of 0 does not keep sliding at the previous speed', () {

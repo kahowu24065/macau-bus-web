@@ -1389,7 +1389,10 @@ class BusController extends ChangeNotifier {
     return null;
   }
 
-  /// 跟最新 GPS。車速 0（或低過約 2km/h）就停低；
+  /// 地圖圖示：呢個車速或以下當停低，唔沿路線推前。
+  static const double _mapIconStopKmh = 5;
+
+  /// 跟最新 GPS。車速 0（或 5km/h 或以下）就停低；
   /// 只有車郁緊先由嗰個 GPS 位再推前，大約 1 至 2 秒，然後停低等下一個定位。
   /// 超過 10 秒冇新資料就停，唔好再沿用舊車速。
   /// [now] 畀測試固定個鐘；平時用而家。
@@ -1473,7 +1476,7 @@ class BusController extends ChangeNotifier {
   }
 
   /// 新一次 GPS：投影到呢段路線，約 1 秒滑過去。
-  /// 之後車速 > 2km/h 先由嗰點再推，大約 2 秒；車停就停。
+  /// 之後車速 > 5km/h 先由嗰點再推，大約 2 秒；車停就停。
   ({_BusLegMotion motion, bool moved}) _stepLeg({
     required Bus bus,
     required DateTime now,
@@ -1483,7 +1486,7 @@ class BusController extends ChangeNotifier {
     required double cap,
     required _BusLegMotion? prev,
   }) {
-    const stopKmh = 2.0;
+    const stopKmh = _mapIconStopKmh;
     const easeSeconds = 1.0;
     const extrapolateSeconds = 2.0;
     const staleSeconds = 10.0;
@@ -1650,7 +1653,7 @@ class BusController extends ChangeNotifier {
   }
 
   double displaySpeedKmh(Bus bus) {
-    if (bus.speed <= 2) return 0;
+    if (bus.speed <= _mapIconStopKmh) return 0;
     return bus.speed;
   }
 
