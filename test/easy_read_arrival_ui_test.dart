@@ -59,7 +59,11 @@ void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({'language_code': 'zh'});
     OpenDataConfig.instance.debugReset();
-    ArrivalSpeaker.shared = ArrivalSpeaker(engine: fake, isWeb: false, isIos: false);
+    ArrivalSpeaker.shared = ArrivalSpeaker(
+      engine: fake,
+      isWeb: false,
+      isIos: false,
+    );
     fake.spoken = null;
     fake.language = null;
   });
@@ -69,7 +73,9 @@ void main() {
     ArrivalSpeaker.shared = ArrivalSpeaker();
   });
 
-  testWidgets('easy read mode shows plain arrival text and reads it aloud', (tester) async {
+  testWidgets('easy read mode shows plain arrival text and reads it aloud', (
+    tester,
+  ) async {
     OpenDataConfig.instance.debugApply(
       configRealtime: true,
       configRouteNotices: true,
@@ -108,7 +114,9 @@ void main() {
           ChangeNotifierProvider(create: (_) => LocationController()),
           ChangeNotifierProvider(create: (_) => BackgroundController()),
           ChangeNotifierProvider(create: (_) => NavigationController()),
-          ChangeNotifierProvider(create: (_) => EasyReadModeController.fixed(true)),
+          ChangeNotifierProvider(
+            create: (_) => EasyReadModeController.fixed(true),
+          ),
         ],
         child: MaterialApp(
           theme: ThemeData.dark(),
@@ -123,7 +131,8 @@ void main() {
     expect(find.text('4 分鐘後到'), findsOneWidget);
     expect(find.text('11 分鐘後到'), findsOneWidget);
     expect(find.text('更多'), findsNothing);
-    expect(find.text('車資表'), findsNothing);
+    expect(find.text('車資表'), findsOneWidget);
+    expect(tester.widget<Text>(find.text('車資表')).style?.fontSize, 18);
 
     final arrival = tester.widget<Text>(find.text('4 分鐘後到'));
     expect(arrival.softWrap, isTrue);
@@ -142,21 +151,24 @@ void main() {
     lang.dispose();
   });
 
-  testWidgets('easy read warning icon opens that stop diversion page', (tester) async {
+  testWidgets('easy read warning icon opens that stop diversion page', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(400, 1400);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    StopDetourDetailPage.debugLoad = ({
-      required String route,
-      required String stationCode,
-      required String lang,
-    }) async {
-      return {
-        'suspendStops': ['站$stationCode'],
-        'alternativeStops': ['臨時站'],
-      };
-    };
+    StopDetourDetailPage.debugLoad =
+        ({
+          required String route,
+          required String stationCode,
+          required String lang,
+        }) async {
+          return {
+            'suspendStops': ['站$stationCode'],
+            'alternativeStops': ['臨時站'],
+          };
+        };
     addTearDown(() => StopDetourDetailPage.debugLoad = null);
 
     OpenDataConfig.instance.debugApply(
@@ -181,7 +193,9 @@ void main() {
           ChangeNotifierProvider(create: (_) => LocationController()),
           ChangeNotifierProvider(create: (_) => BackgroundController()),
           ChangeNotifierProvider(create: (_) => NavigationController()),
-          ChangeNotifierProvider(create: (_) => EasyReadModeController.fixed(true)),
+          ChangeNotifierProvider(
+            create: (_) => EasyReadModeController.fixed(true),
+          ),
         ],
         child: MaterialApp(
           theme: ThemeData.dark(),

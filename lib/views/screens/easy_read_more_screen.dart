@@ -5,7 +5,6 @@ import '../../controllers/bus_controller.dart';
 import '../../controllers/language_controller.dart';
 import '../../controllers/navigation_controller.dart';
 import '../../services/bus_api_service.dart';
-import '../widgets/fare_dialog.dart';
 
 class RouteCatalogLine {
   const RouteCatalogLine(this.code, this.description);
@@ -19,7 +18,9 @@ class RouteCatalogLine {
       final parts = item.split('|');
       final code = parts.first.trim();
       if (code.isEmpty) continue;
-      final description = parts.length > 1 ? parts.sublist(1).join('|').trim() : '';
+      final description = parts.length > 1
+          ? parts.sublist(1).join('|').trim()
+          : '';
       lines.add(RouteCatalogLine(code, description));
     }
     return lines;
@@ -77,14 +78,9 @@ class EasyReadMoreScreen extends StatelessWidget {
             _MoreCard(
               icon: Icons.list_alt,
               title: lang.tr('all_routes_title'),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const _AllRoutesPage()),
-              ),
-            ),
-            _MoreCard(
-              icon: Icons.monetization_on_outlined,
-              title: lang.tr('fare_table'),
-              onTap: () => showBusFareDialog(context),
+              onTap: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const _AllRoutesPage())),
             ),
           ],
         ),
@@ -174,7 +170,12 @@ class _RouteListPage extends StatelessWidget {
               child: Text(
                 title,
                 softWrap: true,
-                style: TextStyle(color: fg, fontSize: 28, fontWeight: FontWeight.w800, height: 1.25),
+                style: TextStyle(
+                  color: fg,
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  height: 1.25,
+                ),
               ),
             ),
             Expanded(
@@ -182,9 +183,16 @@ class _RouteListPage extends StatelessWidget {
                   ? Padding(
                       padding: const EdgeInsets.all(16),
                       child: Text(
-                        context.read<LanguageController>().tr('easy_read_list_empty'),
+                        context.read<LanguageController>().tr(
+                          'easy_read_list_empty',
+                        ),
                         softWrap: true,
-                        style: TextStyle(color: fg, fontSize: 20, fontWeight: FontWeight.w700, height: 1.35),
+                        style: TextStyle(
+                          color: fg,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          height: 1.35,
+                        ),
                       ),
                     )
                   : ListView.separated(
@@ -194,7 +202,9 @@ class _RouteListPage extends StatelessWidget {
                       itemBuilder: (context, index) {
                         final line = lines[index];
                         return Material(
-                          color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+                          color: isDark
+                              ? const Color(0xFF1A1A1A)
+                              : Colors.white,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
                             side: BorderSide(color: fg, width: 2),
@@ -210,14 +220,23 @@ class _RouteListPage extends StatelessWidget {
                                   Text(
                                     line.code,
                                     softWrap: true,
-                                    style: TextStyle(color: fg, fontSize: 28, fontWeight: FontWeight.w800),
+                                    style: TextStyle(
+                                      color: fg,
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.w800,
+                                    ),
                                   ),
                                   if (line.description.isNotEmpty) ...[
                                     const SizedBox(height: 6),
                                     Text(
                                       line.description,
                                       softWrap: true,
-                                      style: TextStyle(color: fg, fontSize: 18, fontWeight: FontWeight.w700, height: 1.35),
+                                      style: TextStyle(
+                                        color: fg,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w700,
+                                        height: 1.35,
+                                      ),
                                     ),
                                   ],
                                 ],
@@ -256,14 +275,17 @@ class _SpecialRoutesPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final busCtrl = context.watch<BusController>();
     final lang = context.watch<LanguageController>();
-    final special = busCtrl.specialRoutes.map((e) => e.trim().toUpperCase()).toSet();
-    final fromCatalog = RouteCatalogLine.parse(busCtrl.allRoutesWithDir)
-        .where((line) => special.contains(line.code.toUpperCase()))
-        .toList();
+    final special = busCtrl.specialRoutes
+        .map((e) => e.trim().toUpperCase())
+        .toSet();
+    final fromCatalog = RouteCatalogLine.parse(
+      busCtrl.allRoutesWithDir,
+    ).where((line) => special.contains(line.code.toUpperCase())).toList();
     final known = fromCatalog.map((line) => line.code.toUpperCase()).toSet();
     final extra = [
       for (final code in busCtrl.specialRoutes)
-        if (!known.contains(code.trim().toUpperCase()) && code.trim().isNotEmpty)
+        if (!known.contains(code.trim().toUpperCase()) &&
+            code.trim().isNotEmpty)
           RouteCatalogLine(code.trim(), ''),
     ];
     return _RouteListPage(
@@ -289,7 +311,8 @@ class StopDetourDetailPage extends StatefulWidget {
     required String route,
     required String stationCode,
     required String lang,
-  })? debugLoad;
+  })?
+  debugLoad;
 
   @override
   State<StopDetourDetailPage> createState() => _StopDetourDetailPageState();
@@ -318,7 +341,12 @@ class _StopDetourDetailPageState extends State<StopDetourDetailPage> {
     final lang = context.watch<LanguageController>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final fg = isDark ? Colors.white : const Color(0xFF111111);
-    final style = TextStyle(color: fg, fontSize: 20, fontWeight: FontWeight.w700, height: 1.4);
+    final style = TextStyle(
+      color: fg,
+      fontSize: 20,
+      fontWeight: FontWeight.w700,
+      height: 1.4,
+    );
     return Scaffold(
       backgroundColor: isDark ? Colors.black : Colors.white,
       body: SafeArea(
@@ -340,38 +368,71 @@ class _StopDetourDetailPageState extends State<StopDetourDetailPage> {
                 Text(
                   widget.stopName,
                   softWrap: true,
-                  style: TextStyle(color: fg, fontSize: 28, fontWeight: FontWeight.w800, height: 1.25),
+                  style: TextStyle(
+                    color: fg,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    height: 1.25,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 if (snapshot.connectionState == ConnectionState.waiting)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 24),
-                    child: Center(child: CircularProgressIndicator(color: Colors.amber)),
+                    child: Center(
+                      child: CircularProgressIndicator(color: Colors.amber),
+                    ),
                   )
                 else if (info == null)
                   Text(
-                    lang.tr('stop_warning_body').replaceAll('@stop', widget.stopName),
+                    lang
+                        .tr('stop_warning_body')
+                        .replaceAll('@stop', widget.stopName),
                     softWrap: true,
                     style: style,
                   )
                 else ...[
                   if ((info['title'] ?? '').toString().isNotEmpty)
-                    Text(info['title'].toString(), softWrap: true, style: style),
+                    Text(
+                      info['title'].toString(),
+                      softWrap: true,
+                      style: style,
+                    ),
                   if ((info['time'] ?? '').toString().isNotEmpty) ...[
                     const SizedBox(height: 12),
                     Text(info['time'].toString(), softWrap: true, style: style),
                   ],
-                  if (info['suspendStops'] is List && (info['suspendStops'] as List).isNotEmpty) ...[
+                  if (info['suspendStops'] is List &&
+                      (info['suspendStops'] as List).isNotEmpty) ...[
                     const SizedBox(height: 16),
-                    Text(lang.tr('suspended_stops'), softWrap: true, style: const TextStyle(color: Colors.redAccent, fontSize: 20, fontWeight: FontWeight.w800, height: 1.3)),
+                    Text(
+                      lang.tr('suspended_stops'),
+                      softWrap: true,
+                      style: const TextStyle(
+                        color: Colors.redAccent,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        height: 1.3,
+                      ),
+                    ),
                     for (final stop in info['suspendStops'] as List) ...[
                       const SizedBox(height: 6),
                       Text('$stop', softWrap: true, style: style),
                     ],
                   ],
-                  if (info['alternativeStops'] is List && (info['alternativeStops'] as List).isNotEmpty) ...[
+                  if (info['alternativeStops'] is List &&
+                      (info['alternativeStops'] as List).isNotEmpty) ...[
                     const SizedBox(height: 16),
-                    Text(lang.tr('temp_alt_stops'), softWrap: true, style: const TextStyle(color: Colors.green, fontSize: 20, fontWeight: FontWeight.w800, height: 1.3)),
+                    Text(
+                      lang.tr('temp_alt_stops'),
+                      softWrap: true,
+                      style: const TextStyle(
+                        color: Colors.green,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        height: 1.3,
+                      ),
+                    ),
                     for (final stop in info['alternativeStops'] as List) ...[
                       const SizedBox(height: 6),
                       Text('$stop', softWrap: true, style: style),
@@ -379,7 +440,11 @@ class _StopDetourDetailPageState extends State<StopDetourDetailPage> {
                   ],
                   if ((info['provider'] ?? '').toString().isNotEmpty) ...[
                     const SizedBox(height: 16),
-                    Text(info['provider'].toString(), softWrap: true, style: style),
+                    Text(
+                      info['provider'].toString(),
+                      softWrap: true,
+                      style: style,
+                    ),
                   ],
                 ],
               ],

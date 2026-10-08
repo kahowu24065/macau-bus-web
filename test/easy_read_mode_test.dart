@@ -80,7 +80,11 @@ void main() {
     ];
     for (final lang in ['zh', 'zhHans', 'pt', 'en']) {
       for (final key in keys) {
-        expect(AppTranslations.data[lang]![key], isNotNull, reason: '$lang.$key');
+        expect(
+          AppTranslations.data[lang]![key],
+          isNotNull,
+          reason: '$lang.$key',
+        );
         expect(AppTranslations.data[lang]![key]!.trim(), isNotEmpty);
       }
     }
@@ -89,7 +93,10 @@ void main() {
     expect(AppTranslations.data['zh']!['easy_read_eta_mins'], '@mins 分鐘後到');
     expect(AppTranslations.data['zh']!['easy_read_mode_desc'], contains('\n'));
     expect(AppTranslations.data['en']!['easy_read_mode'], 'Easy Read Mode');
-    expect(AppTranslations.data['pt']!['easy_read_mode'], 'Modo de Leitura Fácil');
+    expect(
+      AppTranslations.data['pt']!['easy_read_mode'],
+      'Modo de Leitura Fácil',
+    );
     expect(AppTranslations.data['pt']!['more_options'], 'Mais');
     expect(AppTranslations.data['zhHans']!['easy_read_mode'], '易读模式');
   });
@@ -98,19 +105,39 @@ void main() {
     String zh(String key) => _tr('zh', key);
 
     expect(
-      approachingStatus(easyRead: false, stopsAway: 2, estimatedMins: 4, tr: zh),
+      approachingStatus(
+        easyRead: false,
+        stopsAway: 2,
+        estimatedMins: 4,
+        tr: zh,
+      ),
       '尚有 2 站 (約 4 分鐘)',
     );
     expect(
-      approachingStatus(easyRead: false, stopsAway: 1, estimatedMins: 5, tr: zh),
+      approachingStatus(
+        easyRead: false,
+        stopsAway: 1,
+        estimatedMins: 5,
+        tr: zh,
+      ),
       '下站到達 (約 5 分鐘)',
     );
     expect(
-      approachingStatus(easyRead: false, stopsAway: 1, estimatedMins: 0, tr: zh),
+      approachingStatus(
+        easyRead: false,
+        stopsAway: 1,
+        estimatedMins: 0,
+        tr: zh,
+      ),
       '下站到達',
     );
     expect(
-      approachingStatus(easyRead: false, stopsAway: 0, estimatedMins: 0, tr: zh),
+      approachingStatus(
+        easyRead: false,
+        stopsAway: 0,
+        estimatedMins: 0,
+        tr: zh,
+      ),
       '即將到站 / 到站中',
     );
 
@@ -155,7 +182,10 @@ void main() {
   });
 
   test('text scale undo restores the size under the header', () {
-    expect(EasyReadTheme.undoTextScale(const TextScaler.linear(1.35)).scale(1), closeTo(1, 0.001));
+    expect(
+      EasyReadTheme.undoTextScale(const TextScaler.linear(1.35)).scale(1),
+      closeTo(1, 0.001),
+    );
     expect(
       EasyReadTheme.undoTextScale(const TextScaler.linear(1.2 * 1.35)).scale(1),
       closeTo(1.2, 0.001),
@@ -163,17 +193,29 @@ void main() {
   });
 
   test('contrast lifts grey and keeps saturated colours in both themes', () {
-    expect(EasyReadTheme.lift(Colors.grey.shade500, Brightness.light), EasyReadTheme.lightForeground);
-    expect(EasyReadTheme.lift(Colors.grey.shade500, Brightness.dark), Colors.white);
+    expect(
+      EasyReadTheme.lift(Colors.grey.shade500, Brightness.light),
+      EasyReadTheme.lightForeground,
+    );
+    expect(
+      EasyReadTheme.lift(Colors.grey.shade500, Brightness.dark),
+      Colors.white,
+    );
     expect(EasyReadTheme.lift(Colors.white70, Brightness.dark), Colors.white);
-    expect(EasyReadTheme.lift(Colors.black54, Brightness.light), EasyReadTheme.lightForeground);
+    expect(
+      EasyReadTheme.lift(Colors.black54, Brightness.light),
+      EasyReadTheme.lightForeground,
+    );
     expect(EasyReadTheme.lift(Colors.amber, Brightness.light), Colors.amber);
     expect(EasyReadTheme.lift(Colors.black, Brightness.light), Colors.black);
     expect(EasyReadTheme.lift(Colors.white, Brightness.dark), Colors.white);
 
     final light = EasyReadTheme.apply(ThemeData.light());
     final dark = EasyReadTheme.apply(ThemeData.dark());
-    expect(light.textButtonTheme.style?.minimumSize?.resolve({}), const Size(72, 56));
+    expect(
+      light.textButtonTheme.style?.minimumSize?.resolve({}),
+      const Size(72, 56),
+    );
     expect(dark.colorScheme.onSurface, Colors.white);
     expect(light.colorScheme.onSurface, EasyReadTheme.lightForeground);
     expect(light.textTheme.bodyMedium?.fontWeight, FontWeight.w700);
@@ -181,7 +223,11 @@ void main() {
   });
 
   test('easy read mode hides every ad slot except settings', () {
-    bool show({required int selectedIndex, bool easyReadMode = true, bool isPro = false}) {
+    bool show({
+      required int selectedIndex,
+      bool easyReadMode = true,
+      bool isPro = false,
+    }) {
       return showHomeBannerSlot(
         isWeb: false,
         isPro: isPro,
@@ -218,7 +264,9 @@ void main() {
     expect(ArrivalSpeaker.localesFor('en').first, 'en-US');
   });
 
-  testWidgets('easy read more keeps special routes, the full list, and fares', (tester) async {
+  testWidgets('easy read more keeps special routes and the full list', (
+    tester,
+  ) async {
     SharedPreferences.setMockInitialValues({'language_code': 'zh'});
     final lang = LanguageController();
     await tester.pumpWidget(
@@ -231,7 +279,10 @@ void main() {
 
     expect(find.text('特別班次'), findsOneWidget);
     expect(find.text('🚌 全澳巴士路線總覽'), findsOneWidget);
-    expect(find.text('車資表'), findsOneWidget);
+    expect(find.text('車資表'), findsNothing);
+    expect(find.text('车资表'), findsNothing);
+    expect(find.text('Tarifas'), findsNothing);
+    expect(find.text('Fares'), findsNothing);
     expect(find.text('路線規劃'), findsNothing);
     expect(find.text('改道通告'), findsNothing);
     expect(find.text('時間表'), findsNothing);
