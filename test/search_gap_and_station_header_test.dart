@@ -370,26 +370,50 @@ void main() {
             _ => 'Barra (M1/2)',
           };
           final stop = _textMatching(tester, (data) => data.contains(sample));
-          expect(stop.style?.fontSize, 19);
-
           final row = _textMatching(tester, (data) => data.contains('(M12/2)'));
-          expect(row.style?.fontSize, 19);
-          expect(tester.getRect(find.text(row.data!)).right, lessThanOrEqualTo(size.width + 0.5));
+          for (final caption in [stop, row]) {
+            final finder = find.text(caption.data!);
+            final rect = tester.getRect(finder);
+            expect(rect.right, lessThanOrEqualTo(size.width + 0.5), reason: caption.data);
+            final tile = find.ancestor(of: finder, matching: find.byType(InkWell)).first;
+            final bell = find.descendant(of: tile, matching: find.byType(IconButton));
+            expect(rect.right, lessThanOrEqualTo(tester.getRect(bell).left + 0.5), reason: caption.data);
+            final seq = find.descendant(
+              of: tile,
+              matching: find.byWidgetPredicate((widget) {
+                return widget is Text && RegExp(r'^\d+\.$').hasMatch(widget.data ?? '');
+              }),
+            );
+            final seqText = tester.widget<Text>(seq);
+            expect(seqText.style?.fontSize, caption.style?.fontSize, reason: caption.data);
+            expect(tester.getRect(seq).right, lessThanOrEqualTo(rect.left + 0.5), reason: caption.data);
+          }
+          final rowFinder = find.text(row.data!);
 
           final labels = <Rect>[];
+          double? sharedSize;
           for (final key in ['swap_direction', 'location', 'timetable', 'tab_map', 'favorite']) {
             final plain = _tr(lang, key);
             final label = _textMatching(
               tester,
               (data) => data.replaceAll('\n', '') == plain,
             );
-            expect(label.style?.fontSize, greaterThan(11), reason: '$lang $plain');
-            expect(label.style?.fontSize, greaterThanOrEqualTo(13), reason: '$lang $plain');
-            final rect = tester.getRect(
-              find.byWidgetPredicate((widget) {
-                return widget is Text && widget.data?.replaceAll('\n', '') == plain;
-              }),
-            );
+            final labelFinder = find.byWidgetPredicate((widget) {
+              return widget is Text && widget.data?.replaceAll('\n', '') == plain;
+            });
+            sharedSize ??= label.style?.fontSize;
+            expect(label.style?.fontSize, sharedSize, reason: '$lang $plain');
+            expect(stop.style?.fontSize, sharedSize, reason: '$lang stop');
+            expect(row.style?.fontSize, sharedSize, reason: '$lang row');
+            final paintedLabel = MediaQuery.textScalerOf(tester.element(labelFinder))
+                .scale(label.style!.fontSize!);
+            final paintedStop = MediaQuery.textScalerOf(tester.element(find.byWidget(stop)))
+                .scale(stop.style!.fontSize!);
+            final paintedRow = MediaQuery.textScalerOf(tester.element(rowFinder))
+                .scale(row.style!.fontSize!);
+            expect(paintedStop, closeTo(paintedLabel, 0.01), reason: '$lang stop paint');
+            expect(paintedRow, closeTo(paintedLabel, 0.01), reason: '$lang row paint');
+            final rect = tester.getRect(labelFinder);
             expect(rect.left, greaterThanOrEqualTo(-0.5), reason: '$lang $plain $rect');
             expect(rect.right, lessThanOrEqualTo(size.width + 0.5), reason: '$lang $plain $rect');
             expect(rect.top, greaterThanOrEqualTo(0), reason: '$lang $plain $rect');

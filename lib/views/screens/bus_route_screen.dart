@@ -21,6 +21,7 @@ import '../widgets/route_liquid_glass_nav.dart';
 import '../../constants/app_translations.dart';
 import '../../constants/feature_flags.dart';
 import '../../services/arrival_speaker.dart';
+import '../../theme/easy_read_theme.dart';
 import '../../utils/easy_read_access.dart';
 import '../../utils/easy_read_arrival.dart';
 import '../screens/easy_read_more_screen.dart';
@@ -903,7 +904,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                         itemBuilder: (context, index) {
                           final stop = busCtrl.stopsList[index]; 
                           final isSelected = busCtrl.selectedStopSeq == stop.seq;
-                          final stopInfoSize = easyRead ? 19.0 : 16.0;
+                          final stopInfoSize = easyRead ? _FittingHeaderLabel.size : 16.0;
                           final seqWidth = easyRead ? 56.0 : 28.0;
                           final hasBoardingAlarm = busCtrl.boardingStopSeq == stop.seq;
                           final hasAlightingAlarm = busCtrl.alightingStopSeq == stop.seq;
@@ -966,12 +967,21 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                                         children: [
                                                           SizedBox(
                                                             width: seqWidth,
-                                                            child: Text('${stop.seq}.', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: stopInfoSize, fontWeight: FontWeight.bold)),
+                                                            child: _StopInfoText(
+                                                              data: '${stop.seq}.',
+                                                              color: isDark ? Colors.white : Colors.black,
+                                                              fontSize: stopInfoSize,
+                                                              fontWeight: FontWeight.bold,
+                                                              matchHeaderScale: easyRead,
+                                                            ),
                                                           ),
                                                           Expanded(
-                                                            child: Text(
-                                                              '${stop.getLocalizedName(langCtrl.currentLanguage)} (${stop.code})', 
-                                                              style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: stopInfoSize, fontWeight: FontWeight.bold)
+                                                            child: _StopInfoText(
+                                                              data: '${stop.getLocalizedName(langCtrl.currentLanguage)} (${stop.code})',
+                                                              color: isDark ? Colors.white : Colors.black,
+                                                              fontSize: stopInfoSize,
+                                                              fontWeight: FontWeight.bold,
+                                                              matchHeaderScale: easyRead,
                                                             ),
                                                           ),
                                                           const SizedBox(width: 8),
@@ -1150,12 +1160,21 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                               children: [
                                                 SizedBox(
                                                   width: seqWidth,
-                                                  child: Text('${stop.seq}.', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: stopInfoSize, fontWeight: FontWeight.w500)),
+                                                  child: _StopInfoText(
+                                                    data: '${stop.seq}.',
+                                                    color: isDark ? Colors.white : Colors.black,
+                                                    fontSize: stopInfoSize,
+                                                    fontWeight: FontWeight.w500,
+                                                    matchHeaderScale: easyRead,
+                                                  ),
                                                 ),
                                                 Expanded(
-                                                  child: Text(
-                                                    '${stop.getLocalizedName(langCtrl.currentLanguage)} (${stop.code})', 
-                                                    style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: stopInfoSize, fontWeight: FontWeight.w500)
+                                                  child: _StopInfoText(
+                                                    data: '${stop.getLocalizedName(langCtrl.currentLanguage)} (${stop.code})',
+                                                    color: isDark ? Colors.white : Colors.black,
+                                                    fontSize: stopInfoSize,
+                                                    fontWeight: FontWeight.w500,
+                                                    matchHeaderScale: easyRead,
                                                   ),
                                                 ),
                                               ],
@@ -1253,17 +1272,47 @@ class _FareTableButton extends StatelessWidget {
   }
 }
 
-/// Easy Read header captions. Prefer 14pt on one line. On a narrow phone a
-/// long word such as "Timetable" or "Localizar" wraps onto two balanced lines
-/// instead of shrinking back to the normal 11pt size or clipping.
+/// Stop sequence and name. In Easy Read the header undoes the 1.35 text
+/// scale, so these captions do the same and paint at [fontSize].
+class _StopInfoText extends StatelessWidget {
+  const _StopInfoText({
+    required this.data,
+    required this.color,
+    required this.fontSize,
+    required this.fontWeight,
+    required this.matchHeaderScale,
+  });
+
+  final String data;
+  final Color color;
+  final double fontSize;
+  final FontWeight fontWeight;
+  final bool matchHeaderScale;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Text(
+      data,
+      style: TextStyle(color: color, fontSize: fontSize, fontWeight: fontWeight),
+    );
+    if (!matchHeaderScale) return text;
+    final mq = MediaQuery.of(context);
+    return MediaQuery(
+      data: mq.copyWith(textScaler: EasyReadTheme.undoTextScale(mq.textScaler)),
+      child: text,
+    );
+  }
+}
+
+/// Easy Read header captions. [size] is also the stop-list name size.
+/// A long word such as "Timetable" wraps onto two lines at that size.
 class _FittingHeaderLabel extends StatelessWidget {
   const _FittingHeaderLabel({required this.text, required this.color});
 
   final String text;
   final Color color;
 
-  static const double _preferred = 14;
-  static const double _floor = 11;
+  static const double size = 14;
   static const double _height = 1.15;
 
   @override
@@ -1271,32 +1320,13 @@ class _FittingHeaderLabel extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final maxWidth = constraints.maxWidth;
-        final direction = Directionality.of(context);
-        final scaler = MediaQuery.textScalerOf(context);
         final base = DefaultTextStyle.of(context).style;
-        var size = _preferred;
+        final style = _style(base, size);
         var chosen = text;
         if (maxWidth.isFinite && maxWidth > 0) {
-          var fitted = false;
-          for (var step = 0; step <= 6; step++) {
-            final font = _preferred - step * 0.5;
-            final style = _style(base, font);
-            if (_fits(text, style, maxWidth, direction, scaler, lines: 1)) {
-              size = font;
-              chosen = text;
-              fitted = true;
-              break;
-            }
-            final split = _twoLines(text);
-            if (_fits(split, style, maxWidth, direction, scaler, lines: 2)) {
-              size = font;
-              chosen = split;
-              fitted = true;
-              break;
-            }
-          }
-          if (!fitted) {
-            size = _floor;
+          final direction = Directionality.of(context);
+          final scaler = MediaQuery.textScalerOf(context);
+          if (!_fits(text, style, maxWidth, direction, scaler, lines: 1)) {
             chosen = _twoLines(text);
           }
         }
@@ -1305,7 +1335,7 @@ class _FittingHeaderLabel extends StatelessWidget {
           textAlign: TextAlign.center,
           softWrap: true,
           maxLines: chosen.contains('\n') ? 2 : 1,
-          style: _style(base, size),
+          style: style,
         );
       },
     );
