@@ -42,6 +42,7 @@ BusStop _stop({
   required String zhHans,
   required String pt,
   required String en,
+  bool hasAlert = false,
 }) {
   return BusStop(
     seq: seq,
@@ -53,6 +54,7 @@ BusStop _stop({
     code: 'M$seq/2',
     lat: 22.2,
     lng: 113.55,
+    hasAlert: hasAlert,
   );
 }
 
@@ -118,6 +120,7 @@ Future<void> _pumpStation(
   required bool easyRead,
   String route = '3',
   Size size = const Size(320, 568),
+  bool alert = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -136,6 +139,7 @@ Future<void> _pumpStation(
       zhHans: '外港客运码头北',
       pt: 'Terminal Marítimo do Porto Exterior Norte',
       en: 'Outer Harbour Ferry Terminal North',
+      hasAlert: alert,
     ),
     _stop(
       seq: 1,
@@ -143,6 +147,7 @@ Future<void> _pumpStation(
       zhHans: '妈阁',
       pt: 'Barra',
       en: 'Barra',
+      hasAlert: alert,
     ),
   ];
   bus.selectedStopSeq = null;
@@ -343,6 +348,53 @@ void main() {
     expect(timetable.style?.fontSize, 11);
   });
 
+  testWidgets('easy read station info matches the header caption size', (tester) async {
+    await _pumpStation(
+      tester,
+      langCode: 'zh',
+      easyRead: true,
+      size: const Size(390, 844),
+      alert: true,
+    );
+
+    final info = _textMatching(tester, (data) => data == '站點資訊：');
+    final caption = _textMatching(tester, (data) => data == '對頭線');
+    expect(info.style?.fontSize, 14);
+    expect(caption.style?.fontSize, info.style?.fontSize);
+    expect(
+      _textMatching(tester, (data) => data.startsWith('12. ')).style?.fontSize,
+      info.style?.fontSize,
+    );
+    expect(
+      _textMatching(tester, (data) => data == '、').style?.fontSize,
+      info.style?.fontSize,
+    );
+    expect(find.text('此站暫時停靠'), findsNWidgets(2));
+    expect(find.text('此站暫停停靠'), findsNothing);
+  });
+
+  testWidgets('normal station info stays at the 1.0.33 size', (tester) async {
+    await _pumpStation(
+      tester,
+      langCode: 'en',
+      easyRead: false,
+      size: const Size(390, 844),
+      alert: true,
+    );
+
+    expect(_textMatching(tester, (data) => data == 'Stop Info:').style?.fontSize, 13);
+    expect(
+      _textMatching(tester, (data) => data.startsWith('12. ')).style?.fontSize,
+      13,
+    );
+    expect(_textMatching(tester, (data) => data == '、').style?.fontSize, 13);
+    expect(
+      _textMatching(tester, (data) => data == 'Timetable').style?.fontSize,
+      11,
+    );
+    expect(find.text('Temporary stop'), findsNothing);
+  });
+
   for (final lang in ['zh', 'zhHans', 'pt', 'en']) {
     for (final size in [const Size(320, 568), const Size(390, 844)]) {
       testWidgets(
@@ -391,29 +443,28 @@ void main() {
           final rowFinder = find.text(row.data!);
 
           final labels = <Rect>[];
-          double? sharedSize;
+          const headerSize = 14.0;
+          final stopSize = 19 * EasyReadTheme.textScale;
+          expect(stop.style?.fontSize, stopSize, reason: '$lang stop');
+          expect(row.style?.fontSize, stopSize, reason: '$lang row');
           for (final key in ['swap_direction', 'location', 'timetable', 'tab_map', 'favorite']) {
             final plain = _tr(lang, key);
-            final label = _textMatching(
-              tester,
-              (data) => data.replaceAll('\n', '') == plain,
+            final label = _textMatching(tester, (data) => data == plain);
+            final labelFinder = find.text(plain);
+            expect(label.maxLines, 1, reason: '$lang $plain');
+            expect(label.softWrap, isFalse, reason: '$lang $plain');
+            expect(label.style?.fontSize, headerSize, reason: '$lang $plain');
+            final column = find.ancestor(of: labelFinder, matching: find.byType(Column)).first;
+            final icon = tester.widget<Icon>(
+              find.descendant(of: column, matching: find.byType(Icon)),
             );
-            final labelFinder = find.byWidgetPredicate((widget) {
-              return widget is Text && widget.data?.replaceAll('\n', '') == plain;
-            });
-            sharedSize ??= label.style?.fontSize;
-            expect(label.style?.fontSize, sharedSize, reason: '$lang $plain');
-            expect(stop.style?.fontSize, sharedSize, reason: '$lang stop');
-            expect(row.style?.fontSize, sharedSize, reason: '$lang row');
-            final paintedLabel = MediaQuery.textScalerOf(tester.element(labelFinder))
-                .scale(label.style!.fontSize!);
+            expect(icon.size, 24, reason: '$lang $plain');
             final paintedStop = MediaQuery.textScalerOf(tester.element(find.byWidget(stop)))
                 .scale(stop.style!.fontSize!);
             final paintedRow = MediaQuery.textScalerOf(tester.element(rowFinder))
                 .scale(row.style!.fontSize!);
-            expect(paintedStop, closeTo(paintedLabel, 0.01), reason: '$lang stop paint');
-            expect(paintedRow, closeTo(paintedLabel, 0.01), reason: '$lang row paint');
-            expect(paintedStop, greaterThanOrEqualTo(19 * EasyReadTheme.textScale - 0.01), reason: '$lang stop size');
+            expect(paintedStop, closeTo(stopSize, 0.01), reason: '$lang stop paint');
+            expect(paintedRow, closeTo(stopSize, 0.01), reason: '$lang row paint');
             final rect = tester.getRect(labelFinder);
             expect(rect.left, greaterThanOrEqualTo(-0.5), reason: '$lang $plain $rect');
             expect(rect.right, lessThanOrEqualTo(size.width + 0.5), reason: '$lang $plain $rect');

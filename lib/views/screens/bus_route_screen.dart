@@ -704,6 +704,8 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     }
 
     if (alertStops.isNotEmpty) {
+      // Easy Read matches the five header captions. Normal stays at 1.0.33.
+      final stationInfoSize = easyRead ? _FittingHeaderLabel.size : 13.0;
       List<Widget> stationWidgets = [];
       
       for (int i = 0; i < alertStops.length; i++) {
@@ -716,7 +718,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
               '${stop.seq}. ${stop.getLocalizedName(langCtrl.currentLanguage)}', 
               style: TextStyle(
                 color: isDark ? Colors.white70 : Colors.black87,
-                fontSize: 13,
+                fontSize: stationInfoSize,
                 fontWeight: FontWeight.bold,
                 decoration: TextDecoration.none, 
               ),
@@ -730,7 +732,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
               '、',
               style: TextStyle(
                 color: isDark ? Colors.white70 : Colors.black87,
-                fontSize: 13,
+                fontSize: stationInfoSize,
                 fontWeight: FontWeight.bold,
                 decoration: TextDecoration.none,
               ),
@@ -751,7 +753,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                 langCtrl.tr('station_info'),
                 style: TextStyle(
                   color: isDark ? Colors.white70 : Colors.black87,
-                  fontSize: 13,
+                  fontSize: stationInfoSize,
                   fontWeight: FontWeight.bold,
                   decoration: TextDecoration.none,
                 ),
@@ -932,7 +934,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                         itemBuilder: (context, index) {
                           final stop = busCtrl.stopsList[index]; 
                           final isSelected = busCtrl.selectedStopSeq == stop.seq;
-                          final stopInfoSize = easyRead ? _FittingHeaderLabel.size : 16.0;
+                          final stopInfoSize = easyRead ? _StopInfoText.easyReadSize : 16.0;
                           final seqWidth = easyRead ? 72.0 : 28.0;
                           final hasBoardingAlarm = busCtrl.boardingStopSeq == stop.seq;
                           final hasAlightingAlarm = busCtrl.alightingStopSeq == stop.seq;
@@ -1324,8 +1326,9 @@ class _FareTableButton extends StatelessWidget {
   }
 }
 
-/// Stop sequence and name. Easy Read paints these at the same size as the
-/// header labels. Both undo the extra 1.35 scale so that size is the painted size.
+/// Stop sequence and name. Easy Read paints these at the 1.0.32 size
+/// (19pt times the 1.35 text scale). Header captions stay at the 1.0.33 size.
+/// [matchHeaderScale] undoes the extra 1.35 scale so [fontSize] is painted as-is.
 class _StopInfoText extends StatelessWidget {
   const _StopInfoText({
     required this.data,
@@ -1340,6 +1343,9 @@ class _StopInfoText extends StatelessWidget {
   final double fontSize;
   final FontWeight fontWeight;
   final bool matchHeaderScale;
+
+  /// Painted Easy Read stop-name size from 1.0.32, kept after the header shrink.
+  static const double easyReadSize = 19 * EasyReadTheme.textScale;
 
   @override
   Widget build(BuildContext context) {
@@ -1356,46 +1362,45 @@ class _StopInfoText extends StatelessWidget {
   }
 }
 
-/// Easy Read header captions. [size] is also the stop-list name size.
-///
-/// 1.0.32 painted stop names at 19pt times the 1.35 text scale. The header
-/// matches that size. A long word wraps onto two lines, and only then scales
-/// down so it stays inside its button.
+/// Easy Read header captions. Painted at the 1.0.33 size inside PreserveChrome.
+/// Always one line; a label that is wider than its button scales down.
 class _FittingHeaderLabel extends StatelessWidget {
   const _FittingHeaderLabel({required this.text, required this.color});
 
   final String text;
   final Color color;
 
-  static const double size = 19 * EasyReadTheme.textScale;
+  static const double size = 14;
   static const double _height = 1.15;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final maxWidth = constraints.maxWidth;
         final base = DefaultTextStyle.of(context).style;
-        final style = _style(base, size);
-        var chosen = text;
-        var shrink = false;
-        if (maxWidth.isFinite && maxWidth > 0) {
-          final direction = Directionality.of(context);
-          final scaler = MediaQuery.textScalerOf(context);
-          if (!_fits(text, style, maxWidth, direction, scaler, lines: 1)) {
-            chosen = _twoLines(text);
-          }
-          final lines = chosen.contains('\n') ? 2 : 1;
-          shrink = !_fits(chosen, style, maxWidth, direction, scaler, lines: lines);
-        }
+        final style = base.merge(TextStyle(
+          color: color,
+          fontSize: size,
+          height: _height,
+        ));
         final label = Text(
-          chosen,
+          text,
           textAlign: TextAlign.center,
-          softWrap: true,
-          maxLines: chosen.contains('\n') ? 2 : 1,
+          softWrap: false,
+          maxLines: 1,
           style: style,
         );
-        if (!shrink) return label;
+        final maxWidth = constraints.maxWidth;
+        if (!maxWidth.isFinite || maxWidth <= 0) return label;
+        final painter = TextPainter(
+          text: TextSpan(text: text, style: style),
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.textScalerOf(context),
+          maxLines: 1,
+        )..layout(maxWidth: double.infinity);
+        final tooWide = painter.width > maxWidth + 0.5;
+        painter.dispose();
+        if (!tooWide) return label;
         return FittedBox(
           fit: BoxFit.scaleDown,
           alignment: Alignment.topCenter,
@@ -1403,56 +1408,6 @@ class _FittingHeaderLabel extends StatelessWidget {
         );
       },
     );
-  }
-
-  TextStyle _style(TextStyle base, double fontSize) {
-    return base.merge(TextStyle(color: color, fontSize: fontSize, height: _height));
-  }
-
-  bool _fits(
-    String value,
-    TextStyle style,
-    double maxWidth,
-    TextDirection direction,
-    TextScaler scaler, {
-    required int lines,
-  }) {
-    final parts = value.split('\n');
-    if (parts.length > lines) return false;
-    for (final part in parts) {
-      final painter = TextPainter(
-        text: TextSpan(text: part, style: style),
-        textDirection: direction,
-        textScaler: scaler,
-        maxLines: 1,
-      )..layout(maxWidth: double.infinity);
-      if (painter.width > maxWidth + 0.5) return false;
-    }
-    return true;
-  }
-
-  /// Word split when there are spaces; otherwise a mid-word break so a single
-  /// long label can use two lines without being clipped.
-  static String _twoLines(String text) {
-    final trimmed = text.trim();
-    final words = trimmed.split(RegExp(r'\s+'));
-    if (words.length >= 2) {
-      var best = 1;
-      var bestDiff = 1 << 30;
-      for (var i = 1; i < words.length; i++) {
-        final left = words.take(i).join(' ').length;
-        final right = words.skip(i).join(' ').length;
-        final diff = (left - right).abs();
-        if (diff < bestDiff) {
-          bestDiff = diff;
-          best = i;
-        }
-      }
-      return '${words.take(best).join(' ')}\n${words.skip(best).join(' ')}';
-    }
-    if (trimmed.length < 2) return trimmed;
-    final mid = trimmed.length ~/ 2;
-    return '${trimmed.substring(0, mid)}\n${trimmed.substring(mid)}';
   }
 }
 

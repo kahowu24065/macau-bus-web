@@ -243,7 +243,7 @@ void main() {
 
     expect(find.text('1A 時間表'), findsOneWidget);
     expect(find.text('服務時間'), findsNWidgets(5));
-    expect(find.text('班次（分鐘）'), findsNWidgets(5));
+    expect(find.text('班次(分鐘)'), findsNWidgets(5));
     expect(find.text('頻率區間'), findsNothing);
     expect(find.text('星期一至六（公眾假期除外）'), findsOneWidget);
     expect(find.text('星期日及公眾假期'), findsOneWidget);
@@ -458,7 +458,7 @@ void main() {
     await _pumpDialog(tester, route: '1A', direction: 0, language: 'zhHans');
     expect(find.text('1A 时间表'), findsOneWidget);
     expect(find.text('服务时间'), findsNWidgets(5));
-    expect(find.text('班次（分钟）'), findsNWidgets(5));
+    expect(find.text('班次(分钟)'), findsNWidgets(5));
     expect(find.text('星期一至六（公众假期除外）'), findsOneWidget);
     expect(find.text('星期日及公众假期'), findsOneWidget);
     expect(find.text('关闭'), findsOneWidget);
@@ -508,6 +508,11 @@ Future<void> _expectFrequencyRow(
     for (final language in ['zh', 'zhHans', 'pt', 'en']) {
       final label = AppTranslations.data[language]!['frequency_mins']!;
       final where = '$language ${width.toInt()}px easyRead=$easyRead';
+      expect(label.contains('（'), isFalse, reason: where);
+      expect(label.contains('）'), isFalse, reason: where);
+      expect(RegExp(r'\(.*\)').hasMatch(label), isTrue, reason: where);
+      if (language == 'zh') expect(label, '班次(分鐘)', reason: where);
+      if (language == 'zhHans') expect(label, '班次(分钟)', reason: where);
       tester.view.physicalSize = Size(width, 844);
       await _pumpDialog(
         tester,

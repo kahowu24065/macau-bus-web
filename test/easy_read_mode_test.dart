@@ -174,6 +174,10 @@ void main() {
     expect(AppTranslations.data['pt']!['easy_read_mode'], 'Modo de Leitura Fácil');
     expect(AppTranslations.data['pt']!['more_options'], 'Mais');
     expect(AppTranslations.data['zhHans']!['easy_read_mode'], '易读模式');
+    expect(AppTranslations.data['zh']!['easy_read_stop_closed'], '此站暫時停靠');
+    expect(AppTranslations.data['zhHans']!['easy_read_stop_closed'], '此站暂时停靠');
+    expect(AppTranslations.data['en']!['easy_read_stop_closed'], 'Temporary stop');
+    expect(AppTranslations.data['pt']!['easy_read_stop_closed'], 'Paragem temporária');
   });
 
   test('arrival wording keeps next-stop and arriving-soon logic', () {
