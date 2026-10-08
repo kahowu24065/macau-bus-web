@@ -167,8 +167,12 @@ final class BoardingActivityTokenStore {
   ) async -> String? where S.Element == Data {
     await withTaskGroup(of: String?.self) { group in
       group.addTask {
-        for await data in updates {
-          return hex(data)
+        do {
+          for try await data in updates {
+            return hex(data)
+          }
+        } catch {
+          return nil
         }
         return nil
       }
