@@ -24,9 +24,7 @@ import 'package:macau_bus_app/views/widgets/preserve_chrome.dart';
 
 class _QuietLocation extends LocationController {
   @override
-  Future<void> toggleLocationTracking(
-    Function(LatLng) onLocationUpdated,
-  ) async {}
+  Future<void> toggleLocationTracking(Function(LatLng) onLocationUpdated) async {}
 }
 
 class _OfflineHttpOverrides extends HttpOverrides {
@@ -79,11 +77,7 @@ Future<void> _loadRoboto() async {
     throw StateError('Roboto fonts were not found next to the Flutter SDK');
   }
   final loader = FontLoader('Roboto');
-  for (final name in [
-    'Roboto-Regular.ttf',
-    'Roboto-Medium.ttf',
-    'Roboto-Bold.ttf',
-  ]) {
+  for (final name in ['Roboto-Regular.ttf', 'Roboto-Medium.ttf', 'Roboto-Bold.ttf']) {
     final bytes = await File('${fonts.path}/$name').readAsBytes();
     loader.addFont(Future.value(ByteData.sublistView(bytes)));
   }
@@ -139,7 +133,13 @@ Future<void> _pumpStation(
       pt: 'Terminal Marítimo do Porto Exterior Norte',
       en: 'Outer Harbour Ferry Terminal North',
     ),
-    _stop(seq: 1, zh: '媽閣', zhHans: '妈阁', pt: 'Barra', en: 'Barra'),
+    _stop(
+      seq: 1,
+      zh: '媽閣',
+      zhHans: '妈阁',
+      pt: 'Barra',
+      en: 'Barra',
+    ),
   ];
   bus.selectedStopSeq = null;
   addTearDown(lang.dispose);
@@ -150,9 +150,7 @@ Future<void> _pumpStation(
       providers: [
         ChangeNotifierProvider<BusController>.value(value: bus),
         ChangeNotifierProvider<LanguageController>.value(value: lang),
-        ChangeNotifierProvider<LocationController>(
-          create: (_) => _QuietLocation(),
-        ),
+        ChangeNotifierProvider<LocationController>(create: (_) => _QuietLocation()),
         ChangeNotifierProvider(create: (_) => BackgroundController()),
         ChangeNotifierProvider(create: (_) => NavigationController()),
         ChangeNotifierProvider<EasyReadModeController>.value(
@@ -191,15 +189,11 @@ Future<void> _pumpSearch(
       providers: [
         ChangeNotifierProvider<BusController>.value(value: bus),
         ChangeNotifierProvider<LanguageController>.value(value: lang),
-        ChangeNotifierProvider<LocationController>(
-          create: (_) => _QuietLocation(),
-        ),
+        ChangeNotifierProvider<LocationController>(create: (_) => _QuietLocation()),
         ChangeNotifierProvider(create: (_) => BackgroundController()),
         ChangeNotifierProvider(create: (_) => NavigationController()),
         ChangeNotifierProvider<KeyboardController>.value(value: keyboard),
-        ChangeNotifierProvider(
-          create: (_) => EasyReadModeController.fixed(easyRead),
-        ),
+        ChangeNotifierProvider(create: (_) => EasyReadModeController.fixed(easyRead)),
       ],
       child: _app(easyRead: easyRead, home: const DashboardScreen()),
     ),
@@ -220,28 +214,28 @@ void main() {
     SharedPreferences.setMockInitialValues({'language_code': 'zh'});
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-          const MethodChannel('flutter.baseflow.com/geolocator'),
-          (call) async {
-            switch (call.method) {
-              case 'checkPermission':
-              case 'requestPermission':
-                return 0;
-              case 'isLocationServiceEnabled':
-                return false;
-              default:
-                return null;
-            }
-          },
-        );
+      const MethodChannel('flutter.baseflow.com/geolocator'),
+      (call) async {
+        switch (call.method) {
+          case 'checkPermission':
+          case 'requestPermission':
+            return 0;
+          case 'isLocationServiceEnabled':
+            return false;
+          default:
+            return null;
+        }
+      },
+    );
   });
 
   tearDown(() {
     HttpOverrides.global = previousHttp;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-          const MethodChannel('flutter.baseflow.com/geolocator'),
-          null,
-        );
+      const MethodChannel('flutter.baseflow.com/geolocator'),
+      null,
+    );
   });
 
   for (final easyRead in [false, true]) {
@@ -260,9 +254,7 @@ void main() {
     );
   }
 
-  testWidgets('easy read fare button stays clear of the route number', (
-    tester,
-  ) async {
+  testWidgets('easy read fare button stays clear of the route number', (tester) async {
     for (final width in [320.0, 390.0]) {
       for (final language in ['zh', 'zhHans', 'pt', 'en']) {
         final label = _tr(language, 'fare_table');
@@ -281,26 +273,14 @@ void main() {
         expect(fareText.softWrap, isFalse, reason: where);
         expect(fareText.maxLines, 1, reason: where);
         expect(fareText.style?.fontSize, 18, reason: where);
-        expect(
-          tester.widget<Icon>(find.byIcon(Icons.monetization_on)).size,
-          22,
-          reason: where,
-        );
+        expect(tester.widget<Icon>(find.byIcon(Icons.monetization_on)).size, 22, reason: where);
 
         final routeRect = tester.getRect(find.text('25BS'));
         final fareRect = tester.getRect(fare);
-        expect(
-          fareRect.left - routeRect.right,
-          greaterThanOrEqualTo(7),
-          reason: '$where gap=${fareRect.left - routeRect.right}',
-        );
+        expect(fareRect.left - routeRect.right, greaterThanOrEqualTo(7), reason: '$where gap=${fareRect.left - routeRect.right}');
         expect(fareRect.right, lessThanOrEqualTo(width - 19), reason: where);
         expect(fareRect.top, greaterThanOrEqualTo(routeRect.top), reason: where);
-        expect(
-          fareRect.bottom,
-          lessThanOrEqualTo(routeRect.bottom + 1),
-          reason: where,
-        );
+        expect(fareRect.bottom, lessThanOrEqualTo(routeRect.bottom + 1), reason: where);
         expect(fareRect.height, lessThan(28), reason: where);
       }
     }
@@ -330,9 +310,7 @@ void main() {
     expect(find.text('More'), findsNothing);
   });
 
-  testWidgets('normal station page keeps the original stop and button sizes', (
-    tester,
-  ) async {
+  testWidgets('normal station page keeps the original stop and button sizes', (tester) async {
     await _pumpStation(
       tester,
       langCode: 'en',
@@ -345,10 +323,7 @@ void main() {
     expect(direction.style?.fontSize, 15);
     final stop = _textMatching(tester, (data) => data.contains('Barra (M1/2)'));
     expect(stop.style?.fontSize, 16);
-    final timetable = _textMatching(
-      tester,
-      (data) => data.replaceAll('\n', '') == 'Timetable',
-    );
+    final timetable = _textMatching(tester, (data) => data.replaceAll('\n', '') == 'Timetable');
     expect(timetable.style?.fontSize, 11);
   });
 
@@ -383,60 +358,26 @@ void main() {
 
           final row = _textMatching(tester, (data) => data.contains('(M12/2)'));
           expect(row.style?.fontSize, 19);
-          expect(
-            tester.getRect(find.text(row.data!)).right,
-            lessThanOrEqualTo(size.width + 0.5),
-          );
+          expect(tester.getRect(find.text(row.data!)).right, lessThanOrEqualTo(size.width + 0.5));
 
           final labels = <Rect>[];
-          for (final key in [
-            'swap_direction',
-            'location',
-            'timetable',
-            'tab_map',
-            'favorite',
-          ]) {
+          for (final key in ['swap_direction', 'location', 'timetable', 'tab_map', 'favorite']) {
             final plain = _tr(lang, key);
             final label = _textMatching(
               tester,
               (data) => data.replaceAll('\n', '') == plain,
             );
-            expect(
-              label.style?.fontSize,
-              greaterThan(11),
-              reason: '$lang $plain',
-            );
-            expect(
-              label.style?.fontSize,
-              greaterThanOrEqualTo(13),
-              reason: '$lang $plain',
-            );
+            expect(label.style?.fontSize, greaterThan(11), reason: '$lang $plain');
+            expect(label.style?.fontSize, greaterThanOrEqualTo(13), reason: '$lang $plain');
             final rect = tester.getRect(
               find.byWidgetPredicate((widget) {
-                return widget is Text &&
-                    widget.data?.replaceAll('\n', '') == plain;
+                return widget is Text && widget.data?.replaceAll('\n', '') == plain;
               }),
             );
-            expect(
-              rect.left,
-              greaterThanOrEqualTo(-0.5),
-              reason: '$lang $plain $rect',
-            );
-            expect(
-              rect.right,
-              lessThanOrEqualTo(size.width + 0.5),
-              reason: '$lang $plain $rect',
-            );
-            expect(
-              rect.top,
-              greaterThanOrEqualTo(0),
-              reason: '$lang $plain $rect',
-            );
-            expect(
-              rect.bottom,
-              lessThan(size.height),
-              reason: '$lang $plain $rect',
-            );
+            expect(rect.left, greaterThanOrEqualTo(-0.5), reason: '$lang $plain $rect');
+            expect(rect.right, lessThanOrEqualTo(size.width + 0.5), reason: '$lang $plain $rect');
+            expect(rect.top, greaterThanOrEqualTo(0), reason: '$lang $plain $rect');
+            expect(rect.bottom, lessThan(size.height), reason: '$lang $plain $rect');
             labels.add(rect);
           }
           labels.sort((a, b) => a.left.compareTo(b.left));

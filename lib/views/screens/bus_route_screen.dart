@@ -8,7 +8,7 @@ import '../widgets/fit_marquee_text.dart'; // 🌟 走馬燈（只在超出寬�
 import '../../controllers/bus_controller.dart';
 import '../../controllers/location_controller.dart';
 import '../../controllers/navigation_controller.dart';
-import '../../services/gps_service.dart';
+import '../../services/gps_service.dart'; 
 import '../../services/bus_api_service.dart';
 import '../../services/open_data_config.dart';
 import '../../utils/bus_eta_estimate.dart';
@@ -30,18 +30,16 @@ import '../widgets/timetable_dialog.dart';
 
 class BusRouteScreen extends StatefulWidget {
   const BusRouteScreen({super.key});
-  @override
+  @override 
   State<BusRouteScreen> createState() => _BusRouteScreenState();
 }
-
 String _lastFetchedLang = '';
-
 class _BusRouteScreenState extends State<BusRouteScreen> {
   late BusController _busCtrl;
   late LocationController _locCtrl;
   final ScrollController _listScrollController = ScrollController();
   final GlobalKey _selectedStopKey = GlobalKey();
-
+  
   List<dynamic> _routeAlerts = [];
   String _lastFetchedRoute = '';
 
@@ -52,20 +50,18 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     super.initState();
     _busCtrl = context.read<BusController>();
     _locCtrl = context.read<LocationController>();
-
+    
     _busCtrl.addListener(_onBusStateChanged);
     _locCtrl.addListener(_onLocationChanged);
-
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_busCtrl.allRoutesWithDir.isEmpty) {
         _busCtrl.fetchAllRoutes();
       }
-      if (_busCtrl.stopsList.isEmpty &&
-          !_busCtrl.isLoadingStops &&
-          _busCtrl.currentRoute.isNotEmpty) {
+      if (_busCtrl.stopsList.isEmpty && !_busCtrl.isLoadingStops && _busCtrl.currentRoute.isNotEmpty) {
         _busCtrl.fetchStops();
       }
-
+      
       if (_busCtrl.currentRoute.isNotEmpty) {
         _lastFetchedRoute = _busCtrl.currentRoute;
         _fetchRouteAlerts(_busCtrl.currentRoute);
@@ -101,8 +97,10 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
       if (!mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) =>
-              StopDetourDetailPage(stopCode: stopCode, stopName: stopName),
+          builder: (_) => StopDetourDetailPage(
+            stopCode: stopCode,
+            stopName: stopName,
+          ),
         ),
       );
       return;
@@ -111,9 +109,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     final alertUrl = stop.alertUrl?.toString() ?? '';
     final stopCode = stop.code?.toString().trim().toUpperCase() ?? '';
 
-    if (alertUrl.isNotEmpty &&
-        alertUrl != 'internal_api_call' &&
-        !alertUrl.startsWith('internal')) {
+    if (alertUrl.isNotEmpty && alertUrl != 'internal_api_call' && !alertUrl.startsWith('internal')) {
       final url = Uri.tryParse(alertUrl);
       if (url != null && await canLaunchUrl(url)) {
         await launchUrl(url, mode: LaunchMode.externalApplication);
@@ -126,16 +122,14 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final langCtrl = context.read<LanguageController>();
     final localizedStopName = stop.getLocalizedName(langCtrl.currentLanguage);
-    final cacheKey =
-        '${_busCtrl.currentRoute}_${stopCode}_${langCtrl.currentLanguage}';
+    final cacheKey = '${_busCtrl.currentRoute}_${stopCode}_${langCtrl.currentLanguage}';
 
     final easyRead = EasyReadAccess.enabled(context, listen: false);
     if (!easyRead) {
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (ctx) =>
-            const Center(child: CircularProgressIndicator(color: Colors.amber)),
+        builder: (ctx) => const Center(child: CircularProgressIndicator(color: Colors.amber)),
       );
     }
 
@@ -143,7 +137,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
 
     try {
       if (_stopWarningCache.containsKey(cacheKey)) {
-        info = _stopWarningCache[cacheKey];
+        info = _stopWarningCache[cacheKey]; 
       } else {
         info = await BusApiService.fetchStopDetour(
           route: _busCtrl.currentRoute,
@@ -159,7 +153,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     }
 
     if (mounted && !easyRead) {
-      Navigator.of(context).pop();
+      Navigator.of(context).pop(); 
     }
 
     if (!mounted) return;
@@ -171,167 +165,76 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            Icon(
-              info != null
-                  ? Icons.warning_amber_rounded
-                  : Icons.warning_rounded,
-              color: info != null ? Colors.redAccent : Colors.amber,
-              size: 28,
-            ),
+            Icon(info != null ? Icons.warning_amber_rounded : Icons.warning_rounded, color: info != null ? Colors.redAccent : Colors.amber, size: 28),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                info != null
-                    ? (info['title'] ?? langCtrl.tr('route_notice'))
-                    : langCtrl.tr('service_warning'),
-                style: TextStyle(
-                  color: isDark ? Colors.white : Colors.black,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+                info != null ? (info['title'] ?? langCtrl.tr('route_notice')) : langCtrl.tr('service_warning'),
+                style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ),
           ],
         ),
         content: SingleChildScrollView(
           child: easyRead
-              ? Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      langCtrl
-                          .tr('stop_warning_body')
-                          .replaceAll('@stop', localizedStopName),
-                      softWrap: true,
-                      style: TextStyle(
-                        color: isDark ? Colors.white : Colors.black,
-                        fontSize: 18,
-                        height: 1.4,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    if (info != null &&
-                        info['suspendStops'] != null &&
-                        (info['suspendStops'] as List).isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        langCtrl.tr('suspended_stops'),
-                        softWrap: true,
-                        style: const TextStyle(
-                          color: Colors.redAccent,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 18,
-                        ),
-                      ),
-                      ...((info['suspendStops'] as List).map(
-                        (s) => Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Text(
-                            '$s',
-                            softWrap: true,
-                            style: TextStyle(
-                              color: isDark ? Colors.white : Colors.black,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      )),
-                    ],
-                  ],
-                )
-              : info != null
-              ? Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      info['time'] ?? '',
-                      style: TextStyle(
-                        color: isDark ? Colors.white70 : Colors.black87,
-                        fontSize: 14,
-                        height: 1.4,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    if (info['suspendStops'] != null &&
-                        (info['suspendStops'] as List).isNotEmpty) ...[
-                      Text(
-                        langCtrl.tr('suspended_stops'),
-                        style: const TextStyle(
-                          color: Colors.redAccent,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                      ...((info['suspendStops'] as List).map(
-                        (s) => Text(
-                          '• $s',
-                          style: TextStyle(
-                            color: isDark ? Colors.white70 : Colors.black87,
-                            fontSize: 13,
-                          ),
-                        ),
-                      )),
-                      const SizedBox(height: 8),
-                    ],
-                    if (info['alternativeStops'] != null &&
-                        (info['alternativeStops'] as List).isNotEmpty) ...[
-                      Text(
-                        langCtrl.tr('temp_alt_stops'),
-                        style: const TextStyle(
-                          color: Colors.greenAccent,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                      ...((info['alternativeStops'] as List).map(
-                        (s) => Text(
-                          '• $s',
-                          style: TextStyle(
-                            color: isDark ? Colors.white70 : Colors.black87,
-                            fontSize: 13,
-                          ),
-                        ),
-                      )),
-                      const SizedBox(height: 8),
-                    ],
-                    if (info['provider'] != null &&
-                        info['provider'].toString().isNotEmpty) ...[
-                      const Divider(color: Colors.grey),
-                      Text(
-                        info['provider'],
-                        style: const TextStyle(
-                          color: Colors.grey,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ],
-                )
-              : Text(
-                  langCtrl
-                      .tr('stop_warning_body')
-                      .replaceAll('@stop', localizedStopName),
-                  style: TextStyle(
-                    color: isDark ? Colors.white70 : Colors.black87,
-                    fontSize: 15,
-                    height: 1.4,
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    langCtrl.tr('stop_warning_body').replaceAll('@stop', localizedStopName),
+                    softWrap: true,
+                    style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 18, height: 1.4, fontWeight: FontWeight.w700),
                   ),
+                  if (info != null && info['suspendStops'] != null && (info['suspendStops'] as List).isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Text(langCtrl.tr('suspended_stops'), softWrap: true, style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w800, fontSize: 18)),
+                    ...((info['suspendStops'] as List).map((s) => Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text('$s', softWrap: true, style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 18, fontWeight: FontWeight.w700)),
+                    ))),
+                  ],
+                ],
+              )
+            : info != null 
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    info['time'] ?? '',
+                    style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 14, height: 1.4),
+                  ),
+                  const SizedBox(height: 12),
+                  if (info['suspendStops'] != null && (info['suspendStops'] as List).isNotEmpty) ...[
+                    Text(langCtrl.tr('suspended_stops'), style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 14)),
+                    ...((info['suspendStops'] as List).map((s) => Text('• $s', style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 13)))),
+                    const SizedBox(height: 8),
+                  ],
+                  if (info['alternativeStops'] != null && (info['alternativeStops'] as List).isNotEmpty) ...[
+                    Text(langCtrl.tr('temp_alt_stops'), style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 14)),
+                    ...((info['alternativeStops'] as List).map((s) => Text('• $s', style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 13)))),
+                    const SizedBox(height: 8),
+                  ],
+                  if (info['provider'] != null && info['provider'].toString().isNotEmpty) ...[
+                    const Divider(color: Colors.grey),
+                    Text(info['provider'], style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                  ],
+                ],
+              )
+            : Text(
+                langCtrl.tr('stop_warning_body').replaceAll('@stop', localizedStopName), 
+                style: TextStyle(
+                  color: isDark ? Colors.white70 : Colors.black87,
+                  fontSize: 15,
+                  height: 1.4,
                 ),
+              ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text(
-              langCtrl.tr('btn_close'),
-              style: const TextStyle(
-                color: Colors.amber,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            child: Text(langCtrl.tr('btn_close'), style: const TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -345,8 +248,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
   }
 
   void _onBusStateChanged() {
-    if (_busCtrl.currentRoute.isNotEmpty &&
-        _busCtrl.currentRoute != _lastFetchedRoute) {
+    if (_busCtrl.currentRoute.isNotEmpty && _busCtrl.currentRoute != _lastFetchedRoute) {
       _lastFetchedRoute = _busCtrl.currentRoute;
       _fetchRouteAlerts(_busCtrl.currentRoute);
     }
@@ -354,60 +256,31 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     if (_busCtrl.pendingAlarmTitle != null && mounted) {
       final title = _busCtrl.pendingAlarmTitle!;
       final body = _busCtrl.pendingAlarmBody ?? '';
-
+      
       _busCtrl.clearPendingAlarm();
       final isDark = Theme.of(context).brightness == Brightness.dark;
       final langCtrl = context.read<LanguageController>();
-
+      
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
           backgroundColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: Row(
             children: [
-              const Icon(
-                Icons.notifications_active,
-                color: Colors.amber,
-                size: 28,
-              ),
+              const Icon(Icons.notifications_active, color: Colors.amber, size: 28),
               const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    color: isDark ? Colors.white : Colors.black,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
+              Expanded(child: Text(title, style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 18, fontWeight: FontWeight.bold))),
             ],
           ),
-          content: Text(
-            body,
-            style: TextStyle(
-              color: isDark ? Colors.white70 : Colors.black87,
-              fontSize: 15,
-              height: 1.4,
-            ),
-          ),
+          content: Text(body, style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 15, height: 1.4)),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: Text(
-                langCtrl.tr('received'),
-                style: const TextStyle(
-                  color: Colors.amber,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
+              child: Text(langCtrl.tr('received'), style: const TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
+            )
           ],
-        ),
+        )
       );
     }
   }
@@ -451,7 +324,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     if (_locCtrl.userLocation == null) {
       return;
     }
-
+    
     final nearest = _busCtrl.findNearestStop(_locCtrl.userLocation!);
     if (nearest != null && nearest['seq'] != null) {
       int targetSeq = nearest['seq'];
@@ -460,9 +333,9 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _ensureSelectedStopVisible();
       });
-    }
+    } 
   }
-
+  
   Future<void> _showTimetableDialog(BusController busCtrl) {
     if (!FeatureFlags.showTimetable) return Future.value();
     return TimetableDialog.show(
@@ -472,120 +345,98 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     );
   }
 
-  List<Map<String, String>> _getUpcomingBusesInfo(
-    BusController busCtrl,
-    LanguageController langCtrl, {
-    required bool easyRead,
-  }) {
+  List<Map<String, String>> _getUpcomingBusesInfo(BusController busCtrl, LanguageController langCtrl, {required bool easyRead}) {
     if (!busCtrl.showLiveArrivals) return [];
     if (busCtrl.etaData == null && busCtrl.allBusesList.isEmpty) return [];
-
+    
     String rawEtaStatus = busCtrl.etaData?['status']?.toString() ?? '';
-    String cleanEta = rawEtaStatus
-        .replaceAll(RegExp(r'[\(（].*?[\)）]'), '')
-        .trim();
-
+    String cleanEta = rawEtaStatus.replaceAll(RegExp(r'[\(（].*?[\)）]'), '').trim();
+    
     bool hasBusesOnRoad = busCtrl.allBusesList.isNotEmpty;
 
-    bool isTerminalNoService =
-        busCtrl.isNoServiceToday || cleanEta.contains('不設服務');
-
-    bool endedFromEta =
-        cleanEta.contains('本日服務已結束') ||
+    bool isTerminalNoService = busCtrl.isNoServiceToday || cleanEta.contains('不設服務');
+    
+    bool endedFromEta = cleanEta.contains('本日服務已結束') ||
         cleanEta.contains('服務已結束') ||
         cleanEta.contains('收車') ||
         cleanEta.contains('尾班車已過') ||
         cleanEta.toLowerCase().contains('service ended') ||
         cleanEta.toLowerCase().contains('terminad');
-    bool notStartedFromEta =
-        cleanEta.contains('尚未開始') ||
+    bool notStartedFromEta = cleanEta.contains('尚未開始') ||
         cleanEta.contains('未開始') ||
         cleanEta.toLowerCase().contains('not started') ||
         cleanEta.toLowerCase().contains('não iniciado') ||
         cleanEta.toLowerCase().contains('nao iniciado');
 
-    bool isServiceStopped =
-        busCtrl.isServiceNotStarted ||
+    bool isServiceStopped = busCtrl.isServiceNotStarted ||
         busCtrl.isServiceEnded ||
         notStartedFromEta ||
         endedFromEta;
 
     int? firstBusMins;
-    final minMatch = RegExp(
-      r'(?:約\s*|~\s*)?(\d+)\s*(?:分鐘|mins|min)',
-      caseSensitive: false,
-    ).firstMatch(cleanEta);
+    final minMatch = RegExp(r'(?:約\s*|~\s*)?(\d+)\s*(?:分鐘|mins|min)', caseSensitive: false).firstMatch(cleanEta);
     if (minMatch != null) {
       firstBusMins = int.tryParse(minMatch.group(1)!);
     }
 
-    String officialPlate =
-        busCtrl.etaData?['busLicense']?.toString() ??
-        busCtrl.etaData?['busPlate']?.toString() ??
-        busCtrl.etaData?['plate']?.toString() ??
-        '';
-
+    String officialPlate = busCtrl.etaData?['busLicense']?.toString() ?? 
+                           busCtrl.etaData?['busPlate']?.toString() ?? 
+                           busCtrl.etaData?['plate']?.toString() ?? '';
+    
     List<Map<String, String>> upcoming = [];
-
+    
     if (busCtrl.selectedStopSeq != null && hasBusesOnRoad) {
       List<Bus> approachingBuses = busCtrl.allBusesList
-          .where(
-            (b) =>
-                b.currentStopSeq > 0 &&
-                b.currentStopSeq <= busCtrl.selectedStopSeq!,
-          )
+          .where((b) => b.currentStopSeq > 0 && b.currentStopSeq <= busCtrl.selectedStopSeq!)
           .toList();
-
-      approachingBuses.sort(
-        (a, b) => (busCtrl.selectedStopSeq! - a.currentStopSeq).compareTo(
-          busCtrl.selectedStopSeq! - b.currentStopSeq,
-        ),
-      );
-
+      
+      approachingBuses.sort((a, b) => 
+          (busCtrl.selectedStopSeq! - a.currentStopSeq).compareTo(busCtrl.selectedStopSeq! - b.currentStopSeq));
+      
       int firstBusDiff = -1;
-
+      
       for (var bus in approachingBuses) {
         int diff = busCtrl.selectedStopSeq! - bus.currentStopSeq;
-        if (firstBusDiff == -1) firstBusDiff = diff;
+        if (firstBusDiff == -1) firstBusDiff = diff; 
         String status = '';
         if (diff > 0) {
-          final bool isFirst = upcoming.isEmpty;
-          final int estimatedMins = approachingEtaMinutes(
-            busEtaMinutes: bus.etaMinutes,
-            isFirst: isFirst,
-            stopsAway: diff,
-            firstStopsAway: firstBusDiff,
-            firstStatusMinutes: firstBusMins,
-          );
-
-          if (diff == 1) {
-            status = approachingStatus(
-              easyRead: easyRead,
-              stopsAway: 1,
-              estimatedMins: estimatedMins,
-              tr: langCtrl.tr,
-            );
-          } else {
-            status = approachingStatus(
-              easyRead: easyRead,
-              stopsAway: diff,
-              estimatedMins: estimatedMins,
-              tr: langCtrl.tr,
-            );
-          }
+           final bool isFirst = upcoming.isEmpty;
+           final int estimatedMins = approachingEtaMinutes(
+             busEtaMinutes: bus.etaMinutes,
+             isFirst: isFirst,
+             stopsAway: diff,
+             firstStopsAway: firstBusDiff,
+             firstStatusMinutes: firstBusMins,
+           );
+           
+           if (diff == 1) {
+             status = approachingStatus(
+               easyRead: easyRead,
+               stopsAway: 1,
+               estimatedMins: estimatedMins,
+               tr: langCtrl.tr,
+             );
+           } else {
+             status = approachingStatus(
+               easyRead: easyRead,
+               stopsAway: diff,
+               estimatedMins: estimatedMins,
+               tr: langCtrl.tr,
+             );
+           }
         } else {
-          status = approachingStatus(
-            easyRead: easyRead,
-            stopsAway: 0,
-            estimatedMins: 0,
-            tr: langCtrl.tr,
-          );
+           status = approachingStatus(
+             easyRead: easyRead,
+             stopsAway: 0,
+             estimatedMins: 0,
+             tr: langCtrl.tr,
+           );
         }
         upcoming.add({'status': status, 'plate': bus.busLicense.trim()});
-        if (upcoming.length >= 2) break;
+        if (upcoming.length >= 2) break; 
       }
     }
-
+    
     if (upcoming.isEmpty) {
       if (isTerminalNoService) {
         upcoming.add({'status': langCtrl.tr('no_service_today'), 'plate': ''});
@@ -594,10 +445,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
       } else if (busCtrl.isServiceEnded || endedFromEta) {
         upcoming.add({'status': langCtrl.tr('service_ended'), 'plate': ''});
       } else if (busCtrl.isServiceNotStarted || notStartedFromEta) {
-        upcoming.add({
-          'status': langCtrl.tr('service_not_started'),
-          'plate': '',
-        });
+        upcoming.add({'status': langCtrl.tr('service_not_started'), 'plate': ''});
       } else if (isServiceStopped) {
         // No timetable match: late night is still yesterday's last bus.
         upcoming.add({
@@ -612,69 +460,40 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
               ? langCtrl.tr('click_to_update')
               : presentArrivalStatus(
                   easyRead: easyRead,
-                  status: AppTranslations.localizeEtaStatus(
-                    cleanEta,
-                    langCtrl.tr,
-                  ),
+                  status: AppTranslations.localizeEtaStatus(cleanEta, langCtrl.tr),
                   tr: langCtrl.tr,
                 ),
           'plate': officialPlate.trim(),
         });
       }
     }
-
-    bool isStoppedStatus =
-        upcoming.isNotEmpty &&
-        ((upcoming.first['status'] ?? '').contains(
-              langCtrl.tr('service_ended'),
-            ) ||
-            (upcoming.first['status'] ?? '').contains(
-              langCtrl.tr('service_not_started'),
-            ) ||
-            (upcoming.first['status'] ?? '').contains(
-              langCtrl.tr('no_service_today'),
-            ) ||
-            (upcoming.first['status'] ?? '').contains(
-              langCtrl.tr('last_bus_departed'),
-            ) ||
-            (upcoming.first['status'] ?? '').contains(
-              langCtrl.tr('waiting_at_terminal'),
-            ) ||
-            (upcoming.first['status'] ?? '').contains('等候總站發車') ||
-            (upcoming.first['status'] ?? '').contains(
-              langCtrl.tr('click_to_update'),
-            ));
-
+    
+    bool isStoppedStatus = upcoming.isNotEmpty && 
+        ((upcoming.first['status'] ?? '').contains(langCtrl.tr('service_ended')) || 
+         (upcoming.first['status'] ?? '').contains(langCtrl.tr('service_not_started')) || 
+         (upcoming.first['status'] ?? '').contains(langCtrl.tr('no_service_today')) || 
+         (upcoming.first['status'] ?? '').contains(langCtrl.tr('last_bus_departed')) || 
+         (upcoming.first['status'] ?? '').contains(langCtrl.tr('waiting_at_terminal')) || 
+         (upcoming.first['status'] ?? '').contains('等候總站發車') || 
+         (upcoming.first['status'] ?? '').contains(langCtrl.tr('click_to_update')));
+         
     if (!isStoppedStatus && upcoming.isNotEmpty && upcoming.length < 2) {
       if (isServiceStopped) {
         upcoming.add({'status': langCtrl.tr('last_bus_departed'), 'plate': ''});
       } else {
-        upcoming.add({
-          'status': langCtrl.tr('waiting_at_terminal'),
-          'plate': '',
-        });
+        upcoming.add({'status': langCtrl.tr('waiting_at_terminal'), 'plate': ''});
       }
     }
-
+    
     return upcoming;
   }
 
-  void _showAlarmBottomSheet(
-    BuildContext context,
-    dynamic stop,
-    BusController busCtrl,
-    LocationController locCtrl,
-    bool isDark,
-  ) {
+  void _showAlarmBottomSheet(BuildContext context, dynamic stop, BusController busCtrl, LocationController locCtrl, bool isDark) {
     final langCtrl = context.read<LanguageController>();
     final localizedName = stop.getLocalizedName(langCtrl.currentLanguage);
-
+    
     showModalBottomSheet(
-      context: context,
-      backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      context: context, backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white, shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setModalState) {
@@ -685,189 +504,55 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[600],
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
+                  Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[600], borderRadius: BorderRadius.circular(2))),
                   const SizedBox(height: 16),
-                  Text(
-                    langCtrl.tr('set_alarm'),
-                    style: const TextStyle(
-                      color: Colors.amber,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  Text(langCtrl.tr('set_alarm'), style: const TextStyle(color: Colors.amber, fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  Text(
-                    '${stop.seq}. $localizedName (${stop.code})',
-                    style: TextStyle(
-                      color: isDark ? Colors.white : Colors.black,
-                      fontSize: 16,
-                    ),
-                  ),
+                  Text('${stop.seq}. $localizedName (${stop.code})', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 16)),
                   const SizedBox(height: 24),
                   ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: Colors.amber.withValues(alpha: 0.2),
-                      child: const Icon(
-                        Icons.directions_bus,
-                        color: Colors.amber,
-                      ),
-                    ),
-                    title: Text(
-                      hasBoarding
-                          ? langCtrl.tr('cancel_boarding_alarm')
-                          : langCtrl.tr('boarding_alarm'),
-                      style: TextStyle(
-                        color: isDark ? Colors.white : Colors.black,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    subtitle: Text(
-                      langCtrl.tr('boarding_alarm_desc'),
-                      style: const TextStyle(color: Colors.grey, fontSize: 12),
-                    ),
-                    trailing: Icon(
-                      hasBoarding ? Icons.check_circle : Icons.chevron_right,
-                      color: hasBoarding ? Colors.amber : Colors.grey,
-                    ),
+                    leading: CircleAvatar(backgroundColor: Colors.amber.withValues(alpha: 0.2), child: const Icon(Icons.directions_bus, color: Colors.amber)),
+                    title: Text(hasBoarding ? langCtrl.tr('cancel_boarding_alarm') : langCtrl.tr('boarding_alarm'), style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold)),
+                    subtitle: Text(langCtrl.tr('boarding_alarm_desc'), style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                    trailing: Icon(hasBoarding ? Icons.check_circle : Icons.chevron_right, color: hasBoarding ? Colors.amber : Colors.grey),
                     onTap: () {
-                      if (hasBoarding) {
-                        busCtrl.setBoardingStop(null);
-                      } else {
-                        busCtrl.setBoardingStop(stop.seq);
-                      }
+                      if (hasBoarding) { busCtrl.setBoardingStop(null); } else { busCtrl.setBoardingStop(stop.seq); }
                       Navigator.pop(context);
                     },
                   ),
-                  Divider(
-                    height: 1,
-                    color: isDark ? Colors.white10 : Colors.black12,
-                  ),
+                  Divider(height: 1, color: isDark ? Colors.white10 : Colors.black12),
                   ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: Colors.blueAccent.withValues(alpha: 0.2),
-                      child: const Icon(
-                        Icons.location_on,
-                        color: Colors.blueAccent,
-                      ),
-                    ),
-                    title: Text(
-                      hasAlighting
-                          ? langCtrl.tr('cancel_alighting_alarm')
-                          : langCtrl.tr('alighting_alarm'),
-                      style: TextStyle(
-                        color: isDark ? Colors.white : Colors.black,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    subtitle: Text(
-                      langCtrl.tr('alighting_alarm_desc'),
-                      style: const TextStyle(color: Colors.grey, fontSize: 12),
-                    ),
-                    trailing: Icon(
-                      hasAlighting ? Icons.check_circle : Icons.chevron_right,
-                      color: hasAlighting ? Colors.blueAccent : Colors.grey,
-                    ),
+                    leading: CircleAvatar(backgroundColor: Colors.blueAccent.withValues(alpha: 0.2), child: const Icon(Icons.location_on, color: Colors.blueAccent)),
+                    title: Text(hasAlighting ? langCtrl.tr('cancel_alighting_alarm') : langCtrl.tr('alighting_alarm'), style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold)),
+                    subtitle: Text(langCtrl.tr('alighting_alarm_desc'), style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                    trailing: Icon(hasAlighting ? Icons.check_circle : Icons.chevron_right, color: hasAlighting ? Colors.blueAccent : Colors.grey),
                     onTap: () {
-                      if (hasAlighting) {
-                        busCtrl.setAlightingStop(null);
+                      if (hasAlighting) { 
+                        busCtrl.setAlightingStop(null); 
                         Navigator.pop(context);
-                      } else {
+                      } else { 
                         if (!locCtrl.isFollowingUser) {
                           showDialog(
                             context: context,
                             builder: (dialogCtx) => AlertDialog(
-                              backgroundColor: isDark
-                                  ? const Color(0xFF2A2A2A)
-                                  : Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              title: Row(
-                                children: [
-                                  const Icon(
-                                    Icons.location_off,
-                                    color: Colors.redAccent,
-                                    size: 24,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      langCtrl.tr('need_gps'),
-                                      style: TextStyle(
-                                        color: isDark
-                                            ? Colors.white
-                                            : Colors.black,
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              content: Text(
-                                langCtrl.tr('need_gps_desc'),
-                                style: TextStyle(
-                                  color: isDark
-                                      ? Colors.white70
-                                      : Colors.black87,
-                                  fontSize: 15,
-                                  height: 1.4,
-                                ),
-                              ),
+                              backgroundColor: isDark ? const Color(0xFF2A2A2A) : Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              title: Row(children: [const Icon(Icons.location_off, color: Colors.redAccent, size: 24), const SizedBox(width: 10), Expanded(child: Text(langCtrl.tr('need_gps'), style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 18, fontWeight: FontWeight.bold)))]),
+                              content: Text(langCtrl.tr('need_gps_desc'), style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 15, height: 1.4)),
                               actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(dialogCtx),
-                                  child: Text(
-                                    langCtrl.tr('cancel'),
-                                    style: const TextStyle(
-                                      color: Colors.grey,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                ),
+                                TextButton(onPressed: () => Navigator.pop(dialogCtx), child: Text(langCtrl.tr('cancel'), style: const TextStyle(color: Colors.grey, fontSize: 16))),
                                 TextButton(
                                   onPressed: () {
-                                    Navigator.pop(dialogCtx);
-                                    busCtrl.setAlightingStop(stop.seq);
-                                    locCtrl.toggleLocationTracking((loc) {
-                                      busCtrl.checkAlightingAlarm(loc);
-                                    });
-                                    if (!EasyReadAccess.enabled(
-                                      context,
-                                      listen: false,
-                                    )) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        RouteLiquidGlassNavStyle.snackBar(
-                                          context: context,
-                                          content: Text(
-                                            langCtrl.tr('gps_opened'),
-                                          ),
-                                          backgroundColor: Colors.green,
-                                        ),
-                                      );
+                                    Navigator.pop(dialogCtx); busCtrl.setAlightingStop(stop.seq); 
+                                    locCtrl.toggleLocationTracking((loc) { busCtrl.checkAlightingAlarm(loc); });
+                                    if (!EasyReadAccess.enabled(context, listen: false)) {
+                                      ScaffoldMessenger.of(context).showSnackBar(RouteLiquidGlassNavStyle.snackBar(context: context, content: Text(langCtrl.tr('gps_opened')), backgroundColor: Colors.green));
                                     }
-                                    Navigator.pop(context);
+                                    Navigator.pop(context); 
                                   },
-                                  child: Text(
-                                    langCtrl.tr('open'),
-                                    style: const TextStyle(
-                                      color: Colors.blueAccent,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
+                                  child: Text(langCtrl.tr('open'), style: const TextStyle(color: Colors.blueAccent, fontSize: 16, fontWeight: FontWeight.bold)),
                                 ),
                               ],
-                            ),
+                            )
                           );
                         } else {
                           busCtrl.setAlightingStop(stop.seq);
@@ -880,38 +565,25 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                 ],
               ),
             );
-          },
+          }
         );
-      },
+      }
     );
   }
 
-  Widget _buildHeaderIcon(
-    IconData icon,
-    String label,
-    bool isDark,
-    VoidCallback onTap, {
-    Color? color,
-  }) {
+  Widget _buildHeaderIcon(IconData icon, String label, bool isDark, VoidCallback onTap, {Color? color}) {
     final easyRead = EasyReadAccess.enabled(context);
     final labelColor = color ?? (isDark ? Colors.white70 : Colors.black87);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: easyRead ? 2 : 4,
-          vertical: 4,
-        ),
+        padding: EdgeInsets.symmetric(horizontal: easyRead ? 2 : 4, vertical: 4),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.start,
           children: [
-            Icon(
-              icon,
-              color: color ?? (isDark ? Colors.white : Colors.black),
-              size: 24,
-            ),
+            Icon(icon, color: color ?? (isDark ? Colors.white : Colors.black), size: 24),
             const SizedBox(height: 4),
             easyRead
                 ? _FittingHeaderLabel(text: label, color: labelColor)
@@ -926,14 +598,14 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     );
   }
 
-  @override
+  @override 
   Widget build(BuildContext context) {
     final busCtrl = context.watch<BusController>();
     final locCtrl = context.watch<LocationController>();
     final bgCtrl = context.watch<BackgroundController>();
     final langCtrl = context.watch<LanguageController>();
     final isSimpleMode = busCtrl.isSimpleMode;
-
+    
     busCtrl.currentLang = langCtrl.currentLanguage;
 
     // 🌟 加上呢行：將翻譯機借俾 BusController 用！
@@ -950,14 +622,10 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    String currentTerminal = busCtrl.currentDirection == 0
-        ? busCtrl.outboundTerminal
-        : busCtrl.inboundTerminal;
+    String currentTerminal = busCtrl.currentDirection == 0 ? busCtrl.outboundTerminal : busCtrl.inboundTerminal;
     if (!busCtrl.isLoadingStops && busCtrl.stopsList.isNotEmpty) {
-      currentTerminal = busCtrl.stopsList.last
-          .getLocalizedName(langCtrl.currentLanguage)
-          .replaceAll(RegExp(r'[\(（].*?[\)）]'), '')
-          .trim();
+      currentTerminal = busCtrl.stopsList.last.getLocalizedName(langCtrl.currentLanguage)
+                               .replaceAll(RegExp(r'[\(（].*?[\)）]'), '').trim();
     }
 
     final isFavorite = busCtrl.favoriteRoutes.contains(busCtrl.currentRoute);
@@ -971,57 +639,57 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     List<Widget> combinedAlertWidgets = [];
 
     if (busCtrl.showRouteNotices && !easyRead) {
-      for (var alert in _routeAlerts) {
-        combinedAlertWidgets.add(
-          Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: InkWell(
-              onTap: () async {
-                if (alert['link'] != null && alert['link'].isNotEmpty) {
-                  final url = Uri.parse(alert['link']);
-                  if (await canLaunchUrl(url)) {
-                    await launchUrl(url, mode: LaunchMode.externalApplication);
-                  }
+    for (var alert in _routeAlerts) {
+      combinedAlertWidgets.add(
+        Padding(
+          padding: const EdgeInsets.only(right: 16.0),
+          child: InkWell(
+            onTap: () async {
+              if (alert['link'] != null && alert['link'].isNotEmpty) {
+                final url = Uri.parse(alert['link']);
+                if (await canLaunchUrl(url)) {
+                  await launchUrl(url, mode: LaunchMode.externalApplication);
                 }
-              },
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const BlinkingAlertIcon(),
-                  const SizedBox(width: 4),
-                  Text(
-                    alert['title'] ?? langCtrl.tr('route_notice'),
-                    style: TextStyle(
-                      color: isDark ? Colors.white70 : Colors.black87,
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      decoration: TextDecoration.underline,
-                    ),
+              }
+            },
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const BlinkingAlertIcon(),
+                const SizedBox(width: 4),
+                Text(
+                  alert['title'] ?? langCtrl.tr('route_notice'),
+                  style: TextStyle(
+                    color: isDark ? Colors.white70 : Colors.black87,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    decoration: TextDecoration.underline,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
-        );
-      }
+        )
+      );
+    }
     }
 
     if (alertStops.isNotEmpty) {
       List<Widget> stationWidgets = [];
-
+      
       for (int i = 0; i < alertStops.length; i++) {
         final stop = alertStops[i];
-
+        
         stationWidgets.add(
           InkWell(
-            onTap: () => _openStopWarning(stop),
+            onTap: () => _openStopWarning(stop), 
             child: Text(
-              '${stop.seq}. ${stop.getLocalizedName(langCtrl.currentLanguage)}',
+              '${stop.seq}. ${stop.getLocalizedName(langCtrl.currentLanguage)}', 
               style: TextStyle(
                 color: isDark ? Colors.white70 : Colors.black87,
                 fontSize: 13,
                 fontWeight: FontWeight.bold,
-                decoration: TextDecoration.none,
+                decoration: TextDecoration.none, 
               ),
             ),
           ),
@@ -1062,7 +730,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
               ...stationWidgets,
             ],
           ),
-        ),
+        )
       );
     }
 
@@ -1071,221 +739,160 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
       body: Stack(
         children: [
           if (bgCtrl.backgroundImagePath == null)
-            Positioned.fill(
-              child: CustomPaint(painter: VirtualMapPainter(isDark: isDark)),
+          Positioned.fill(
+            child: CustomPaint(
+              painter: VirtualMapPainter(isDark: isDark),
             ),
+          ),
 
           Column(
             children: [
               PreserveChrome(
-                child: ClipRect(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
-                    child: Container(
-                      color: isDark
-                          ? Colors.black.withValues(alpha: 0.65)
-                          : Colors.white.withValues(alpha: 0.7),
-                      padding: EdgeInsets.fromLTRB(
-                        20,
-                        MediaQuery.of(context).padding.top + 12,
-                        20,
-                        16,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+              child: ClipRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
+                  child: Container(
+                    color: isDark ? Colors.black.withValues(alpha: 0.65) : Colors.white.withValues(alpha: 0.7),
+                    padding: EdgeInsets.fromLTRB(20, MediaQuery.of(context).padding.top + 12, 20, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            easyRead
+                                ? Flexible(
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        hasRoute ? busCtrl.currentRoute : '--',
+                                        style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 64, fontWeight: FontWeight.bold, height: 1.0),
+                                      ),
+                                    ),
+                                  )
+                                : Text(
+                                    hasRoute ? busCtrl.currentRoute : '--',
+                                    style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 64, fontWeight: FontWeight.bold, height: 1.0),
+                                  ),
+                            if (hasRoute && easyRead) const SizedBox(width: 8),
+                            if (hasRoute)
+                              _FareTableButton(
+                                label: langCtrl.tr('fare_table'),
+                                isDark: isDark,
+                                fontSize: easyRead ? 18 : 13,
+                                iconSize: easyRead ? 22 : 16,
+                                onTap: () => showBusFareDialog(context),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        
+                        // 🌟 分拆靜止與走馬燈
+                        if (hasRoute)
+                          Row(
+                            children: [
+                              Text(
+                                '${langCtrl.tr('direction_to')} ',
+                                style: TextStyle(color: Colors.grey, fontSize: easyRead ? 18 : 15),
+                              ),
+                              Expanded(
+                                child: FitMarqueeText(
+                                  currentTerminal,
+                                  style: TextStyle(color: Colors.grey, fontSize: easyRead ? 18 : 15),
+                                ),
+                              ),
+                            ],
+                          )
+                        else
+                          Text(langCtrl.tr('please_search_route'), style: const TextStyle(color: Colors.grey, fontSize: 15)),
+                        
+                        if (hasRoute) ...[
+                          const SizedBox(height: 20),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              easyRead
-                                  ? Flexible(
-                                      child: FittedBox(
-                                        fit: BoxFit.scaleDown,
-                                        alignment: Alignment.centerLeft,
-                                        child: Text(
-                                          hasRoute
-                                              ? busCtrl.currentRoute
-                                              : '--',
-                                          style: TextStyle(
-                                            color: isDark
-                                                ? Colors.white
-                                                : Colors.black,
-                                            fontSize: 64,
-                                            fontWeight: FontWeight.bold,
-                                            height: 1.0,
-                                          ),
-                                        ),
-                                      ),
-                                    )
-                                  : Text(
-                                      hasRoute ? busCtrl.currentRoute : '--',
-                                      style: TextStyle(
-                                        color: isDark
-                                            ? Colors.white
-                                            : Colors.black,
-                                        fontSize: 64,
-                                        fontWeight: FontWeight.bold,
-                                        height: 1.0,
-                                      ),
-                                    ),
-                              if (hasRoute && easyRead)
-                                const SizedBox(width: 8),
-                              if (hasRoute)
-                                _FareTableButton(
-                                  label: langCtrl.tr('fare_table'),
-                                  isDark: isDark,
-                                  fontSize: easyRead ? 18 : 13,
-                                  iconSize: easyRead ? 22 : 16,
-                                  onTap: () => showBusFareDialog(context),
+                              Expanded(
+                                child: _buildHeaderIcon(Icons.swap_calls, langCtrl.tr('swap_direction'), isDark, () { 
+                                  busCtrl.toggleDirection();
+                                  busCtrl.fetchStops();
+                                  context.read<NavigationController>().clearNavigation(); 
+                                }),
+                              ),
+                              Expanded(
+                                child: _buildHeaderIcon(
+                                  Icons.my_location, 
+                                  langCtrl.tr('location'), 
+                                  isDark, 
+                                  () {
+                                    // 🌟 修正開關 GPS 邏輯，避免彈出多餘白色橫幅
+                                    final isTurningOn = !locCtrl.isFollowingUser; 
+                                    GpsService.toggleGpsAndAutoSelectStop(context, busCtrl, locCtrl);
+                                    if (isTurningOn) {
+                                      _scrollToNearestStop();
+                                    }
+                                  },
+                                  color: locCtrl.isFollowingUser ? Colors.green : (isDark ? Colors.white : Colors.black87)
                                 ),
+                              ),
+                              if (FeatureFlags.showTimetable)
+                                Expanded(
+                                  child: _buildHeaderIcon(
+                                    Icons.schedule,
+                                    langCtrl.tr('timetable'),
+                                    isDark,
+                                    () => unawaited(_showTimetableDialog(busCtrl)),
+                                  ),
+                                ),
+                              if (!isSimpleMode && FeatureFlags.showRouteTrajectory)
+                                Expanded(
+                                  child: _buildHeaderIcon(
+                                    Icons.map,
+                                    langCtrl.tr('tab_map'),
+                                    isDark,
+                                    () {
+                                      final nav = context.read<NavigationController>();
+                                      nav.clearNavigation();
+                                      nav.setPlanningRoute(false);
+                                      nav.openMap();
+                                    },
+                                  ),
+                                ),
+                              Expanded(
+                                child: _buildHeaderIcon(
+                                  isFavorite ? Icons.star : Icons.star_border, 
+                                  langCtrl.tr('favorite'), 
+                                  isDark, 
+                                  () => busCtrl.toggleFavorite(busCtrl.currentRoute),
+                                  color: isFavorite ? Colors.amber : null
+                                ),
+                              ),
                             ],
                           ),
-                          const SizedBox(height: 4),
-
-                          // 🌟 分拆靜止與走馬燈
-                          if (hasRoute)
-                            Row(
-                              children: [
-                                Text(
-                                  '${langCtrl.tr('direction_to')} ',
-                                  style: TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: easyRead ? 18 : 15,
-                                  ),
-                                ),
-                                Expanded(
-                                  child: FitMarqueeText(
-                                    currentTerminal,
-                                    style: TextStyle(
-                                      color: Colors.grey,
-                                      fontSize: easyRead ? 18 : 15,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            )
-                          else
-                            Text(
-                              langCtrl.tr('please_search_route'),
-                              style: const TextStyle(
-                                color: Colors.grey,
-                                fontSize: 15,
-                              ),
-                            ),
-
-                          if (hasRoute) ...[
-                            const SizedBox(height: 20),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: _buildHeaderIcon(
-                                    Icons.swap_calls,
-                                    langCtrl.tr('swap_direction'),
-                                    isDark,
-                                    () {
-                                      busCtrl.toggleDirection();
-                                      busCtrl.fetchStops();
-                                      context
-                                          .read<NavigationController>()
-                                          .clearNavigation();
-                                    },
-                                  ),
-                                ),
-                                Expanded(
-                                  child: _buildHeaderIcon(
-                                    Icons.my_location,
-                                    langCtrl.tr('location'),
-                                    isDark,
-                                    () {
-                                      // 🌟 修正開關 GPS 邏輯，避免彈出多餘白色橫幅
-                                      final isTurningOn =
-                                          !locCtrl.isFollowingUser;
-                                      GpsService.toggleGpsAndAutoSelectStop(
-                                        context,
-                                        busCtrl,
-                                        locCtrl,
-                                      );
-                                      if (isTurningOn) {
-                                        _scrollToNearestStop();
-                                      }
-                                    },
-                                    color: locCtrl.isFollowingUser
-                                        ? Colors.green
-                                        : (isDark
-                                              ? Colors.white
-                                              : Colors.black87),
-                                  ),
-                                ),
-                                if (FeatureFlags.showTimetable)
-                                  Expanded(
-                                    child: _buildHeaderIcon(
-                                      Icons.schedule,
-                                      langCtrl.tr('timetable'),
-                                      isDark,
-                                      () => unawaited(
-                                        _showTimetableDialog(busCtrl),
-                                      ),
-                                    ),
-                                  ),
-                                if (!isSimpleMode &&
-                                    FeatureFlags.showRouteTrajectory)
-                                  Expanded(
-                                    child: _buildHeaderIcon(
-                                      Icons.map,
-                                      langCtrl.tr('tab_map'),
-                                      isDark,
-                                      () {
-                                        final nav = context
-                                            .read<NavigationController>();
-                                        nav.clearNavigation();
-                                        nav.setPlanningRoute(false);
-                                        nav.openMap();
-                                      },
-                                    ),
-                                  ),
-                                Expanded(
-                                  child: _buildHeaderIcon(
-                                    isFavorite ? Icons.star : Icons.star_border,
-                                    langCtrl.tr('favorite'),
-                                    isDark,
-                                    () => busCtrl.toggleFavorite(
-                                      busCtrl.currentRoute,
-                                    ),
-                                    color: isFavorite ? Colors.amber : null,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-
-                          if (combinedAlertWidgets.isNotEmpty) ...[
-                            const SizedBox(height: 16),
-                            SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Row(children: combinedAlertWidgets),
-                            ),
-                          ],
                         ],
-                      ),
-                    ),
+                        
+                        if (combinedAlertWidgets.isNotEmpty) ...[
+                          const SizedBox(height: 16),
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: combinedAlertWidgets,
+                            ),
+                          ),
+                        ],
+                      ]
+                    )
                   ),
                 ),
               ),
-              Divider(
-                height: 1,
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.1)
-                    : Colors.black.withValues(alpha: 0.1),
               ),
+              Divider(height: 1, color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.1)),
               Expanded(
-                child: busCtrl.isLoadingStops
-                    ? const Center(
-                        child: CircularProgressIndicator(color: Colors.amber),
-                      )
-                    : busCtrl.stopsList.isNotEmpty
+                child: busCtrl.isLoadingStops 
+                  ? const Center(child: CircularProgressIndicator(color: Colors.amber)) 
+                  : busCtrl.stopsList.isNotEmpty
                     ? ListView.builder(
                         controller: _listScrollController,
                         padding: EdgeInsets.only(
@@ -1294,472 +901,213 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                         ),
                         itemCount: busCtrl.stopsList.length,
                         itemBuilder: (context, index) {
-                          final stop = busCtrl.stopsList[index];
-                          final isSelected =
-                              busCtrl.selectedStopSeq == stop.seq;
+                          final stop = busCtrl.stopsList[index]; 
+                          final isSelected = busCtrl.selectedStopSeq == stop.seq;
                           final stopInfoSize = easyRead ? 19.0 : 16.0;
                           final seqWidth = easyRead ? 56.0 : 28.0;
-                          final hasBoardingAlarm =
-                              busCtrl.boardingStopSeq == stop.seq;
-                          final hasAlightingAlarm =
-                              busCtrl.alightingStopSeq == stop.seq;
-                          final isAlarmActive =
-                              hasBoardingAlarm || hasAlightingAlarm;
-
+                          final hasBoardingAlarm = busCtrl.boardingStopSeq == stop.seq;
+                          final hasAlightingAlarm = busCtrl.alightingStopSeq == stop.seq;
+                          final isAlarmActive = hasBoardingAlarm || hasAlightingAlarm;
+                          
                           if (isSelected) {
                             return Column(
                               key: _selectedStopKey,
                               children: [
                                 Container(
-                                  margin: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 6,
-                                  ),
+                                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), 
                                   decoration: BoxDecoration(
                                     borderRadius: BorderRadius.circular(16),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withValues(
-                                          alpha: isDark ? 0.4 : 0.1,
-                                        ),
-                                        blurRadius: 16,
-                                        offset: const Offset(0, 8),
+                                        color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.1), 
+                                        blurRadius: 16, 
+                                        offset: const Offset(0, 8)
                                       ),
                                     ],
                                   ),
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(16),
                                     child: BackdropFilter(
-                                      filter: ImageFilter.blur(
-                                        sigmaX: 24.0,
-                                        sigmaY: 24.0,
-                                      ),
+                                      filter: ImageFilter.blur(sigmaX: 24.0, sigmaY: 24.0), 
                                       child: Container(
                                         decoration: BoxDecoration(
-                                          borderRadius: BorderRadius.circular(
-                                            16,
-                                          ),
+                                          borderRadius: BorderRadius.circular(16),
                                           gradient: LinearGradient(
                                             begin: Alignment.topLeft,
                                             end: Alignment.bottomRight,
-                                            colors: isDark
-                                                ? [
-                                                    Colors.white.withValues(
-                                                      alpha: 0.15,
-                                                    ),
-                                                    Colors.white.withValues(
-                                                      alpha: 0.05,
-                                                    ),
-                                                  ]
-                                                : [
-                                                    Colors.white.withValues(
-                                                      alpha: 0.85,
-                                                    ),
-                                                    Colors.white.withValues(
-                                                      alpha: 0.5,
-                                                    ),
-                                                  ],
+                                            colors: isDark ? [
+                                              Colors.white.withValues(alpha: 0.15),
+                                              Colors.white.withValues(alpha: 0.05),
+                                            ] : [
+                                              Colors.white.withValues(alpha: 0.85),
+                                              Colors.white.withValues(alpha: 0.5),
+                                            ],
                                           ),
                                           border: Border.all(
-                                            color: isDark
-                                                ? Colors.white.withValues(
-                                                    alpha: 0.25,
-                                                  )
-                                                : Colors.white.withValues(
-                                                    alpha: 0.7,
-                                                  ),
-                                            width: 1.2,
+                                            color: isDark ? Colors.white.withValues(alpha: 0.25) : Colors.white.withValues(alpha: 0.7), 
+                                            width: 1.2
                                           ),
                                         ),
                                         child: Material(
                                           color: Colors.transparent,
                                           child: InkWell(
-                                            onTap: () {
-                                              busCtrl.selectStop(stop.seq);
-                                              busCtrl.fetchBusETA();
-                                            },
+                                            onTap: () { busCtrl.selectStop(stop.seq); busCtrl.fetchBusETA(); },
                                             child: Padding(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 16.0,
-                                                    vertical: 12.0,
-                                                  ),
+                                              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0), 
                                               child: Builder(
                                                 builder: (context) {
-                                                  final upcomingInfo =
-                                                      _getUpcomingBusesInfo(
-                                                        busCtrl,
-                                                        langCtrl,
-                                                        easyRead: easyRead,
-                                                      );
+                                                  final upcomingInfo = _getUpcomingBusesInfo(busCtrl, langCtrl, easyRead: easyRead);
                                                   return Column(
-                                                    crossAxisAlignment:
-                                                        CrossAxisAlignment
-                                                            .start,
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
                                                     children: [
                                                       // 🌟 絕對對齊：中心水平對齊
                                                       Row(
-                                                        crossAxisAlignment:
-                                                            CrossAxisAlignment
-                                                                .center,
+                                                        crossAxisAlignment: CrossAxisAlignment.center, 
                                                         children: [
                                                           SizedBox(
                                                             width: seqWidth,
-                                                            child: Text(
-                                                              '${stop.seq}.',
-                                                              style: TextStyle(
-                                                                color: isDark
-                                                                    ? Colors
-                                                                          .white
-                                                                    : Colors
-                                                                          .black,
-                                                                fontSize:
-                                                                    stopInfoSize,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .bold,
-                                                              ),
-                                                            ),
+                                                            child: Text('${stop.seq}.', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: stopInfoSize, fontWeight: FontWeight.bold)),
                                                           ),
                                                           Expanded(
                                                             child: Text(
-                                                              '${stop.getLocalizedName(langCtrl.currentLanguage)} (${stop.code})',
-                                                              style: TextStyle(
-                                                                color: isDark
-                                                                    ? Colors
-                                                                          .white
-                                                                    : Colors
-                                                                          .black,
-                                                                fontSize:
-                                                                    stopInfoSize,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .bold,
-                                                              ),
+                                                              '${stop.getLocalizedName(langCtrl.currentLanguage)} (${stop.code})', 
+                                                              style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: stopInfoSize, fontWeight: FontWeight.bold)
                                                             ),
                                                           ),
-                                                          const SizedBox(
-                                                            width: 8,
-                                                          ),
+                                                          const SizedBox(width: 8),
                                                           Row(
-                                                            mainAxisSize:
-                                                                MainAxisSize
-                                                                    .min,
-                                                            crossAxisAlignment:
-                                                                CrossAxisAlignment
-                                                                    .center,
+                                                            mainAxisSize: MainAxisSize.min,
+                                                            crossAxisAlignment: CrossAxisAlignment.center,
                                                             children: [
                                                               AnimatedSize(
-                                                                duration:
-                                                                    const Duration(
-                                                                      milliseconds:
-                                                                          350,
-                                                                    ),
-                                                                curve: Curves
-                                                                    .easeOutCubic,
-                                                                child:
-                                                                    busCtrl.showRouteNotices &&
-                                                                        _hasAnyStopWarning(
-                                                                          stop,
-                                                                        )
+                                                                duration: const Duration(milliseconds: 350),
+                                                                curve: Curves.easeOutCubic,
+                                                                child: busCtrl.showRouteNotices && _hasAnyStopWarning(stop)
                                                                     ? Padding(
-                                                                        padding: const EdgeInsets.only(
-                                                                          right:
-                                                                              4.0,
-                                                                        ),
-                                                                        child: BlinkingWarningIcon(
-                                                                          onTap: () => _openStopWarning(
-                                                                            stop,
-                                                                          ),
-                                                                        ),
+                                                                        padding: const EdgeInsets.only(right: 4.0),
+                                                                        child: BlinkingWarningIcon(onTap: () => _openStopWarning(stop)),
                                                                       )
                                                                     : const SizedBox.shrink(),
                                                               ),
                                                               IconButton(
                                                                 icon: Icon(
-                                                                  isAlarmActive
-                                                                      ? Icons
-                                                                            .notifications_active
-                                                                      : Icons
-                                                                            .notifications_none,
-                                                                  color:
-                                                                      hasBoardingAlarm
-                                                                      ? Colors
-                                                                            .amber
-                                                                      : (hasAlightingAlarm
-                                                                            ? Colors.blueAccent
-                                                                            : Colors.grey),
+                                                                  isAlarmActive ? Icons.notifications_active : Icons.notifications_none, 
+                                                                  color: hasBoardingAlarm ? Colors.amber : (hasAlightingAlarm ? Colors.blueAccent : Colors.grey)
                                                                 ),
-                                                                padding:
-                                                                    EdgeInsets
-                                                                        .zero,
-                                                                constraints:
-                                                                    const BoxConstraints(
-                                                                      minHeight:
-                                                                          32,
-                                                                      minWidth:
-                                                                          32,
-                                                                    ),
-                                                                tooltip:
-                                                                    langCtrl.tr(
-                                                                      'set_alarm',
-                                                                    ),
-                                                                onPressed: () =>
-                                                                    _showAlarmBottomSheet(
-                                                                      context,
-                                                                      stop,
-                                                                      busCtrl,
-                                                                      locCtrl,
-                                                                      isDark,
-                                                                    ),
+                                                                padding: EdgeInsets.zero, 
+                                                                constraints: const BoxConstraints(minHeight: 32, minWidth: 32), 
+                                                                tooltip: langCtrl.tr('set_alarm'),
+                                                                onPressed: () => _showAlarmBottomSheet(context, stop, busCtrl, locCtrl, isDark),
                                                               ),
                                                             ],
                                                           ),
                                                         ],
                                                       ),
-                                                      if (easyRead &&
-                                                          busCtrl
-                                                              .showRouteNotices &&
-                                                          _hasAnyStopWarning(
-                                                            stop,
-                                                          ))
+                                                      if (easyRead && busCtrl.showRouteNotices && _hasAnyStopWarning(stop))
                                                         Padding(
-                                                          padding:
-                                                              const EdgeInsets.only(
-                                                                top: 6,
-                                                              ),
+                                                          padding: const EdgeInsets.only(top: 6),
                                                           child: Text(
-                                                            langCtrl.tr(
-                                                              'easy_read_stop_closed',
-                                                            ),
+                                                            langCtrl.tr('easy_read_stop_closed'),
                                                             softWrap: true,
-                                                            style:
-                                                                const TextStyle(
-                                                                  color: Colors
-                                                                      .redAccent,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .w800,
-                                                                  fontSize: 18,
-                                                                  height: 1.3,
-                                                                ),
+                                                            style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w800, fontSize: 18, height: 1.3),
                                                           ),
                                                         ),
-                                                      const SizedBox(height: 8),
-
+                                                      const SizedBox(height: 8), 
+                                                      
                                                       IntrinsicHeight(
                                                         child: Row(
-                                                          crossAxisAlignment:
-                                                              CrossAxisAlignment
-                                                                  .stretch,
+                                                          crossAxisAlignment: CrossAxisAlignment.stretch,
                                                           children: [
                                                             Container(
-                                                              width: 4,
-                                                              decoration:
-                                                                  BoxDecoration(
-                                                                    color: Colors
-                                                                        .amber,
-                                                                    borderRadius:
-                                                                        BorderRadius.circular(
-                                                                          2,
-                                                                        ),
-                                                                  ),
+                                                              width: 4, 
+                                                              decoration: BoxDecoration(
+                                                                color: Colors.amber,
+                                                                borderRadius: BorderRadius.circular(2)
+                                                              )
                                                             ),
-                                                            const SizedBox(
-                                                              width: 10,
-                                                            ),
+                                                            const SizedBox(width: 10),
                                                             Expanded(
                                                               child: Column(
-                                                                crossAxisAlignment:
-                                                                    CrossAxisAlignment
-                                                                        .start,
-                                                                mainAxisAlignment:
-                                                                    MainAxisAlignment
-                                                                        .center,
+                                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                                mainAxisAlignment: MainAxisAlignment.center,
                                                                 children: [
-                                                                  if (!busCtrl
-                                                                      .showLiveArrivals)
+                                                                  if (!busCtrl.showLiveArrivals)
                                                                     Text(
-                                                                      langCtrl.tr(
-                                                                        'realtime_pending',
-                                                                      ),
-                                                                      softWrap:
-                                                                          true,
+                                                                      langCtrl.tr('realtime_pending'),
+                                                                      softWrap: true,
                                                                       style: TextStyle(
-                                                                        color:
-                                                                            isDark
-                                                                            ? Colors.grey[300]
-                                                                            : Colors.grey[800],
-                                                                        fontSize:
-                                                                            15,
-                                                                        height:
-                                                                            1.4,
-                                                                        fontWeight:
-                                                                            FontWeight.w600,
+                                                                        color: isDark ? Colors.grey[300] : Colors.grey[800],
+                                                                        fontSize: 15,
+                                                                        height: 1.4,
+                                                                        fontWeight: FontWeight.w600,
                                                                       ),
                                                                     )
                                                                   else ...[
-                                                                    const LiveTrackingBadge(),
-
-                                                                    if (busCtrl
-                                                                        .isLoadingETA)
-                                                                      const Padding(
-                                                                        padding: EdgeInsets.only(
-                                                                          top:
-                                                                              8.0,
-                                                                        ),
-                                                                        child: SizedBox(
-                                                                          width:
-                                                                              16,
-                                                                          height:
-                                                                              16,
-                                                                          child: CircularProgressIndicator(
-                                                                            strokeWidth:
-                                                                                2.5,
-                                                                            color:
-                                                                                Colors.amber,
-                                                                          ),
-                                                                        ),
-                                                                      )
-                                                                    else if (upcomingInfo
-                                                                        .isNotEmpty) ...[
-                                                                      const SizedBox(
-                                                                        height:
-                                                                            8,
-                                                                      ),
-                                                                      ...upcomingInfo.asMap().entries.map((
-                                                                        entry,
-                                                                      ) {
-                                                                        int
-                                                                        idx = entry
-                                                                            .key;
-                                                                        var busInfo =
-                                                                            entry.value;
-                                                                        bool
-                                                                        isSecondBus =
-                                                                            idx ==
-                                                                            1;
-                                                                        final statusText =
-                                                                            busInfo['status'] ??
-                                                                            '';
-                                                                        final statusColor =
-                                                                            isDark
-                                                                            ? (isSecondBus
-                                                                                  ? Colors.amber.shade200
-                                                                                  : Colors.amber)
-                                                                            : (isSecondBus
-                                                                                  ? Colors.orange.shade500
-                                                                                  : Colors.orange.shade700);
-                                                                        final plate =
-                                                                            busInfo['plate'];
-                                                                        if (!easyRead) {
-                                                                          return Padding(
-                                                                            padding: EdgeInsets.only(
-                                                                              top: isSecondBus
-                                                                                  ? 6.0
-                                                                                  : 0.0,
-                                                                            ),
-                                                                            child: Row(
-                                                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                                              crossAxisAlignment: CrossAxisAlignment.center,
-                                                                              children: [
-                                                                                Expanded(
-                                                                                  child: Text(
-                                                                                    statusText,
-                                                                                    style: TextStyle(
-                                                                                      color: statusColor,
-                                                                                      fontWeight: FontWeight.bold,
-                                                                                      fontSize: isSecondBus
-                                                                                          ? 13
-                                                                                          : 15,
-                                                                                    ),
-                                                                                  ),
-                                                                                ),
-                                                                                if (plate !=
-                                                                                        null &&
-                                                                                    plate.isNotEmpty)
-                                                                                  Text(
-                                                                                    '${langCtrl.tr('bus_plate')}$plate',
-                                                                                    style: TextStyle(
-                                                                                      color: isDark
-                                                                                          ? (isSecondBus
-                                                                                                ? Colors.grey[500]
-                                                                                                : Colors.grey[400])
-                                                                                          : (isSecondBus
-                                                                                                ? Colors.grey[600]
-                                                                                                : Colors.grey[800]),
-                                                                                      fontSize: 12,
-                                                                                      fontWeight: FontWeight.normal,
-                                                                                    ),
-                                                                                  ),
-                                                                              ],
-                                                                            ),
-                                                                          );
-                                                                        }
-                                                                        final spoken =
-                                                                            statusText;
+                                                                  const LiveTrackingBadge(),
+                                                                  
+                                                                  if (busCtrl.isLoadingETA)
+                                                                    const Padding(padding: EdgeInsets.only(top: 8.0), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.amber)))
+                                                                  else if (upcomingInfo.isNotEmpty) ...[
+                                                                    const SizedBox(height: 8),
+                                                                    ...upcomingInfo.asMap().entries.map((entry) {
+                                                                      int idx = entry.key; var busInfo = entry.value; bool isSecondBus = idx == 1;
+                                                                      final statusText = busInfo['status'] ?? '';
+                                                                      final statusColor = isDark ? (isSecondBus ? Colors.amber.shade200 : Colors.amber) : (isSecondBus ? Colors.orange.shade500 : Colors.orange.shade700);
+                                                                      final plate = busInfo['plate'];
+                                                                      if (!easyRead) {
                                                                         return Padding(
-                                                                          key: ValueKey(
-                                                                            'arrival-$idx',
-                                                                          ),
-                                                                          padding: EdgeInsets.only(
-                                                                            top:
-                                                                                isSecondBus
-                                                                                ? 10.0
-                                                                                : 0.0,
-                                                                          ),
-                                                                          child: GestureDetector(
-                                                                            onTap:
-                                                                                spoken.isEmpty
-                                                                                ? null
-                                                                                : () {
-                                                                                    ArrivalSpeaker.shared.speak(
-                                                                                      spoken,
-                                                                                      langCtrl.currentLanguage,
-                                                                                    );
-                                                                                  },
-                                                                            child: Column(
-                                                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                                                              children: [
+                                                                          padding: EdgeInsets.only(top: isSecondBus ? 6.0 : 0.0),
+                                                                          child: Row(
+                                                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                                            crossAxisAlignment: CrossAxisAlignment.center,
+                                                                            children: [
+                                                                              Expanded(
+                                                                                child: Text(
+                                                                                  statusText, 
+                                                                                  style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: isSecondBus ? 13 : 15)
+                                                                                )
+                                                                              ),
+                                                                              if (plate != null && plate.isNotEmpty) 
                                                                                 Text(
-                                                                                  spoken,
-                                                                                  softWrap: true,
-                                                                                  style: TextStyle(
-                                                                                    color: statusColor,
-                                                                                    fontWeight: FontWeight.w800,
-                                                                                    fontSize: isSecondBus
-                                                                                        ? 20
-                                                                                        : 22,
-                                                                                    height: 1.3,
-                                                                                  ),
+                                                                                  '${langCtrl.tr('bus_plate')}$plate',
+                                                                                  style: TextStyle(color: isDark ? (isSecondBus ? Colors.grey[500] : Colors.grey[400]) : (isSecondBus ? Colors.grey[600] : Colors.grey[800]), fontSize: 12, fontWeight: FontWeight.normal)
                                                                                 ),
-                                                                                if (plate !=
-                                                                                        null &&
-                                                                                    plate.isNotEmpty) ...[
-                                                                                  const SizedBox(
-                                                                                    height: 4,
-                                                                                  ),
-                                                                                  Text(
-                                                                                    '${langCtrl.tr('bus_plate')}$plate',
-                                                                                    softWrap: true,
-                                                                                    style: TextStyle(
-                                                                                      color: isDark
-                                                                                          ? Colors.white
-                                                                                          : const Color(
-                                                                                              0xFF111111,
-                                                                                            ),
-                                                                                      fontSize: 18,
-                                                                                      fontWeight: FontWeight.w700,
-                                                                                      height: 1.3,
-                                                                                    ),
-                                                                                  ),
-                                                                                ],
-                                                                              ],
-                                                                            ),
+                                                                            ],
                                                                           ),
                                                                         );
-                                                                      }),
-                                                                    ],
+                                                                      }
+                                                                      final spoken = statusText;
+                                                                      return Padding(
+                                                                        key: ValueKey('arrival-$idx'),
+                                                                        padding: EdgeInsets.only(top: isSecondBus ? 10.0 : 0.0),
+                                                                        child: GestureDetector(
+                                                                          onTap: spoken.isEmpty
+                                                                              ? null
+                                                                              : () {
+                                                                                  ArrivalSpeaker.shared.speak(spoken, langCtrl.currentLanguage);
+                                                                                },
+                                                                          child: Column(
+                                                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                                                            children: [
+                                                                              Text(
+                                                                                spoken,
+                                                                                softWrap: true,
+                                                                                style: TextStyle(color: statusColor, fontWeight: FontWeight.w800, fontSize: isSecondBus ? 20 : 22, height: 1.3),
+                                                                              ),
+                                                                              if (plate != null && plate.isNotEmpty) ...[
+                                                                                const SizedBox(height: 4),
+                                                                                Text(
+                                                                                  '${langCtrl.tr('bus_plate')}$plate',
+                                                                                  softWrap: true,
+                                                                                  style: TextStyle(color: isDark ? Colors.white : const Color(0xFF111111), fontSize: 18, fontWeight: FontWeight.w700, height: 1.3),
+                                                                                ),
+                                                                              ],
+                                                                            ],
+                                                                          ),
+                                                                        ),
+                                                                      );
+                                                                    }),
+                                                                  ]
                                                                   ],
                                                                 ],
                                                               ),
@@ -1767,9 +1115,9 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                                           ],
                                                         ),
                                                       ),
-                                                    ],
+                                                    ]
                                                   );
-                                                },
+                                                }
                                               ),
                                             ),
                                           ),
@@ -1778,12 +1126,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                     ),
                                   ),
                                 ),
-                                Divider(
-                                  height: 1,
-                                  color: isDark
-                                      ? Colors.white.withValues(alpha: 0.1)
-                                      : Colors.black.withValues(alpha: 0.1),
-                                ),
+                                Divider(height: 1, color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.1)),
                               ],
                             );
                           }
@@ -1791,132 +1134,66 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                           return Column(
                             children: [
                               InkWell(
-                                onTap: () {
-                                  busCtrl.selectStop(stop.seq);
-                                  busCtrl.fetchBusETA();
-                                },
+                                onTap: () { busCtrl.selectStop(stop.seq); busCtrl.fetchBusETA(); },
                                 child: Padding(
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: easyRead ? 16 : 6,
-                                  ),
+                                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: easyRead ? 16 : 6), 
                                   child: Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.center,
                                     children: [
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
+                                          crossAxisAlignment: CrossAxisAlignment.start, 
+                                          mainAxisAlignment: MainAxisAlignment.center,
                                           children: [
                                             Row(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
+                                              crossAxisAlignment: CrossAxisAlignment.start,
                                               children: [
                                                 SizedBox(
                                                   width: seqWidth,
-                                                  child: Text(
-                                                    '${stop.seq}.',
-                                                    style: TextStyle(
-                                                      color: isDark
-                                                          ? Colors.white
-                                                          : Colors.black,
-                                                      fontSize: stopInfoSize,
-                                                      fontWeight:
-                                                          FontWeight.w500,
-                                                    ),
-                                                  ),
+                                                  child: Text('${stop.seq}.', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: stopInfoSize, fontWeight: FontWeight.w500)),
                                                 ),
                                                 Expanded(
                                                   child: Text(
-                                                    '${stop.getLocalizedName(langCtrl.currentLanguage)} (${stop.code})',
-                                                    style: TextStyle(
-                                                      color: isDark
-                                                          ? Colors.white
-                                                          : Colors.black,
-                                                      fontSize: stopInfoSize,
-                                                      fontWeight:
-                                                          FontWeight.w500,
-                                                    ),
+                                                    '${stop.getLocalizedName(langCtrl.currentLanguage)} (${stop.code})', 
+                                                    style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: stopInfoSize, fontWeight: FontWeight.w500)
                                                   ),
                                                 ),
                                               ],
                                             ),
-                                            if (easyRead &&
-                                                busCtrl.showRouteNotices &&
-                                                _hasAnyStopWarning(stop))
+                                            if (easyRead && busCtrl.showRouteNotices && _hasAnyStopWarning(stop))
                                               Padding(
-                                                padding: const EdgeInsets.only(
-                                                  top: 6,
-                                                ),
+                                                padding: const EdgeInsets.only(top: 6),
                                                 child: Text(
-                                                  langCtrl.tr(
-                                                    'easy_read_stop_closed',
-                                                  ),
+                                                  langCtrl.tr('easy_read_stop_closed'),
                                                   softWrap: true,
-                                                  style: const TextStyle(
-                                                    color: Colors.redAccent,
-                                                    fontWeight: FontWeight.w800,
-                                                    fontSize: 18,
-                                                    height: 1.3,
-                                                  ),
+                                                  style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w800, fontSize: 18, height: 1.3),
                                                 ),
                                               ),
-                                          ],
-                                        ),
+                                          ]
+                                        )
                                       ),
-                                      if (busCtrl.showRouteNotices &&
-                                          _hasAnyStopWarning(stop)) ...[
+                                      if (busCtrl.showRouteNotices && _hasAnyStopWarning(stop)) ...[
                                         const SizedBox(width: 8),
-                                        BlinkingWarningIcon(
-                                          onTap: () => _openStopWarning(stop),
-                                        ),
+                                        BlinkingWarningIcon(onTap: () => _openStopWarning(stop)),
                                       ],
                                       const SizedBox(width: 8),
                                       IconButton(
-                                        icon: Icon(
-                                          isAlarmActive
-                                              ? Icons.notifications_active
-                                              : Icons.notifications_none,
-                                          color: hasBoardingAlarm
-                                              ? Colors.amber
-                                              : (hasAlightingAlarm
-                                                    ? Colors.blueAccent
-                                                    : Colors.grey),
-                                        ),
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(),
-                                        tooltip: langCtrl.tr('set_alarm'),
-                                        onPressed: () => _showAlarmBottomSheet(
-                                          context,
-                                          stop,
-                                          busCtrl,
-                                          locCtrl,
-                                          isDark,
-                                        ),
+                                        icon: Icon(isAlarmActive ? Icons.notifications_active : Icons.notifications_none, color: hasBoardingAlarm ? Colors.amber : (hasAlightingAlarm ? Colors.blueAccent : Colors.grey)),
+                                        padding: EdgeInsets.zero, constraints: const BoxConstraints(), tooltip: langCtrl.tr('set_alarm'),
+                                        onPressed: () => _showAlarmBottomSheet(context, stop, busCtrl, locCtrl, isDark),
                                       ),
                                     ],
                                   ),
                                 ),
                               ),
-                              Divider(
-                                height: 1,
-                                color: isDark
-                                    ? Colors.white.withValues(alpha: 0.1)
-                                    : Colors.black.withValues(alpha: 0.1),
-                              ),
+                              Divider(height: 1, color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.1)),
                             ],
                           );
                         },
                       )
                     : Center(
                         child: Text(
-                          AppTranslations.localizeErrorMessage(
-                            busCtrl.errorMessage ?? '',
-                            langCtrl.tr,
-                          ),
+                          AppTranslations.localizeErrorMessage(busCtrl.errorMessage ?? '', langCtrl.tr),
                           style: const TextStyle(color: Colors.redAccent),
                         ),
                       ),
@@ -1954,9 +1231,7 @@ class _FareTableButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.1)
-              : Colors.black.withValues(alpha: 0.05),
+          color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: isDark ? Colors.white24 : Colors.black12),
         ),
@@ -1969,11 +1244,7 @@ class _FareTableButton extends StatelessWidget {
               label,
               softWrap: false,
               maxLines: 1,
-              style: TextStyle(
-                color: color,
-                fontSize: fontSize,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(color: color, fontSize: fontSize, fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -2041,9 +1312,7 @@ class _FittingHeaderLabel extends StatelessWidget {
   }
 
   TextStyle _style(TextStyle base, double fontSize) {
-    return base.merge(
-      TextStyle(color: color, fontSize: fontSize, height: _height),
-    );
+    return base.merge(TextStyle(color: color, fontSize: fontSize, height: _height));
   }
 
   bool _fits(
@@ -2098,48 +1367,22 @@ class VirtualMapPainter extends CustomPainter {
   VirtualMapPainter({required this.isDark});
   @override
   void paint(Canvas canvas, Size size) {
-    final nodeInnerColor = isDark
-        ? const Color(0xFF101010)
-        : const Color(0xFFF7F7F7);
+    final nodeInnerColor = isDark ? const Color(0xFF101010) : const Color(0xFFF7F7F7); 
 
-    final lineColor1 = isDark
-        ? Colors.white.withValues(alpha: 0.06)
-        : Colors.black.withValues(alpha: 0.05);
-    final lineColor2 = isDark
-        ? Colors.white.withValues(alpha: 0.03)
-        : Colors.black.withValues(alpha: 0.03);
+    final lineColor1 = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.05);
+    final lineColor2 = isDark ? Colors.white.withValues(alpha: 0.03) : Colors.black.withValues(alpha: 0.03);
 
-    final paintLine1 = Paint()
-      ..color = lineColor1
-      ..strokeWidth = 6.0
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-    final paintLine2 = Paint()
-      ..color = lineColor2
-      ..strokeWidth = 4.0
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    final paintNodeInner = Paint()
-      ..color = nodeInnerColor
-      ..style = PaintingStyle.fill;
-    final paintNodeOuter1 = Paint()
-      ..color = lineColor1
-      ..style = PaintingStyle.fill;
-    final paintNodeOuter2 = Paint()
-      ..color = lineColor2
-      ..style = PaintingStyle.fill;
+    final paintLine1 = Paint()..color = lineColor1..strokeWidth = 6.0..style = PaintingStyle.stroke..strokeCap = StrokeCap.round..strokeJoin = StrokeJoin.round;
+    final paintLine2 = Paint()..color = lineColor2..strokeWidth = 4.0..style = PaintingStyle.stroke..strokeCap = StrokeCap.round..strokeJoin = StrokeJoin.round;
+    
+    final paintNodeInner = Paint()..color = nodeInnerColor..style = PaintingStyle.fill;
+    final paintNodeOuter1 = Paint()..color = lineColor1..style = PaintingStyle.fill;
+    final paintNodeOuter2 = Paint()..color = lineColor2..style = PaintingStyle.fill;
 
     final w = size.width;
     final h = size.height;
 
-    void drawTransitRoute(
-      List<Offset> points,
-      Paint linePaint,
-      Paint nodePaint,
-    ) {
+    void drawTransitRoute(List<Offset> points, Paint linePaint, Paint nodePaint) {
       if (points.isEmpty) return;
       final path = Path();
       path.moveTo(points[0].dx, points[0].dy);
@@ -2147,49 +1390,17 @@ class VirtualMapPainter extends CustomPainter {
         path.lineTo(points[i].dx, points[i].dy);
       }
       canvas.drawPath(path, linePaint);
-
+      
       for (final pt in points) {
         if (pt.dx <= 0 || pt.dx >= w || pt.dy <= 0 || pt.dy >= h) continue;
-        canvas.drawCircle(pt, 6.5, nodePaint);
-        canvas.drawCircle(pt, 3.0, paintNodeInner);
+        canvas.drawCircle(pt, 6.5, nodePaint); 
+        canvas.drawCircle(pt, 3.0, paintNodeInner); 
       }
     }
 
-    drawTransitRoute(
-      [
-        Offset(-20, h * 0.15),
-        Offset(w * 0.35, h * 0.15),
-        Offset(w * 0.65, h * 0.35),
-        Offset(w * 0.65, h * 0.75),
-        Offset(w * 0.85, h * 0.88),
-        Offset(w + 20, h * 0.88),
-      ],
-      paintLine1,
-      paintNodeOuter1,
-    );
-    drawTransitRoute(
-      [
-        Offset(w * 0.15, -20),
-        Offset(w * 0.15, h * 0.4),
-        Offset(w * 0.4, h * 0.55),
-        Offset(w * 0.8, h * 0.55),
-        Offset(w * 1.05, h * 0.4),
-      ],
-      paintLine2,
-      paintNodeOuter2,
-    );
-    drawTransitRoute(
-      [
-        Offset(-20, h * 0.6),
-        Offset(w * 0.25, h * 0.6),
-        Offset(w * 0.45, h * 0.72),
-        Offset(w * 0.45, h + 20),
-      ],
-      paintLine2,
-      paintNodeOuter2,
-    );
+    drawTransitRoute([Offset(-20, h * 0.15), Offset(w * 0.35, h * 0.15), Offset(w * 0.65, h * 0.35), Offset(w * 0.65, h * 0.75), Offset(w * 0.85, h * 0.88), Offset(w + 20, h * 0.88)], paintLine1, paintNodeOuter1);
+    drawTransitRoute([Offset(w * 0.15, -20), Offset(w * 0.15, h * 0.4), Offset(w * 0.4, h * 0.55), Offset(w * 0.8, h * 0.55), Offset(w * 1.05, h * 0.4)], paintLine2, paintNodeOuter2);
+    drawTransitRoute([Offset(-20, h * 0.6), Offset(w * 0.25, h * 0.6), Offset(w * 0.45, h * 0.72), Offset(w * 0.45, h + 20)], paintLine2, paintNodeOuter2);
   }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  @override bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
