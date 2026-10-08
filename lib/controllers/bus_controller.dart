@@ -1390,7 +1390,7 @@ class BusController extends ChangeNotifier {
   }
 
   /// 跟最新 GPS。車速 0（或低過約 2km/h）就停低；
-  /// 只有車郁緊先由嗰個 GPS 位再推前，最多一個輪詢間隔。
+  /// 只有車郁緊先由嗰個 GPS 位再推前，大約 1 至 2 秒，然後停低等下一個定位。
   /// 超過 10 秒冇新資料就停，唔好再沿用舊車速。
   /// [now] 畀測試固定個鐘；平時用而家。
   bool advanceBusMotion([DateTime? now]) {
@@ -1473,7 +1473,7 @@ class BusController extends ChangeNotifier {
   }
 
   /// 新一次 GPS：投影到呢段路線，約 1 秒滑過去。
-  /// 之後車速 > 2km/h 先由嗰點再推，最多 6 秒；車停就停。
+  /// 之後車速 > 2km/h 先由嗰點再推，大約 2 秒；車停就停。
   ({_BusLegMotion motion, bool moved}) _stepLeg({
     required Bus bus,
     required DateTime now,
@@ -1485,7 +1485,7 @@ class BusController extends ChangeNotifier {
   }) {
     const stopKmh = 2.0;
     const easeSeconds = 1.0;
-    const extrapolateSeconds = 6.0;
+    const extrapolateSeconds = 2.0;
     const staleSeconds = 10.0;
 
     final fresh = prev == null || !prev.matchesFix(bus);
