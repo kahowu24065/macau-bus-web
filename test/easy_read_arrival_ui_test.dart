@@ -20,6 +20,13 @@ import 'package:macau_bus_app/views/widgets/blinking_warning_icon.dart';
 class _FakeSpeech implements SpeechEngine {
   String? spoken;
   String? language;
+  int speakCount = 0;
+
+  void reset() {
+    spoken = null;
+    language = null;
+    speakCount = 0;
+  }
 
   @override
   Future<void> prepareIos() async {}
@@ -36,6 +43,7 @@ class _FakeSpeech implements SpeechEngine {
   @override
   Future<void> speak(String text) async {
     spoken = text;
+    speakCount++;
   }
 }
 
@@ -61,8 +69,7 @@ void main() {
     SharedPreferences.setMockInitialValues({'language_code': 'zh'});
     OpenDataConfig.instance.debugReset();
     ArrivalSpeaker.shared = ArrivalSpeaker(engine: fake, isWeb: false, isIos: false);
-    fake.spoken = null;
-    fake.language = null;
+    fake.reset();
   });
 
   tearDown(() {
@@ -138,6 +145,134 @@ void main() {
     await tester.pump();
     expect(fake.spoken, '4 分鐘後到');
     expect(fake.language, 'zh-HK');
+    expect(fake.speakCount, 1);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    bus.dispose();
+    lang.dispose();
+  });
+
+  testWidgets('easy read reads the arrival from the stop row and leaves row buttons alone', (tester) async {
+    tester.view.physicalSize = const Size(400, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    StopDetourDetailPage.debugLoad = ({
+      required String route,
+      required String stationCode,
+      required String lang,
+    }) async {
+      return {
+        'suspendStops': ['站$stationCode'],
+        'alternativeStops': ['臨時站'],
+      };
+    };
+    addTearDown(() => StopDetourDetailPage.debugLoad = null);
+
+    OpenDataConfig.instance.debugApply(
+      configRealtime: true,
+      configRouteNotices: true,
+      etaRealtime: true,
+    );
+    final lang = LanguageController();
+    final bus = BusController();
+    bus.setRoute('3');
+    bus.stopsList = [
+      for (var i = 1; i <= 5; i++)
+        i == 2 ? _stop(i).copyWith(hasAlert: true) : _stop(i),
+    ];
+    bus.selectedStopSeq = 5;
+    bus.etaData = {'status': '約 4 分鐘'};
+    bus.allBusesList = const [
+      Bus(
+        busLicense: 'MB-1',
+        lat: 22.2,
+        lng: 113.55,
+        speed: 20,
+        currentStopSeq: 3,
+        etaMinutes: 4,
+      ),
+      Bus(
+        busLicense: 'MB-2',
+        lat: 22.2,
+        lng: 113.55,
+        speed: 20,
+        currentStopSeq: 1,
+        etaMinutes: 11,
+      ),
+    ];
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<BusController>.value(value: bus),
+          ChangeNotifierProvider<LanguageController>.value(value: lang),
+          ChangeNotifierProvider(create: (_) => LocationController()),
+          ChangeNotifierProvider(create: (_) => BackgroundController()),
+          ChangeNotifierProvider(create: (_) => NavigationController()),
+          ChangeNotifierProvider(create: (_) => EasyReadModeController.fixed(true)),
+        ],
+        child: MaterialApp(
+          theme: ThemeData.dark(),
+          home: const BusRouteScreen(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    final selectedName = find.text('站5 (M5/2)');
+    await tester.ensureVisible(selectedName);
+    await tester.pump();
+    await tester.tap(selectedName);
+    await tester.pump();
+    expect(bus.selectedStopSeq, 5);
+    expect(fake.spoken, '4 分鐘後到');
+    expect(fake.speakCount, 1);
+
+    fake.reset();
+    await tester.ensureVisible(find.text('11 分鐘後到'));
+    await tester.pump();
+    await tester.tap(find.text('11 分鐘後到'));
+    await tester.pump();
+    expect(fake.spoken, '11 分鐘後到');
+    expect(fake.speakCount, 1);
+
+    fake.reset();
+    final otherName = find.text('站1 (M1/2)');
+    await tester.ensureVisible(otherName);
+    await tester.pump();
+    await tester.tap(otherName);
+    await tester.pump();
+    expect(bus.selectedStopSeq, 1);
+    expect(fake.spoken, '即將到站');
+    expect(fake.speakCount, 1);
+
+    fake.reset();
+    final selectedRow = find.ancestor(of: find.text('站1 (M1/2)'), matching: find.byType(InkWell)).first;
+    await tester.ensureVisible(selectedRow);
+    await tester.pump();
+    await tester.tap(find.descendant(of: selectedRow, matching: find.byType(IconButton)));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('設定提醒'), findsOneWidget);
+    expect(fake.spoken, isNull);
+    expect(fake.speakCount, 0);
+
+    Navigator.of(tester.element(find.text('設定提醒'))).pop();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    final warning = find.byType(BlinkingWarningIcon);
+    expect(warning, findsOneWidget);
+    await tester.ensureVisible(warning);
+    await tester.pump();
+    await tester.tap(warning);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.byType(StopDetourDetailPage), findsOneWidget);
+    expect(fake.spoken, isNull);
+    expect(fake.speakCount, 0);
 
     await tester.pumpWidget(const SizedBox.shrink());
     bus.dispose();

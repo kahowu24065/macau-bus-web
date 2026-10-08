@@ -489,6 +489,17 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     return upcoming;
   }
 
+  /// Easy Read: read the first arrival for this stop. Row taps still select
+  /// the stop; the bell and the closure icon keep their own handlers.
+  void _readEasyReadArrival(BusController busCtrl, LanguageController langCtrl, {required bool easyRead}) {
+    if (!easyRead) return;
+    final upcoming = _getUpcomingBusesInfo(busCtrl, langCtrl, easyRead: true);
+    if (upcoming.isEmpty) return;
+    final spoken = (upcoming.first['status'] ?? '').trim();
+    if (spoken.isEmpty) return;
+    ArrivalSpeaker.shared.speak(spoken, langCtrl.currentLanguage);
+  }
+
   void _showAlarmBottomSheet(BuildContext context, dynamic stop, BusController busCtrl, LocationController locCtrl, bool isDark) {
     final langCtrl = context.read<LanguageController>();
     final localizedName = stop.getLocalizedName(langCtrl.currentLanguage);
@@ -952,7 +963,11 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                         child: Material(
                                           color: Colors.transparent,
                                           child: InkWell(
-                                            onTap: () { busCtrl.selectStop(stop.seq); busCtrl.fetchBusETA(); },
+                                            onTap: () {
+                                              busCtrl.selectStop(stop.seq);
+                                              busCtrl.fetchBusETA();
+                                              _readEasyReadArrival(busCtrl, langCtrl, easyRead: easyRead);
+                                            },
                                             child: Padding(
                                               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0), 
                                               child: Builder(
@@ -1144,7 +1159,11 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                           return Column(
                             children: [
                               InkWell(
-                                onTap: () { busCtrl.selectStop(stop.seq); busCtrl.fetchBusETA(); },
+                                onTap: () {
+                                  busCtrl.selectStop(stop.seq);
+                                  busCtrl.fetchBusETA();
+                                  _readEasyReadArrival(busCtrl, langCtrl, easyRead: easyRead);
+                                },
                                 child: Padding(
                                   padding: EdgeInsets.symmetric(horizontal: 16, vertical: easyRead ? 16 : 6), 
                                   child: Row(
