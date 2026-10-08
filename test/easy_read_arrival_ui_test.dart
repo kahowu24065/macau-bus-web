@@ -654,7 +654,7 @@ void main() {
 
     expect(find.byType(AlertDialog), findsNothing);
     expect(find.byType(StopDetourDetailPage), findsOneWidget);
-    expect(find.text('暫停停靠站點：'), findsOneWidget);
+    expect(find.text('暫時停靠站點：'), findsOneWidget);
     expect(find.text('臨時 / 替代站點：'), findsOneWidget);
     expect(find.text('改道通告'), findsNothing);
 
