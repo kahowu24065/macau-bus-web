@@ -518,21 +518,13 @@ class BusController extends ChangeNotifier {
     }
 
     final stopName = stop == null ? '' : stop.getLocalizedName(currentLang);
-    final pushToStart = await LiveActivityBridge.pushToStartToken();
-    String? activityToken;
-    if (pushToStart == null) {
-      activityToken = await LiveActivityBridge.startActivity(
-        route: currentRoute,
-        stopName: stopName,
-        minutes: 0,
-        text: stopName,
-      );
-    }
-
     final reminderId = 'br-${DateTime.now().microsecondsSinceEpoch}';
     final stopsPayload = [
       for (final item in stopsList) {'seq': item.seq, 'lat': item.lat, 'lng': item.lng},
     ];
+    // Register before any Live Activity token. The token stream does not end
+    // when the system has nothing to deliver, and waiting for it left the
+    // sheet up and never reached this POST.
     final response = await BoardingReminderClient.register({
       'reminderId': reminderId,
       'route': currentRoute,
@@ -543,20 +535,10 @@ class BusController extends ChangeNotifier {
       'lat': choice.lat,
       'lng': choice.lng,
       'lang': currentLang,
-      if (activityToken != null) 'activityToken': activityToken,
-      if (pushToStart != null) 'pushToStartToken': pushToStart,
       'stops': stopsPayload,
     });
     if (!response.ok) {
-      await LiveActivityBridge.end();
       return BoardingReminderOutcome.failed(boardingServerMessageKey(response.code));
-    }
-
-    if (activityToken != null && response.text != null) {
-      await LiveActivityBridge.update(
-        minutes: response.minutes ?? 0,
-        text: response.text!,
-      );
     }
 
     _boardingRestorePosted = true;
@@ -572,13 +554,64 @@ class BusController extends ChangeNotifier {
       lng: choice.lng!,
       stopName: stopName,
       startedAt: response.startedAt,
-      activityToken: activityToken,
-      pushToStart: pushToStart,
+      activityToken: null,
+      pushToStart: null,
       stopsPayload: stopsPayload,
     );
     await _stopLegacyBoardingPoll();
     notifyListeners();
+    final minutes = response.minutes ?? 0;
+    final text = (response.text == null || response.text!.isEmpty) ? stopName : response.text!;
+    unawaited(_presentBoardingActivity(
+      reminderId: reminderId,
+      stopName: stopName,
+      minutes: minutes,
+      text: text,
+    ));
     return const BoardingReminderOutcome.started();
+  }
+
+  /// Shows the one Live Activity and, if a token arrives, hands it to the server.
+  /// Neither step is allowed to delay [setBoardingStop].
+  Future<void> _presentBoardingActivity({
+    required String reminderId,
+    required String stopName,
+    required int minutes,
+    required String text,
+  }) async {
+    final activityToken = await LiveActivityBridge.startActivity(
+      route: currentRoute,
+      stopName: stopName,
+      minutes: minutes,
+      text: text,
+    );
+    if (_boardingReminderId != reminderId) {
+      await LiveActivityBridge.end();
+      return;
+    }
+    final pushToStart = await LiveActivityBridge.pushToStartToken();
+    if (_boardingReminderId != reminderId) {
+      await LiveActivityBridge.end();
+      return;
+    }
+    if (activityToken != null && activityToken.isNotEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_reminderTokenKey, activityToken);
+    }
+    if (pushToStart != null && pushToStart.isNotEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_reminderPushStartKey, pushToStart);
+    }
+    if (_boardingReminderId != reminderId) return;
+    if ((activityToken == null || activityToken.isEmpty) &&
+        (pushToStart == null || pushToStart.isEmpty)) {
+      return;
+    }
+    await BoardingReminderClient.register({
+      'reminderId': reminderId,
+      if (activityToken != null && activityToken.isNotEmpty) 'activityToken': activityToken,
+      if (pushToStart != null && pushToStart.isNotEmpty) 'pushToStartToken': pushToStart,
+    });
   }
 
   BusStop? _stopBySeq(int seq) {
@@ -599,10 +632,15 @@ class BusController extends ChangeNotifier {
   void _listenForActivityToken(String reminderId) {
     LiveActivityBridge.onActivityToken = (token) {
       if (_boardingReminderId != reminderId || token.isEmpty) return;
-      unawaited(BoardingReminderClient.register({
-        'reminderId': reminderId,
-        'activityToken': token,
-      }));
+      unawaited(() async {
+        final prefs = await SharedPreferences.getInstance();
+        if (_boardingReminderId != reminderId) return;
+        await prefs.setString(_reminderTokenKey, token);
+        await BoardingReminderClient.register({
+          'reminderId': reminderId,
+          'activityToken': token,
+        });
+      }());
     };
   }
 

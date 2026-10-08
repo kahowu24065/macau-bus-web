@@ -2,17 +2,16 @@ import ActivityKit
 import SwiftUI
 import WidgetKit
 
-/// Dynamic Island / Lock Screen UI for the boarding reminder.
+/// One Live Activity for the boarding reminder.
 ///
-/// This file is not a member of the Runner target. Add an iOS Widget Extension
-/// named BoardingLiveActivity (bundle id mo.mbka.bus.BoardingLiveActivity),
-/// enable Live Activities on the App ID, and compile this file plus
-/// BoardingActivityAttributes into that extension. The attributes struct must
-/// stay identical to ios/Runner/BoardingLiveActivityBridge.swift.
+/// Phones with a Dynamic Island show this configuration there. Phones without
+/// one show the same activity on the Lock Screen and in the notification list.
+/// There is no second notification. The text is the predicted-minutes sentence
+/// from the app, never a remaining-stop count.
 ///
-/// The view shows the predicted minutes only. It does not show a stop count.
+/// BoardingActivityAttributes must stay identical to the copy in
+/// ios/Runner/BoardingLiveActivityBridge.swift.
 
-@available(iOS 16.1, *)
 struct BoardingActivityAttributes: ActivityAttributes {
   public struct ContentState: Codable, Hashable {
     var minutes: Int
@@ -23,16 +22,16 @@ struct BoardingActivityAttributes: ActivityAttributes {
   var stopName: String
 }
 
-@available(iOS 16.1, *)
 struct BoardingLiveActivityWidget: Widget {
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: BoardingActivityAttributes.self) { context in
-      VStack(alignment: .leading, spacing: 4) {
+      VStack(alignment: .leading, spacing: 6) {
         Text(context.attributes.route)
           .font(.headline)
         Text(context.state.text)
           .font(.body)
       }
+      .frame(maxWidth: .infinity, alignment: .leading)
       .padding()
     } dynamicIsland: { context in
       DynamicIsland {
@@ -46,9 +45,10 @@ struct BoardingLiveActivityWidget: Widget {
         }
         DynamicIslandExpandedRegion(.bottom) {
           Text(context.state.text)
+            .font(.body)
         }
       } compactLeading: {
-        Text(context.attributes.route)
+        Image(systemName: "bus")
       } compactTrailing: {
         Text(minuteLabel(context.state.minutes))
       } minimal: {
@@ -58,7 +58,13 @@ struct BoardingLiveActivityWidget: Widget {
   }
 }
 
-@available(iOS 16.1, *)
 private func minuteLabel(_ minutes: Int) -> String {
   "\(minutes)m"
+}
+
+@main
+struct BoardingLiveActivityBundle: WidgetBundle {
+  var body: some Widget {
+    BoardingLiveActivityWidget()
+  }
 }

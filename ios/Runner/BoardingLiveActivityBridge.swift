@@ -5,9 +5,9 @@ import Foundation
 /// Live Activity for the boarding reminder.
 ///
 /// Content state is predicted minutes and a localized sentence. It does not
-/// carry a stop count. The widget UI lives in ios/BoardingLiveActivity and is
-/// not an Xcode target yet, so the Dynamic Island will not render until that
-/// extension is added and the App ID has the Live Activities capability.
+/// carry a stop count. The same activity is rendered by the BoardingLiveActivity
+/// widget extension: Dynamic Island on phones that have one, and the Lock Screen
+/// plus the notification list on phones that do not.
 @available(iOS 16.1, *)
 struct BoardingActivityAttributes: ActivityAttributes {
   public struct ContentState: Codable, Hashable {
@@ -73,7 +73,9 @@ enum BoardingLiveActivityBridge {
         activity = try Activity.request(attributes: attributes, contentState: state, pushType: .token)
       }
       BoardingActivityTokenStore.shared.activity = activity
-      BoardingActivityTokenStore.shared.waitForActivityToken(activity: activity, result: result)
+      // The activity is already on screen. Do not wait for its push token;
+      // that stream can stay silent, and the method call would never return.
+      result(nil)
     } catch {
       result(nil)
     }
@@ -130,22 +132,26 @@ final class BoardingActivityTokenStore {
   var activity: Activity<BoardingActivityAttributes>?
   private var observeTask: Task<Void, Never>?
 
-  func waitForActivityToken(activity: Activity<BoardingActivityAttributes>, result: @escaping FlutterResult) {
-    Task {
-      let token = await Self.firstToken(from: activity.pushTokenUpdates, timeoutSeconds: 3)
-      DispatchQueue.main.async { result(token) }
-    }
-  }
-
   func observeNewActivities(onToken: @escaping (String) -> Void) {
     observeTask?.cancel()
     observeTask = Task {
-      for await activity in Activity<BoardingActivityAttributes>.activityUpdates {
-        Task {
-          if let token = await Self.firstToken(from: activity.pushTokenUpdates, timeoutSeconds: 8) {
-            DispatchQueue.main.async { onToken(token) }
+      do {
+        for try await activity in Activity<BoardingActivityAttributes>.activityUpdates {
+          let updates = activity.pushTokenUpdates
+          Task {
+            do {
+              for try await data in updates {
+                let token = hex(data)
+                DispatchQueue.main.async { onToken(token) }
+                return
+              }
+            } catch {
+              return
+            }
           }
         }
+      } catch {
+        return
       }
     }
   }
@@ -161,29 +167,52 @@ final class BoardingActivityTokenStore {
     }
   }
 
+  /// Resolves on the first token or when [timeoutSeconds] elapses.
+  ///
+  /// A task group cannot be used here. It waits until every child finishes,
+  /// and ActivityKit's token stream does not finish or honor cancellation when
+  /// no token is coming, so the group would never return.
   private static func firstToken<S: AsyncSequence>(
     from updates: S,
     timeoutSeconds: Double
   ) async -> String? where S.Element == Data {
-    await withTaskGroup(of: String?.self) { group in
-      group.addTask {
+    let once = TokenOnce()
+    return await withCheckedContinuation { continuation in
+      let reader = Task {
+        var token: String?
         do {
           for try await data in updates {
-            return hex(data)
+            token = hex(data)
+            break
           }
         } catch {
-          return nil
+          token = nil
         }
-        return nil
+        if once.claim() {
+          continuation.resume(returning: token)
+        }
       }
-      group.addTask {
+      Task {
         try? await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
-        return nil
+        if once.claim() {
+          continuation.resume(returning: nil)
+        }
+        reader.cancel()
       }
-      let first = await group.next() ?? nil
-      group.cancelAll()
-      return first
     }
+  }
+}
+
+private final class TokenOnce {
+  private let lock = NSLock()
+  private var fired = false
+
+  func claim() -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    if fired { return false }
+    fired = true
+    return true
   }
 }
 
