@@ -36,7 +36,13 @@ class BusController extends ChangeNotifier {
   String? pendingAlarmTitle;
   String? pendingAlarmBody;
 
-  int countdownSeconds = 5;
+  /// Seconds between automatic `/bus-eta` polls while a route stays open.
+  /// The server reuses one transport-bureau snapshot for about this long,
+  /// so auto-refresh should not ask more often than that. A manual refresh
+  /// still calls [fetchBusETA] immediately.
+  static const int etaAutoRefreshSeconds = 10;
+
+  int countdownSeconds = etaAutoRefreshSeconds;
   Timer? _autoRefreshTimer;
   bool _etaInFlight = false;
   int _etaRequestId = 0;
@@ -486,7 +492,7 @@ class BusController extends ChangeNotifier {
 
   void startAutoRefresh() {
     stopAutoRefresh();
-    countdownSeconds = 5;
+    countdownSeconds = etaAutoRefreshSeconds;
     notifyListeners();
 
     _autoRefreshTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -496,7 +502,7 @@ class BusController extends ChangeNotifier {
         countdownSeconds--;
         notifyListeners();
       } else {
-        countdownSeconds = 5;
+        countdownSeconds = etaAutoRefreshSeconds;
         fetchBusETA(isAutoRefresh: true);
       }
     });

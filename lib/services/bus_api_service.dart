@@ -109,7 +109,20 @@ class BusApiService {
     }
   }
 
+  /// Test hook. Production leaves this null and requests `/bus-eta`.
+  @visibleForTesting
+  static Future<Map<String, dynamic>> Function(
+    String route,
+    int dir, {
+    int? targetStopSeq,
+    String lang,
+  })? debugFetchBusETA;
+
   static Future<Map<String, dynamic>> fetchBusETA(String route, int dir, {int? targetStopSeq, String lang = 'zh'}) async {
+    final override = debugFetchBusETA;
+    if (override != null) {
+      return override(route, dir, targetStopSeq: targetStopSeq, lang: lang);
+    }
     try {
       final seqParam = targetStopSeq != null ? '&targetStopSeq=$targetStopSeq' : '';
       final res = await _get(
