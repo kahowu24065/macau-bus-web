@@ -491,13 +491,21 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
 
   /// Easy Read: read the first arrival for this stop. Row taps still select
   /// the stop; the bell and the closure icon keep their own handlers.
-  void _readEasyReadArrival(BusController busCtrl, LanguageController langCtrl, {required bool easyRead}) {
+  void _readEasyReadArrival(
+    BusController busCtrl,
+    LanguageController langCtrl, {
+    required bool easyRead,
+    required String stopName,
+  }) {
     if (!easyRead) return;
     final upcoming = _getUpcomingBusesInfo(busCtrl, langCtrl, easyRead: true);
     if (upcoming.isEmpty) return;
-    final spoken = (upcoming.first['status'] ?? '').trim();
-    if (spoken.isEmpty) return;
-    ArrivalSpeaker.shared.speak(spoken, langCtrl.currentLanguage);
+    final status = (upcoming.first['status'] ?? '').trim();
+    if (status.isEmpty) return;
+    ArrivalSpeaker.shared.speak(
+      easyReadSpokenArrival(stopName: stopName, status: status, tr: langCtrl.tr),
+      langCtrl.currentLanguage,
+    );
   }
 
   void _showAlarmBottomSheet(BuildContext context, dynamic stop, BusController busCtrl, LocationController locCtrl, bool isDark) {
@@ -966,7 +974,12 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                             onTap: () {
                                               busCtrl.selectStop(stop.seq);
                                               busCtrl.fetchBusETA();
-                                              _readEasyReadArrival(busCtrl, langCtrl, easyRead: easyRead);
+                                              _readEasyReadArrival(
+                                                busCtrl,
+                                                langCtrl,
+                                                easyRead: easyRead,
+                                                stopName: stop.getLocalizedName(langCtrl.currentLanguage),
+                                              );
                                             },
                                             child: Padding(
                                               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0), 
@@ -1101,12 +1114,16 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                                                           ),
                                                                         );
                                                                       }
-                                                                      final spoken = statusText;
+                                                                      final spoken = easyReadSpokenArrival(
+                                                                        stopName: stop.getLocalizedName(langCtrl.currentLanguage),
+                                                                        status: statusText,
+                                                                        tr: langCtrl.tr,
+                                                                      );
                                                                       return Padding(
                                                                         key: ValueKey('arrival-$idx'),
                                                                         padding: EdgeInsets.only(top: isSecondBus ? 10.0 : 0.0),
                                                                         child: GestureDetector(
-                                                                          onTap: spoken.isEmpty
+                                                                          onTap: statusText.isEmpty
                                                                               ? null
                                                                               : () {
                                                                                   ArrivalSpeaker.shared.speak(spoken, langCtrl.currentLanguage);
@@ -1115,7 +1132,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                                                             crossAxisAlignment: CrossAxisAlignment.start,
                                                                             children: [
                                                                               Text(
-                                                                                spoken,
+                                                                                statusText,
                                                                                 softWrap: true,
                                                                                 style: TextStyle(color: statusColor, fontWeight: FontWeight.w800, fontSize: isSecondBus ? 20 : 22, height: 1.3),
                                                                               ),
@@ -1162,7 +1179,12 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                 onTap: () {
                                   busCtrl.selectStop(stop.seq);
                                   busCtrl.fetchBusETA();
-                                  _readEasyReadArrival(busCtrl, langCtrl, easyRead: easyRead);
+                                  _readEasyReadArrival(
+                                    busCtrl,
+                                    langCtrl,
+                                    easyRead: easyRead,
+                                    stopName: stop.getLocalizedName(langCtrl.currentLanguage),
+                                  );
                                 },
                                 child: Padding(
                                   padding: EdgeInsets.symmetric(horizontal: 16, vertical: easyRead ? 16 : 6), 

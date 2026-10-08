@@ -71,6 +71,8 @@ void main() {
       'easy_read_mode',
       'easy_read_mode_desc',
       'easy_read_eta_mins',
+      'easy_read_spoken_mins',
+      'easy_read_spoken_line',
       'easy_read_arriving_next',
       'easy_read_arriving_soon',
       'more_options',
@@ -154,6 +156,32 @@ void main() {
       ),
       'A chegar',
     );
+  });
+
+  test('easy read speech says the stop name then the arrival', () {
+    String line(String lang, String status) {
+      return easyReadSpokenArrival(
+        stopName: '慕拉士',
+        status: status,
+        tr: (key) => _tr(lang, key),
+      );
+    }
+
+    expect(line('zh', '5 分鐘後到'), '慕拉士，仍有5分鐘到');
+    expect(line('zh', '下一站到達'), '慕拉士，下一站到達');
+    expect(line('zh', '即將到站'), '慕拉士，即將到站');
+
+    expect(line('zhHans', '5 分钟后到'), '慕拉士，仍有5分钟到');
+    expect(line('zhHans', '下一站到达'), '慕拉士，下一站到达');
+    expect(line('zhHans', '即将到站'), '慕拉士，即将到站');
+
+    expect(line('en', 'In 5 min'), '慕拉士, still 5 min');
+    expect(line('en', 'Next stop'), '慕拉士, Next stop');
+    expect(line('en', 'Arriving soon'), '慕拉士, Arriving soon');
+
+    expect(line('pt', 'Chega em 5 min'), '慕拉士, ainda 5 min');
+    expect(line('pt', 'Próxima paragem'), '慕拉士, Próxima paragem');
+    expect(line('pt', 'A chegar'), '慕拉士, A chegar');
   });
 
   test('text scale undo restores the size under the header', () {

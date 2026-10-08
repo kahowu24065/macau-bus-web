@@ -143,7 +143,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('4 分鐘後到'));
     await tester.pump();
-    expect(fake.spoken, '4 分鐘後到');
+    expect(fake.spoken, '站5，仍有4分鐘到');
     expect(fake.language, 'zh-HK');
     expect(fake.speakCount, 1);
 
@@ -227,7 +227,7 @@ void main() {
     await tester.tap(selectedName);
     await tester.pump();
     expect(bus.selectedStopSeq, 5);
-    expect(fake.spoken, '4 分鐘後到');
+    expect(fake.spoken, '站5，仍有4分鐘到');
     expect(fake.speakCount, 1);
 
     fake.reset();
@@ -235,7 +235,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('11 分鐘後到'));
     await tester.pump();
-    expect(fake.spoken, '11 分鐘後到');
+    expect(fake.spoken, '站5，仍有11分鐘到');
     expect(fake.speakCount, 1);
 
     fake.reset();
@@ -245,7 +245,7 @@ void main() {
     await tester.tap(otherName);
     await tester.pump();
     expect(bus.selectedStopSeq, 1);
-    expect(fake.spoken, '即將到站');
+    expect(fake.spoken, '站1，即將到站');
     expect(fake.speakCount, 1);
 
     fake.reset();
