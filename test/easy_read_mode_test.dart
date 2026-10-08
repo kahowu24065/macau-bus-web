@@ -18,14 +18,16 @@ String _tr(String lang, String key) =>
 class _FakeSpeech implements SpeechEngine {
   final List<String> calls = [];
   bool failLanguages = false;
+  final Set<String> missing = {};
 
   @override
   Future<void> prepareIos() async {}
 
   @override
-  Future<void> setLanguage(String language) async {
+  Future<bool> setLanguage(String language) async {
     calls.add('lang:$language');
     if (failLanguages) throw StateError('no voice');
+    return !missing.contains(language);
   }
 
   @override
@@ -58,17 +60,57 @@ void main() {
   });
 
   test('fixed controller does not read preferences', () async {
-    SharedPreferences.setMockInitialValues({'easy_read_mode': true});
-    final fixed = EasyReadModeController.fixed(false);
-    await fixed.ready;
-    expect(fixed.enabled, isFalse);
+    SharedPreferences.setMockInitialValues({
+      'easy_read_mode': true,
+      'easy_read_speak_arrivals_normal': true,
+      'easy_read_speak_arrivals_easy': false,
+    });
+    final normal = EasyReadModeController.fixed(false);
+    await normal.ready;
+    expect(normal.enabled, isFalse);
+    expect(normal.speakArrivals, isFalse);
+
+    final easy = EasyReadModeController.fixed(true);
+    await easy.ready;
+    expect(easy.speakArrivals, isTrue);
+  });
+
+  test('arrival read-aloud keeps a separate choice for each mode', () async {
+    final first = EasyReadModeController();
+    await first.ready;
+    expect(first.enabled, isFalse);
+    expect(first.speakArrivals, isFalse);
+
+    await first.setEnabled(true);
+    expect(first.speakArrivals, isTrue);
+
+    await first.setSpeakArrivals(false);
+    await first.setEnabled(false);
+    expect(first.speakArrivals, isFalse);
+
+    await first.setSpeakArrivals(true);
+    await first.setEnabled(true);
+    expect(first.speakArrivals, isFalse);
+
+    await first.setEnabled(false);
+    expect(first.speakArrivals, isTrue);
+
+    final second = EasyReadModeController();
+    await second.ready;
+    expect(second.enabled, isFalse);
+    expect(second.speakArrivals, isTrue);
+    await second.setEnabled(true);
+    expect(second.speakArrivals, isFalse);
   });
 
   test('translations include easy read mode in all four languages', () {
     const keys = [
       'easy_read_mode',
       'easy_read_mode_desc',
+      'easy_read_speak_arrivals',
       'easy_read_eta_mins',
+      'easy_read_spoken_mins',
+      'easy_read_spoken_line',
       'easy_read_arriving_next',
       'easy_read_arriving_soon',
       'more_options',
@@ -85,6 +127,10 @@ void main() {
       }
     }
     expect(AppTranslations.data['zh']!['easy_read_mode'], '易讀模式');
+    expect(AppTranslations.data['zh']!['easy_read_speak_arrivals'], '讀出到站資訊');
+    expect(AppTranslations.data['zhHans']!['easy_read_speak_arrivals'], '读出到站资讯');
+    expect(AppTranslations.data['en']!['easy_read_speak_arrivals'], 'Read arrivals aloud');
+    expect(AppTranslations.data['pt']!['easy_read_speak_arrivals'], 'Ler chegadas em voz alta');
     expect(AppTranslations.data['zh']!['more_options'], '更多');
     expect(AppTranslations.data['zh']!['easy_read_eta_mins'], '@mins 分鐘後到');
     expect(AppTranslations.data['zh']!['easy_read_mode_desc'], contains('\n'));
@@ -154,6 +200,32 @@ void main() {
     );
   });
 
+  test('easy read speech says the stop name then the arrival', () {
+    String line(String lang, String status) {
+      return easyReadSpokenArrival(
+        stopName: '慕拉士',
+        status: status,
+        tr: (key) => _tr(lang, key),
+      );
+    }
+
+    expect(line('zh', '5 分鐘後到'), '慕拉士，仍有5分鐘到');
+    expect(line('zh', '下一站到達'), '慕拉士，下一站到達');
+    expect(line('zh', '即將到站'), '慕拉士，即將到站');
+
+    expect(line('zhHans', '5 分钟后到'), '慕拉士，仍有5分钟到');
+    expect(line('zhHans', '下一站到达'), '慕拉士，下一站到达');
+    expect(line('zhHans', '即将到站'), '慕拉士，即将到站');
+
+    expect(line('en', 'In 5 min'), '慕拉士, still 5 min');
+    expect(line('en', 'Next stop'), '慕拉士, Next stop');
+    expect(line('en', 'Arriving soon'), '慕拉士, Arriving soon');
+
+    expect(line('pt', 'Chega em 5 min'), '慕拉士, ainda 5 min');
+    expect(line('pt', 'Próxima paragem'), '慕拉士, Próxima paragem');
+    expect(line('pt', 'A chegar'), '慕拉士, A chegar');
+  });
+
   test('text scale undo restores the size under the header', () {
     expect(EasyReadTheme.undoTextScale(const TextScaler.linear(1.35)).scale(1), closeTo(1, 0.001));
     expect(
@@ -213,12 +285,44 @@ void main() {
     expect(await webSpeaker.speak('5 分鐘後到', 'zh'), isFalse);
 
     expect(await speaker.speak('   ', 'en'), isFalse);
-    expect(ArrivalSpeaker.localesFor('zhHans').first, 'zh-CN');
-    expect(ArrivalSpeaker.localesFor('pt').first, 'pt-PT');
-    expect(ArrivalSpeaker.localesFor('en').first, 'en-US');
   });
 
-  testWidgets('easy read more keeps special routes, the full list, and fares', (tester) async {
+  test('arrival speech maps each language to a voice', () async {
+    expect(ArrivalSpeaker.localesFor('zh'), ['zh-HK', 'zh-TW', 'zh-CN']);
+    expect(ArrivalSpeaker.localesFor('zhHans'), ['zh-CN', 'zh-Hans']);
+    expect(ArrivalSpeaker.localesFor('en'), ['en', 'en-US', 'en-GB']);
+    expect(ArrivalSpeaker.localesFor('pt'), ['pt', 'pt-PT', 'pt-BR']);
+
+    const phrases = {
+      'zh': '5 分鐘後到',
+      'zhHans': '5 分钟后到',
+      'en': 'In 5 min',
+      'pt': 'Chega em 5 min',
+    };
+    for (final entry in phrases.entries) {
+      final fake = _FakeSpeech();
+      final speaker = ArrivalSpeaker(engine: fake, isWeb: false, isIos: false);
+      expect(await speaker.speak(entry.value, entry.key), isTrue, reason: entry.key);
+      expect(
+        fake.calls.where((call) => call.startsWith('lang:')).toList(),
+        ['lang:${ArrivalSpeaker.localesFor(entry.key).first}'],
+        reason: entry.key,
+      );
+      expect(fake.calls, contains('say:${entry.value}'), reason: entry.key);
+    }
+
+    final missingMandarin = _FakeSpeech()..missing.add('zh-CN');
+    final mandarin = ArrivalSpeaker(engine: missingMandarin, isWeb: false, isIos: false);
+    expect(await mandarin.speak('5 分钟后到', 'zhHans'), isTrue);
+    expect(missingMandarin.calls, containsAllInOrder(['lang:zh-CN', 'lang:zh-Hans', 'say:5 分钟后到']));
+
+    final none = _FakeSpeech()..missing.addAll(['en', 'en-US', 'en-GB']);
+    final english = ArrivalSpeaker(engine: none, isWeb: false, isIos: false);
+    expect(await english.speak('In 5 min', 'en'), isFalse);
+    expect(none.calls.where((call) => call.startsWith('say:')), isEmpty);
+  });
+
+  testWidgets('easy read more keeps special routes and the full list', (tester) async {
     SharedPreferences.setMockInitialValues({'language_code': 'zh'});
     final lang = LanguageController();
     await tester.pumpWidget(
@@ -231,7 +335,10 @@ void main() {
 
     expect(find.text('特別班次'), findsOneWidget);
     expect(find.text('🚌 全澳巴士路線總覽'), findsOneWidget);
-    expect(find.text('車資表'), findsOneWidget);
+    expect(find.text('車資表'), findsNothing);
+    expect(find.text('车资表'), findsNothing);
+    expect(find.text('Tarifas'), findsNothing);
+    expect(find.text('Fares'), findsNothing);
     expect(find.text('路線規劃'), findsNothing);
     expect(find.text('改道通告'), findsNothing);
     expect(find.text('時間表'), findsNothing);

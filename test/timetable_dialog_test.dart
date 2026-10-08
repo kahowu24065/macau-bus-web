@@ -1,11 +1,20 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:macau_bus_app/constants/app_translations.dart';
+import 'package:macau_bus_app/controllers/easy_read_mode_controller.dart';
 import 'package:macau_bus_app/controllers/language_controller.dart';
 import 'package:macau_bus_app/services/dsat_timetable.dart';
+import 'package:macau_bus_app/theme/easy_read_theme.dart';
 import 'package:macau_bus_app/utils/service_label_i18n.dart';
+import 'package:macau_bus_app/views/widgets/easy_read_tap_haptics.dart';
+import 'package:macau_bus_app/views/widgets/preserve_chrome.dart';
 import 'package:macau_bus_app/views/widgets/timetable_dialog.dart';
 
 const _gold = Color(0xFFFFC107);
@@ -18,6 +27,45 @@ DsatTimetableSection _section(String title) => DsatTimetableSection(
   items: const [DsatFrequencyBand(time: '06:00-08:00', freq: '10-12')],
 );
 
+Future<void> _loadRoboto() async {
+  var dir = File(Platform.resolvedExecutable).parent;
+  Directory? fonts;
+  for (var i = 0; i < 8 && fonts == null; i++) {
+    final candidate = Directory('${dir.path}/artifacts/material_fonts');
+    if (candidate.existsSync()) fonts = candidate;
+    dir = dir.parent;
+  }
+  if (fonts == null) {
+    throw StateError('Roboto fonts were not found next to the Flutter SDK');
+  }
+  final loader = FontLoader('Roboto');
+  for (final name in [
+    'Roboto-Regular.ttf',
+    'Roboto-Medium.ttf',
+    'Roboto-Bold.ttf',
+  ]) {
+    final bytes = await File('${fonts.path}/$name').readAsBytes();
+    loader.addFont(Future.value(ByteData.sublistView(bytes)));
+  }
+  await loader.load();
+}
+
+/// Easy Read's dialog text styles omit [TextStyle.fontFamily]. Put the test
+/// font back so Latin labels measure like a device font instead of the
+/// square test fallback.
+ThemeData _easyReadTheme(ThemeData base) {
+  final applied = EasyReadTheme.apply(base);
+  final family = base.textTheme.bodyMedium?.fontFamily;
+  if (family == null) return applied;
+  final dialog = applied.dialogTheme;
+  return applied.copyWith(
+    dialogTheme: dialog.copyWith(
+      titleTextStyle: dialog.titleTextStyle?.copyWith(fontFamily: family),
+      contentTextStyle: dialog.contentTextStyle?.copyWith(fontFamily: family),
+    ),
+  );
+}
+
 Future<void> _pumpDialog(
   WidgetTester tester, {
   required String route,
@@ -25,17 +73,41 @@ Future<void> _pumpDialog(
   String language = 'zh',
   DateTime? today,
   bool liveClock = false,
+  bool easyRead = false,
   Brightness brightness = Brightness.dark,
 }) async {
   SharedPreferences.setMockInitialValues({'language_code': language});
   final lang = LanguageController();
   await lang.changeLanguage(language);
+  final easyReadMode = EasyReadModeController.fixed(easyRead);
   await tester.pumpWidget(
-    ChangeNotifierProvider<LanguageController>.value(
-      value: lang,
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider<LanguageController>.value(value: lang),
+        ChangeNotifierProvider<EasyReadModeController>.value(
+          value: easyReadMode,
+        ),
+      ],
       child: MaterialApp(
         key: UniqueKey(),
-        theme: ThemeData(brightness: brightness),
+        builder: (context, child) {
+          final on = context.watch<EasyReadModeController>().enabled;
+          if (!on || child == null) return child ?? const SizedBox.shrink();
+          final base = Theme.of(context);
+          final mq = MediaQuery.of(context);
+          final scaled = mq.textScaler.scale(1) * EasyReadTheme.textScale;
+          return EasyReadChrome(
+            baseTheme: base,
+            child: MediaQuery(
+              data: mq.copyWith(textScaler: TextScaler.linear(scaled)),
+              child: Theme(
+                data: _easyReadTheme(base),
+                child: EasyReadTapHaptics(child: child),
+              ),
+            ),
+          );
+        },
+        theme: ThemeData(brightness: brightness, fontFamily: 'Roboto'),
         home: Builder(
           builder: (context) => Scaffold(
             body: TextButton(
@@ -51,6 +123,14 @@ Future<void> _pumpDialog(
         ),
       ),
     ),
+  );
+  expect(
+    Provider.of<EasyReadModeController>(
+      tester.element(find.text('open')),
+      listen: false,
+    ).enabled,
+    easyRead,
+    reason: 'easy read flag before the dialog opens',
   );
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
@@ -83,6 +163,7 @@ void main() {
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
     await DsatTimetable.ensureLoaded();
+    await _loadRoboto();
   });
 
   test('day selector defaults to the section that covers today', () {
@@ -400,27 +481,141 @@ void main() {
     expect(find.text('06:00 - 07:00'), findsOneWidget);
   });
 
-  testWidgets('frequency label and minutes share the card right edge', (tester) async {
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
-    Future<void> check(Size size, String language, String label) async {
-      tester.view.physicalSize = size;
-      tester.view.devicePixelRatio = 1;
-      await _pumpDialog(tester, route: '1A', direction: 0, language: language);
-      final card = tester.getRect(find.byKey(const ValueKey('timetable-band-0')));
-      final labelRect = tester.getRect(find.text(label).first);
-      final valueRect = tester.getRect(find.text('9 - 11'));
-      final iconRect = tester.getRect(find.byIcon(Icons.schedule).first);
-      final edge = card.right - 14;
-      expect(labelRect.right, closeTo(edge, 1), reason: language);
-      expect(valueRect.right, closeTo(edge, 1), reason: language);
-      expect(labelRect.right, closeTo(valueRect.right, 1), reason: language);
-      expect(labelRect.left - iconRect.right, closeTo(4, 1), reason: language);
-    }
-
-    await check(const Size(390, 844), 'zh', '班次（分鐘）');
-    await check(const Size(800, 600), 'en', 'Frequency (mins)');
-    await check(const Size(390, 844), 'pt', 'Frequência (min)');
+  testWidgets('frequency label and minutes share the card right edge', (
+    tester,
+  ) async {
+    await _expectFrequencyRow(tester, easyRead: false);
   });
+
+  testWidgets('easy read mode keeps the frequency label on one line at 1.35x', (
+    tester,
+  ) async {
+    await _expectFrequencyRow(tester, easyRead: true);
+  });
+}
+
+/// Clock and frequency label stay on one line, next to each other, and share
+/// the card's right edge. Covers every language at 320px and 390px.
+Future<void> _expectFrequencyRow(
+  WidgetTester tester, {
+  required bool easyRead,
+}) async {
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+  tester.view.devicePixelRatio = 1;
+
+  for (final width in [320.0, 390.0]) {
+    for (final language in ['zh', 'zhHans', 'pt', 'en']) {
+      final label = AppTranslations.data[language]!['frequency_mins']!;
+      final where = '$language ${width.toInt()}px easyRead=$easyRead';
+      tester.view.physicalSize = Size(width, 844);
+      await _pumpDialog(
+        tester,
+        route: '1A',
+        direction: 0,
+        language: language,
+        easyRead: easyRead,
+      );
+
+      final card = find.byKey(const ValueKey('timetable-band-0'));
+      final cardRect = tester.getRect(card);
+      final labelFinder = find.descendant(of: card, matching: find.text(label));
+      final valueFinder = find.descendant(
+        of: card,
+        matching: find.text('9 - 11'),
+      );
+      final iconFinder = find.descendant(
+        of: card,
+        matching: find.byIcon(Icons.schedule),
+      );
+      expect(labelFinder, findsOneWidget, reason: where);
+      expect(valueFinder, findsOneWidget, reason: where);
+      expect(iconFinder, findsOneWidget, reason: where);
+
+      final heading = tester.widget<Text>(labelFinder);
+      expect(heading.softWrap, isFalse, reason: where);
+      expect(heading.maxLines, 1, reason: where);
+      expect(heading.data, label, reason: where);
+      expect(
+        find.ancestor(of: labelFinder, matching: find.byType(FittedBox)),
+        findsOneWidget,
+        reason: where,
+      );
+      expect(
+        _headingRow(tester, labelFinder).mainAxisSize,
+        MainAxisSize.min,
+        reason: where,
+      );
+
+      final paragraph = tester.renderObject<RenderParagraph>(labelFinder);
+      final scale = easyRead ? EasyReadTheme.textScale : 1.0;
+      expect(
+        paragraph.textScaler.scale(1),
+        closeTo(scale, 0.01),
+        reason: where,
+      );
+
+      final labelRect = tester.getRect(labelFinder);
+      final valueRect = tester.getRect(valueFinder);
+      final iconRect = tester.getRect(iconFinder);
+      final edge = cardRect.right - 14;
+      expect(labelRect.right, closeTo(edge, 1.5), reason: where);
+      expect(valueRect.right, closeTo(edge, 1.5), reason: where);
+      expect(labelRect.right, closeTo(valueRect.right, 1.5), reason: where);
+
+      final gap = labelRect.left - iconRect.right;
+      expect(gap, inInclusiveRange(0.5, 5), reason: '$where gap=$gap');
+      expect(
+        (iconRect.center.dy - labelRect.center.dy).abs(),
+        lessThan(1.5),
+        reason: where,
+      );
+
+      final unscaledLine =
+          heading.style!.fontSize! * (heading.style!.height ?? 1);
+      final oneLine = unscaledLine * scale;
+      // The paragraph itself is one full line. FittedBox may shrink the paint.
+      expect(paragraph.size.height, closeTo(oneLine, 1.5), reason: where);
+      expect(labelRect.height, lessThanOrEqualTo(oneLine + 1.5), reason: where);
+      if (easyRead) {
+        // 1.35x text stays taller than the normal label, even if the row
+        // scales down a little on a 320px-wide card.
+        expect(
+          labelRect.height,
+          greaterThan(unscaledLine),
+          reason: '$where height=${labelRect.height} normal=$unscaledLine',
+        );
+      }
+      if (!easyRead || width >= 390) {
+        expect(
+          labelRect.height,
+          closeTo(oneLine, 1.5),
+          reason: '$where height=${labelRect.height} line=$oneLine',
+        );
+      }
+
+      final timeRect = tester.getRect(
+        find.descendant(of: card, matching: find.textContaining(':')),
+      );
+      expect(
+        timeRect.right,
+        lessThanOrEqualTo(iconRect.left + 1),
+        reason: where,
+      );
+    }
+  }
+}
+
+Row _headingRow(WidgetTester tester, Finder labelFinder) {
+  Row? heading;
+  tester.element(labelFinder).visitAncestorElements((ancestor) {
+    final widget = ancestor.widget;
+    if (widget is Row) {
+      heading = widget;
+      return false;
+    }
+    return true;
+  });
+  expect(heading, isNotNull);
+  return heading!;
 }

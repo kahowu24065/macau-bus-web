@@ -3,7 +3,8 @@ import 'package:flutter_tts/flutter_tts.dart';
 
 /// Device speech. Tests can pass a fake [SpeechEngine].
 abstract class SpeechEngine {
-  Future<void> setLanguage(String language);
+  /// Returns false when [language] is not installed.
+  Future<bool> setLanguage(String language);
   Future<void> setSpeechRate(double rate);
   Future<void> speak(String text);
   Future<void> prepareIos();
@@ -16,9 +17,15 @@ class FlutterTtsEngine implements SpeechEngine {
   var _iosReady = false;
 
   @override
-  Future<void> setLanguage(String language) async {
-    await _tts.setLanguage(language);
+  Future<bool> setLanguage(String language) async {
+    final available = await _tts.isLanguageAvailable(language);
+    if (!_voiceReady(available)) return false;
+    final result = await _tts.setLanguage(language);
+    return _voiceReady(result);
   }
+
+  /// flutter_tts reports a usable voice as `true` or `1`.
+  static bool _voiceReady(dynamic result) => result == true || result == 1;
 
   @override
   Future<void> setSpeechRate(double rate) async {
@@ -69,6 +76,8 @@ class ArrivalSpeaker {
     return defaultTargetPlatform == TargetPlatform.iOS;
   }
 
+  /// Preferred voice, then installed fallbacks. Traditional Chinese is
+  /// Cantonese. Simplified Chinese is Mandarin.
   static List<String> localesFor(String langCode) {
     switch (langCode) {
       case 'zh':
@@ -76,11 +85,11 @@ class ArrivalSpeaker {
       case 'zhHans':
         return const ['zh-CN', 'zh-Hans'];
       case 'pt':
-        return const ['pt-PT', 'pt-BR'];
+        return const ['pt', 'pt-PT', 'pt-BR'];
       case 'en':
-        return const ['en-US', 'en-GB'];
+        return const ['en', 'en-US', 'en-GB'];
       default:
-        return const ['zh-HK', 'en-US'];
+        return const ['zh-HK', 'en'];
     }
   }
 
@@ -102,7 +111,8 @@ class ArrivalSpeaker {
       Object? lastError;
       for (final locale in localesFor(langCode)) {
         try {
-          await speech.setLanguage(locale);
+          final ready = await speech.setLanguage(locale);
+          if (!ready) continue;
           await speech.speak(spoken);
           return true;
         } catch (error) {

@@ -12,6 +12,9 @@ import '../../controllers/location_controller.dart';
 import '../../controllers/navigation_controller.dart';
 import '../../controllers/language_controller.dart'; 
 import '../../models/bus.dart';
+import '../../utils/bus_marker_bearing.dart';
+import '../../utils/easy_read_access.dart';
+import '../../utils/easy_read_arrival.dart';
 import '../../models/itinerary.dart';
 import '../../services/gps_service.dart';
 import '../../utils/route_result_helper.dart'; // 🌟 引入共用工具
@@ -36,6 +39,8 @@ class _MapScreenState extends State<MapScreen> {
   Timer? _motionTimer;
   double? _labelZoom;
   double? _labelRotation;
+  String? _openBusLicense;
+  bool? _lastCameraEasyRead;
 
   @override
   void initState() {
@@ -134,6 +139,7 @@ class _MapScreenState extends State<MapScreen> {
 
   void _refreshMapCamera({required bool fitRoute}) {
     if (!_mapReady || !mounted) return;
+    _lastCameraEasyRead = EasyReadAccess.enabled(context, listen: false);
     try {
       if (fitRoute) {
         final nav = context.read<NavigationController>();
@@ -151,6 +157,19 @@ class _MapScreenState extends State<MapScreen> {
             ),
           );
           return;
+        }
+        if (_lastCameraEasyRead == true) {
+          final routePts = _routeFitPoints(busCtrl);
+          if (routePts.length >= 2) {
+            _mapController.fitCamera(
+              CameraFit.bounds(
+                bounds: LatLngBounds.fromPoints(routePts),
+                padding: const EdgeInsets.fromLTRB(72, 72, 72, 112),
+                maxZoom: 15,
+              ),
+            );
+            return;
+          }
         }
         final selected = busCtrl.getSelectedStopCoordinate();
         if (selected != null) {
@@ -173,6 +192,16 @@ class _MapScreenState extends State<MapScreen> {
     } catch (_) {
       // MapController not attached yet.
     }
+  }
+
+  /// Stops plus the drawn route, so Easy Read can frame the whole line.
+  List<LatLng> _routeFitPoints(BusController busCtrl) {
+    return <LatLng>[
+      for (final line in busCtrl.gpxRouteLines)
+        ...line.where((point) => point.latitude != 0 && point.longitude != 0),
+      for (final stop in busCtrl.stopsList)
+        if (stop.lat != 0.0 && stop.lng != 0.0) LatLng(stop.lat, stop.lng),
+    ];
   }
 
   /// move() is a no-op when center+zoom are unchanged, so tiles stay blank.
@@ -343,19 +372,37 @@ class _MapScreenState extends State<MapScreen> {
 
     LatLng mapCenter = const LatLng(22.1987, 113.5439);
     double initialZoom = 14.5;
+    final easyRead = EasyReadAccess.enabled(context);
+    if (_mapReady && _lastCameraEasyRead != easyRead) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _refreshMapCamera(fitRoute: true);
+      });
+    }
     if (!shouldHideOriginalRoute) {
-      final selected = busCtrl.getSelectedStopCoordinate();
-      if (selected != null) {
-        mapCenter = selected;
-        initialZoom = 16.5;
-      } else if (locCtrl.isFollowingUser && locCtrl.userLocation != null) {
-        mapCenter = locCtrl.userLocation!;
-      } else if (busCtrl.stopsList.isNotEmpty) {
-        final firstValid = busCtrl.stopsList.firstWhere(
-          (s) => s.lat != 0.0 && s.lng != 0.0,
-          orElse: () => busCtrl.stopsList.first,
-        );
-        if (firstValid.lat != 0.0) mapCenter = LatLng(firstValid.lat, firstValid.lng);
+      final routePts = _routeFitPoints(busCtrl);
+      if (easyRead && routePts.length >= 2) {
+        var lat = 0.0;
+        var lng = 0.0;
+        for (final point in routePts) {
+          lat += point.latitude;
+          lng += point.longitude;
+        }
+        mapCenter = LatLng(lat / routePts.length, lng / routePts.length);
+        initialZoom = 13;
+      } else {
+        final selected = busCtrl.getSelectedStopCoordinate();
+        if (selected != null) {
+          mapCenter = selected;
+          initialZoom = 16.5;
+        } else if (locCtrl.isFollowingUser && locCtrl.userLocation != null) {
+          mapCenter = locCtrl.userLocation!;
+        } else if (busCtrl.stopsList.isNotEmpty) {
+          final firstValid = busCtrl.stopsList.firstWhere(
+            (s) => s.lat != 0.0 && s.lng != 0.0,
+            orElse: () => busCtrl.stopsList.first,
+          );
+          if (firstValid.lat != 0.0) mapCenter = LatLng(firstValid.lat, firstValid.lng);
+        }
       }
     } else if (locCtrl.isFollowingUser && locCtrl.userLocation != null) {
       mapCenter = locCtrl.userLocation!;
@@ -378,6 +425,7 @@ class _MapScreenState extends State<MapScreen> {
                 ScaffoldMessenger.of(context).showSnackBar(RouteLiquidGlassNavStyle.snackBar(context: context, content: Text('$stopWordText ${stop.seq}: ${stop.getLocalizedName(langCtrl.currentLanguage)}')));
               },
               child: Container(
+                key: ValueKey('stop-pin-${stop.seq}'),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(color: isSelected ? Colors.amber : Colors.white, shape: BoxShape.circle, border: Border.all(color: const Color.fromARGB(255, 114, 0, 162), width: 2.5), boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 2)]),
                 child: Text('${stop.seq}', style: TextStyle(color: Colors.black, fontSize: isSelected ? 13 : 11, fontWeight: FontWeight.bold)),
@@ -399,40 +447,68 @@ class _MapScreenState extends State<MapScreen> {
         drawn.add((bus: bus, loc: loc, atStop: busCtrl.hasVisuallyArrived(bus)));
       }
       actualMapBusCount = drawn.length;
-      final busPoints = [for (final item in drawn) item.loc];
-      final stopPoints = [
-        for (final stop in busCtrl.stopsList)
-          if (stop.lat != 0.0 && stop.lng != 0.0) LatLng(stop.lat, stop.lng),
-      ];
-      final expanded = _expandedCards(busPoints, stopPoints);
-      final offsets = _layoutCapsuleOffsets(busPoints, stopPoints, expanded);
-      for (var i = 0; i < drawn.length; i++) {
-        final item = drawn[i];
+      final mapRotation = _mapReady ? _mapController.camera.rotation : 0.0;
+      for (final item in drawn) {
         final speedLabel = '${busCtrl.displaySpeedKmh(item.bus).toInt()}km/h';
-        final detail = item.atStop ? langCtrl.tr('arrived_at_stop') : speedLabel;
-        final headingName = _busHeadingStopName(busCtrl, item.bus, item.atStop, langCtrl.currentLanguage);
-        final heading = headingName.isEmpty
+        final headingName = item.atStop
             ? ''
-            : item.atStop
-                ? headingName
+            : _busHeadingStopName(busCtrl, item.bus, false, langCtrl.currentLanguage);
+        final middle = item.atStop
+            ? approachingStatus(
+                easyRead: easyRead,
+                stopsAway: 0,
+                estimatedMins: 0,
+                tr: langCtrl.tr,
+              )
+            : headingName.isEmpty
+                ? ''
                 : '${langCtrl.tr('direction_to')} $headingName';
         final iconColor = item.atStop ? Colors.orangeAccent : Colors.amber;
+        final open = _openBusLicense == item.bus.busLicense;
+        final tab = _measureBusTab(
+          plate: item.bus.busLicense,
+          middle: middle,
+          speed: speedLabel,
+          atStop: item.atStop,
+          easyRead: easyRead,
+        );
+        final bearing = _busTravelBearing(busCtrl, item.bus, item.loc, item.atStop);
+        final chevronRadians = bearing == null
+            ? null
+            : busChevronRadians(bearingDegrees: bearing, mapRotationDegrees: mapRotation);
+        final hit = _BusPin.hitFor(easyRead);
+        final tabCenter = busMarkerTabCenter(
+          easyRead: easyRead,
+          iconSize: hit,
+          tabWidth: tab.width,
+          tabHeight: tab.height,
+          gap: _BusPin.gap,
+          chevronRadians: chevronRadians,
+        );
+        final markerWidth = open ? math.max(hit, (tabCenter.dx.abs() + tab.width / 2) * 2) : hit;
+        final markerHeight = open ? math.max(hit, (tabCenter.dy.abs() + tab.height / 2) * 2) : hit;
         busMarkers.add(Marker(
           point: item.loc,
-          width: _BusCallout.boxWidth,
-          height: _BusCallout.boxHeight,
+          width: markerWidth,
+          height: markerHeight,
           alignment: Alignment.center,
           rotate: true,
-          child: IgnorePointer(
-            child: _BusCallout(
-              plate: item.bus.busLicense,
-              heading: heading,
-              detail: detail,
-              detailColor: item.atStop ? Colors.deepOrange : const Color.fromARGB(255, 114, 0, 162),
-              iconColor: iconColor,
-              capsuleOffset: offsets[i],
-              compact: !expanded[i],
-            ),
+          child: _BusPin(
+            plate: item.bus.busLicense,
+            middle: middle,
+            speed: speedLabel,
+            atStop: item.atStop,
+            iconColor: iconColor,
+            open: open,
+            easyRead: easyRead,
+            tabWidth: tab.width,
+            tabHeight: tab.height,
+            chevronRadians: chevronRadians,
+            onTap: () {
+              setState(() {
+                _openBusLicense = _openBusLicense == item.bus.busLicense ? null : item.bus.busLicense;
+              });
+            },
           ),
         ));
       }
@@ -675,6 +751,9 @@ class _MapScreenState extends State<MapScreen> {
                     if (mounted) setState(() {});
                   },
                   onTap: (tapPosition, point) {
+                    if (_openBusLicense != null) {
+                      setState(() => _openBusLicense = null);
+                    }
                     if (busCtrl.isPickingMapStart) { busCtrl.setCustomMapStart(point); _openRoutingPanel(langCtrl); } 
                     else if (busCtrl.isPickingMapEnd) { busCtrl.setCustomMapEnd(point); _openRoutingPanel(langCtrl); }
                   },
@@ -877,109 +956,66 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  /// Below this zoom the whole route is on screen, so every bus shows a plate only.
-  static const _detailZoom = 13.2;
-
-  List<bool> _expandedCards(List<LatLng> buses, List<LatLng> stops) {
-    final zoom = _mapReady ? _mapController.camera.zoom : 14.5;
-    if (!_mapReady || buses.isEmpty || zoom < _detailZoom) {
-      return List.filled(buses.length, false);
-    }
-    final allFull = List<bool>.filled(buses.length, true);
-    final trial = _layoutCapsuleOffsets(buses, stops, allFull);
-    final centers = <Offset>[
-      for (var i = 0; i < buses.length; i++) _screenOf(buses[i]) + trial[i],
+  ({double width, double height}) _measureBusTab({
+    required String plate,
+    required String middle,
+    required String speed,
+    required bool atStop,
+    required bool easyRead,
+  }) {
+    final lines = <({String text, TextStyle style})>[
+      (text: plate, style: _BusPin.plateStyle(easyRead)),
+      if (middle.isNotEmpty) (text: middle, style: _BusPin.middleStyle(easyRead, atStop)),
+      (text: speed, style: _BusPin.speedStyle(easyRead)),
     ];
-    final keep = List<bool>.filled(buses.length, false);
-    final order = List<int>.generate(buses.length, (i) => i)
-      ..sort((a, b) => centers[a].dy.compareTo(centers[b].dy));
-    final accepted = <int>[];
-    for (final i in order) {
-      final blocked = accepted.any(
-        (j) => _capsulesOverlap(
-          centers[i],
-          centers[j],
-          _BusCallout.capsuleWidth,
-          _BusCallout.capsuleHeight,
-          _BusCallout.capsuleWidth,
-          _BusCallout.capsuleHeight,
-        ),
+    var width = 0.0;
+    var height = 0.0;
+    for (final line in lines) {
+      final painter = TextPainter(
+        text: TextSpan(text: line.text, style: line.style),
+        textDirection: TextDirection.ltr,
+        // The tab paints with no text scaling, so 1.35 does not stack on the
+        // Easy Read font sizes.
+        textScaler: TextScaler.noScaling,
+        maxLines: 3,
+      )..layout(maxWidth: _BusPin.tabTextMaxWidth);
+      if (painter.width > width) width = painter.width;
+      height += painter.height;
+    }
+    if (lines.length > 1) height += (lines.length - 1) * 2;
+    // Extra slack covers font leading that TextPainter measures short of the
+    // painted paragraph, so the tab is not clipped or flexed past its box.
+    return (width: width + 24, height: height + 40);
+  }
+
+  double? _busTravelBearing(BusController busCtrl, Bus bus, LatLng loc, bool atStop) {
+    final index = busCtrl.stopsList.indexWhere((s) => s.seq == bus.currentStopSeq);
+    if (index < 0) return null;
+    final stops = busCtrl.stopsList;
+    final route = busCtrl.gpxRoutePoints;
+    LatLng? stopAt(int i) {
+      if (i < 0 || i >= stops.length) return null;
+      final stop = stops[i];
+      if (stop.lat == 0.0 || stop.lng == 0.0) return null;
+      return LatLng(stop.lat, stop.lng);
+    }
+
+    final next = stopAt(index + 1);
+    final here = stopAt(index);
+    if (next != null && here != null) {
+      return busTravelBearingDegrees(
+        position: loc,
+        nextStop: next,
+        route: routeSlice(route, here, next),
       );
-      if (!blocked) {
-        keep[i] = true;
-        accepted.add(i);
-      }
     }
-    return keep;
-  }
-
-  Offset _screenOf(LatLng ll) {
-    final p = _mapController.camera.latLngToScreenPoint(ll);
-    return Offset(p.x.toDouble(), p.y.toDouble());
-  }
-
-  bool _capsulesOverlap(Offset a, Offset b, double wa, double ha, double wb, double hb) {
-    const gap = 8.0;
-    return (a.dx - b.dx).abs() < (wa + wb) / 2 + gap && (a.dy - b.dy).abs() < (ha + hb) / 2 + gap;
-  }
-
-  List<Offset> _layoutCapsuleOffsets(List<LatLng> buses, List<LatLng> stops, List<bool> expanded) {
-    final offsets = <Offset>[
-      for (var i = 0; i < buses.length; i++)
-        expanded[i]
-            ? Offset(i.isEven ? 56 : -56, i % 4 < 2 ? -24 : 28)
-            : Offset(i.isEven ? 58 : -58, i % 4 < 2 ? -18 : 20),
-    ];
-    if (!_mapReady || buses.isEmpty) return offsets;
-
-    final busScreens = [for (final ll in buses) _screenOf(ll)];
-    final stopScreens = [for (final ll in stops) _screenOf(ll)];
-    const stopPad = 20.0;
-    double widthOf(int i) => expanded[i] ? _BusCallout.capsuleWidth : _BusCallout.plateWidth;
-    double heightOf(int i) => expanded[i] ? _BusCallout.capsuleHeight : _BusCallout.plateHeight;
-
-    for (var iter = 0; iter < 18; iter++) {
-      var moved = false;
-      for (var i = 0; i < offsets.length; i++) {
-        final center = busScreens[i] + offsets[i];
-        for (var j = i + 1; j < offsets.length; j++) {
-          final other = busScreens[j] + offsets[j];
-          if (!_capsulesOverlap(center, other, widthOf(i), heightOf(i), widthOf(j), heightOf(j))) continue;
-          final delta = other - center;
-          final pushX = (widthOf(i) + widthOf(j)) / 2 + 8 - delta.dx.abs();
-          final pushY = (heightOf(i) + heightOf(j)) / 2 + 8 - delta.dy.abs();
-          if (pushX < pushY) {
-            final sign = delta.dx == 0 ? (i.isEven ? 1.0 : -1.0) : delta.dx.sign;
-            final push = pushX / 2 + 1;
-            offsets[i] -= Offset(sign * push, 0);
-            offsets[j] += Offset(sign * push, 0);
-          } else {
-            final sign = delta.dy == 0 ? -1.0 : delta.dy.sign;
-            final push = pushY / 2 + 1;
-            offsets[i] -= Offset(0, sign * push);
-            offsets[j] += Offset(0, sign * push);
-          }
-          moved = true;
-        }
-        for (final stop in stopScreens) {
-          final capsule = busScreens[i] + offsets[i];
-          final dx = capsule.dx - stop.dx;
-          final dy = capsule.dy - stop.dy;
-          final hitX = dx.abs() < widthOf(i) / 2 + stopPad;
-          final hitY = dy.abs() < heightOf(i) / 2 + stopPad;
-          if (!hitX || !hitY) continue;
-          final signX = dx == 0 ? 1.0 : dx.sign;
-          final signY = dy == 0 ? -1.0 : dy.sign;
-          offsets[i] += Offset(signX * 6, signY * 4);
-          moved = true;
-        }
-        final limit = expanded[i] ? 110.0 : 72.0;
-        final dist = offsets[i].distance;
-        if (dist > limit) offsets[i] = offsets[i] * (limit / dist);
-      }
-      if (!moved) break;
+    final prev = stopAt(index - 1);
+    if (prev != null && here != null) {
+      final span = routeSlice(route, prev, here);
+      final from = span.length >= 2 ? span[span.length - 2] : prev;
+      return busTravelBearingDegrees(position: from, nextStop: here, route: const []);
     }
-    return offsets;
+    return null;
   }
 }
 
@@ -994,119 +1030,174 @@ String _busHeadingStopName(BusController busCtrl, Bus bus, bool arrived, String 
       .trim();
 }
 
-class _BusCallout extends StatelessWidget {
-  static const capsuleWidth = 132.0;
-  static const capsuleHeight = 48.0;
-  static const plateWidth = 76.0;
-  static const plateHeight = 22.0;
-  static const boxWidth = 360.0;
-  static const boxHeight = 280.0;
+class _BusPin extends StatelessWidget {
+  static const hit = 44.0;
+  static const easyScale = 1.3;
+  static const gap = 6.0;
+  static const tabTextMaxWidth = 220.0;
+  static const speedColor = Color.fromARGB(255, 114, 0, 162);
 
   final String plate;
-  final String heading;
-  final String detail;
-  final Color detailColor;
+  final String middle;
+  final String speed;
+  final bool atStop;
   final Color iconColor;
-  final Offset capsuleOffset;
-  final bool compact;
+  final bool open;
+  final bool easyRead;
+  final double tabWidth;
+  final double tabHeight;
+  final double? chevronRadians;
+  final VoidCallback onTap;
 
-  const _BusCallout({
+  const _BusPin({
     required this.plate,
-    required this.heading,
-    required this.detail,
-    required this.detailColor,
+    required this.middle,
+    required this.speed,
+    required this.atStop,
     required this.iconColor,
-    required this.capsuleOffset,
-    required this.compact,
+    required this.open,
+    required this.easyRead,
+    required this.tabWidth,
+    required this.tabHeight,
+    required this.chevronRadians,
+    required this.onTap,
   });
+
+  static double hitFor(bool easyRead) => hit * (easyRead ? easyScale : 1);
+
+  static double _font(double base, bool easyRead) => base * (easyRead ? easyScale : 1);
+
+  static TextStyle plateStyle(bool easyRead) => TextStyle(
+        fontSize: _font(13, easyRead),
+        fontWeight: FontWeight.w800,
+        height: 1.15,
+        color: Colors.black87,
+      );
+
+  static TextStyle middleStyle(bool easyRead, bool atStop) => TextStyle(
+        fontSize: _font(12, easyRead),
+        fontWeight: FontWeight.w700,
+        height: 1.2,
+        color: atStop ? Colors.deepOrange : Colors.black87,
+      );
+
+  static TextStyle speedStyle(bool easyRead) => TextStyle(
+        fontSize: _font(12, easyRead),
+        fontWeight: FontWeight.w600,
+        height: 1.2,
+        color: speedColor,
+      );
 
   @override
   Widget build(BuildContext context) {
-    const icon = 22.0;
-    final bus = const Offset(boxWidth / 2, boxHeight / 2);
-    final capsuleCenter = bus + capsuleOffset;
-    final cardWidth = compact ? plateWidth : capsuleWidth;
-    final cardHeight = compact ? plateHeight : capsuleHeight;
-    final stemFrom = _edgePoint(bus, capsuleCenter, icon / 2, icon / 2);
-    final stemTo = _edgePoint(capsuleCenter, bus, cardWidth / 2, cardHeight / 2);
-    return SizedBox(
-      width: boxWidth,
-      height: boxHeight,
-      child: Stack(
-        children: [
-          CustomPaint(
-            size: const Size(boxWidth, boxHeight),
-            painter: _StemPainter(stemFrom, stemTo),
-          ),
-          Positioned(
-            left: bus.dx - icon / 2,
-            top: bus.dy - icon / 2,
-            child: Icon(Icons.directions_bus, color: iconColor, size: icon),
-          ),
-          Positioned(
-            left: capsuleCenter.dx - cardWidth / 2,
-            top: capsuleCenter.dy - cardHeight / 2,
-            width: cardWidth,
-            height: cardHeight,
-            child: Container(
-              alignment: Alignment.center,
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 3, offset: Offset(0, 1))],
+    final iconHit = hitFor(easyRead);
+    final tabCenter = busMarkerTabCenter(
+      easyRead: easyRead,
+      iconSize: iconHit,
+      tabWidth: tabWidth,
+      tabHeight: tabHeight,
+      gap: gap,
+      chevronRadians: chevronRadians,
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final height = constraints.maxHeight;
+        final width = constraints.maxWidth;
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            if (open)
+              Positioned(
+                left: width / 2 + tabCenter.dx - tabWidth / 2,
+                top: height / 2 + tabCenter.dy - tabHeight / 2,
+                width: tabWidth,
+                height: tabHeight,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {},
+                  child: Align(
+                    alignment: Alignment.center,
+                    child: _tab(context),
+                  ),
+                ),
               ),
-              child: compact
-                  ? Text(plate, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, height: 1.0, color: Colors.black87))
-                  : Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(plate, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, height: 1.0, color: Colors.black87)),
-                        if (heading.isNotEmpty)
-                          Text(heading, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w600, height: 1.05, color: Colors.black87)),
-                        Text(detail, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, height: 1.05, color: detailColor)),
-                      ],
-                    ),
+            Positioned(
+              left: (width - iconHit) / 2,
+              top: (height - iconHit) / 2,
+              width: iconHit,
+              height: iconHit,
+              child: _icon(iconHit),
             ),
-          ),
-        ],
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _tab(BuildContext context) {
+    final media = MediaQuery.of(context);
+    return MediaQuery(
+      data: media.copyWith(textScaler: TextScaler.noScaling),
+      child: Container(
+        key: ValueKey('bus-tab-$plate'),
+        width: tabWidth,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 3, offset: Offset(0, 1))],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(plate, textAlign: TextAlign.center, style: plateStyle(easyRead)),
+            if (middle.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text(middle, textAlign: TextAlign.center, softWrap: true, style: middleStyle(easyRead, atStop)),
+            ],
+            const SizedBox(height: 2),
+            Text(speed, textAlign: TextAlign.center, style: speedStyle(easyRead)),
+          ],
+        ),
       ),
     );
   }
 
-  Offset _edgePoint(Offset center, Offset toward, double halfW, double halfH) {
-    final delta = toward - center;
-    final dist = delta.distance;
-    if (dist == 0) return center;
-    final ux = delta.dx / dist;
-    final uy = delta.dy / dist;
-    final tx = ux == 0 ? double.infinity : halfW / ux.abs();
-    final ty = uy == 0 ? double.infinity : halfH / uy.abs();
-    return center + Offset(ux, uy) * math.min(tx, ty);
+  Widget _icon(double iconHit) {
+    final scale = easyRead ? easyScale : 1.0;
+    return SizedBox(
+      key: ValueKey('bus-hit-$plate'),
+      width: iconHit,
+      height: iconHit,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Icon(Icons.directions_bus, size: 30 * scale, color: Colors.white),
+            Icon(Icons.directions_bus, size: 26 * scale, color: iconColor),
+            if (chevronRadians != null)
+              Transform.rotate(
+                key: ValueKey('bus-chevron-$plate'),
+                angle: chevronRadians!,
+                child: SizedBox(
+                  width: iconHit,
+                  height: iconHit,
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: Icon(Icons.navigation, size: 18 * scale, color: iconColor, shadows: const [
+                      Shadow(color: Colors.white, blurRadius: 3),
+                      Shadow(color: Colors.black54, blurRadius: 1),
+                    ]),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
   }
-}
-
-class _StemPainter extends CustomPainter {
-  final Offset from;
-  final Offset to;
-  const _StemPainter(this.from, this.to);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final outline = Paint()
-      ..color = Colors.white
-      ..strokeWidth = 4.5
-      ..strokeCap = StrokeCap.round;
-    final line = Paint()
-      ..color = const Color(0xFF1A1A1A)
-      ..strokeWidth = 2.4
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(from, to, outline);
-    canvas.drawLine(from, to, line);
-  }
-
-  @override
-  bool shouldRepaint(covariant _StemPainter oldDelegate) => oldDelegate.from != from || oldDelegate.to != to;
 }
 
 class CachedTileProvider extends TileProvider {

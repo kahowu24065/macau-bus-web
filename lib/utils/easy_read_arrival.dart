@@ -53,3 +53,34 @@ String presentArrivalStatus({
   }
   return status;
 }
+
+/// Read-aloud line: the stop name, then the arrival phrase.
+/// A minute count is spoken as "仍有5分鐘到", not the on-screen "5 分鐘後到".
+String easyReadSpokenArrival({
+  required String stopName,
+  required String status,
+  required String Function(String key) tr,
+}) {
+  final phrase = _spokenArrivalPhrase(status, tr);
+  final name = stopName.trim();
+  if (name.isEmpty) return phrase;
+  if (phrase.isEmpty) return name;
+  return tr('easy_read_spoken_line')
+      .replaceAll('@stop', name)
+      .replaceAll('@status', phrase);
+}
+
+String _spokenArrivalPhrase(String status, String Function(String key) tr) {
+  final trimmed = status.trim();
+  final mins = RegExp(
+    r'(\d+)\s*(?:分鐘|分钟|mins|min)',
+    caseSensitive: false,
+  ).firstMatch(trimmed);
+  if (mins != null) {
+    final easyReadLine = tr('easy_read_eta_mins').replaceAll('@mins', mins.group(1)!);
+    if (trimmed == easyReadLine) {
+      return tr('easy_read_spoken_mins').replaceAll('@mins', mins.group(1)!);
+    }
+  }
+  return trimmed;
+}

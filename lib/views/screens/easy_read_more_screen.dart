@@ -5,7 +5,6 @@ import '../../controllers/bus_controller.dart';
 import '../../controllers/language_controller.dart';
 import '../../controllers/navigation_controller.dart';
 import '../../services/bus_api_service.dart';
-import '../widgets/fare_dialog.dart';
 
 class RouteCatalogLine {
   const RouteCatalogLine(this.code, this.description);
@@ -80,11 +79,6 @@ class EasyReadMoreScreen extends StatelessWidget {
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const _AllRoutesPage()),
               ),
-            ),
-            _MoreCard(
-              icon: Icons.monetization_on_outlined,
-              title: lang.tr('fare_table'),
-              onTap: () => showBusFareDialog(context),
             ),
           ],
         ),

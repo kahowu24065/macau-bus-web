@@ -21,6 +21,7 @@ import '../widgets/route_liquid_glass_nav.dart';
 import '../../constants/app_translations.dart';
 import '../../constants/feature_flags.dart';
 import '../../services/arrival_speaker.dart';
+import '../../theme/easy_read_theme.dart';
 import '../../utils/easy_read_access.dart';
 import '../../utils/easy_read_arrival.dart';
 import '../screens/easy_read_more_screen.dart';
@@ -387,7 +388,14 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     
     if (busCtrl.selectedStopSeq != null && hasBusesOnRoad) {
       List<Bus> approachingBuses = busCtrl.allBusesList
-          .where((b) => b.currentStopSeq > 0 && b.currentStopSeq <= busCtrl.selectedStopSeq!)
+          .where((b) {
+            if (b.currentStopSeq <= 0 || b.currentStopSeq > busCtrl.selectedStopSeq!) {
+              return false;
+            }
+            // Still tagged with this stop after leaving it. The next bus is first.
+            if (b.currentStopSeq == busCtrl.selectedStopSeq && !b.atStop) return false;
+            return true;
+          })
           .toList();
       
       approachingBuses.sort((a, b) => 
@@ -486,6 +494,26 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     }
     
     return upcoming;
+  }
+
+  /// Read the first arrival for this stop. Row taps still select the stop;
+  /// the bell and the closure icon keep their own handlers.
+  void _readEasyReadArrival(
+    BusController busCtrl,
+    LanguageController langCtrl, {
+    required bool easyRead,
+    required bool speakArrivals,
+    required String stopName,
+  }) {
+    if (!speakArrivals) return;
+    final upcoming = _getUpcomingBusesInfo(busCtrl, langCtrl, easyRead: easyRead);
+    if (upcoming.isEmpty) return;
+    final status = (upcoming.first['status'] ?? '').trim();
+    if (status.isEmpty) return;
+    ArrivalSpeaker.shared.speak(
+      easyReadSpokenArrival(stopName: stopName, status: status, tr: langCtrl.tr),
+      langCtrl.currentLanguage,
+    );
   }
 
   void _showAlarmBottomSheet(BuildContext context, dynamic stop, BusController busCtrl, LocationController locCtrl, bool isDark) {
@@ -631,6 +659,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     final isFavorite = busCtrl.favoriteRoutes.contains(busCtrl.currentRoute);
     final hasRoute = busCtrl.currentRoute.isNotEmpty;
     final easyRead = EasyReadAccess.enabled(context);
+    final speakArrivals = EasyReadAccess.speakArrivals(context);
 
     final alertStops = busCtrl.stopsList
         .where((stop) => busCtrl.showRouteNotices && _hasAnyStopWarning(stop))
@@ -761,33 +790,29 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              hasRoute ? busCtrl.currentRoute : '--', 
-                              style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 64, fontWeight: FontWeight.bold, height: 1.0),
-                            ),
-                            if (hasRoute && !easyRead) 
-                              InkWell(
-                                onTap: () => showBusFareDialog(context),
-                                borderRadius: BorderRadius.circular(12),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: isDark ? Colors.white24 : Colors.black12),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.monetization_on, size: 16, color: isDark ? Colors.grey[400] : Colors.grey[700]),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        langCtrl.tr('fare_table'),
-                                        style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[700], fontSize: 13, fontWeight: FontWeight.bold),
+                            easyRead
+                                ? Flexible(
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        hasRoute ? busCtrl.currentRoute : '--',
+                                        style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 64, fontWeight: FontWeight.bold, height: 1.0),
                                       ),
-                                    ],
+                                    ),
+                                  )
+                                : Text(
+                                    hasRoute ? busCtrl.currentRoute : '--',
+                                    style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 64, fontWeight: FontWeight.bold, height: 1.0),
                                   ),
-                                ),
+                            if (hasRoute && easyRead) const SizedBox(width: 8),
+                            if (hasRoute)
+                              _FareTableButton(
+                                label: langCtrl.tr('fare_table'),
+                                isDark: isDark,
+                                fontSize: easyRead ? 18 : 13,
+                                iconSize: easyRead ? 22 : 16,
+                                onTap: () => showBusFareDialog(context),
                               ),
                           ],
                         ),
@@ -907,7 +932,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                         itemBuilder: (context, index) {
                           final stop = busCtrl.stopsList[index]; 
                           final isSelected = busCtrl.selectedStopSeq == stop.seq;
-                          final stopInfoSize = easyRead ? 19.0 : 16.0;
+                          final stopInfoSize = easyRead ? _FittingHeaderLabel.size : 16.0;
                           final seqWidth = easyRead ? 56.0 : 28.0;
                           final hasBoardingAlarm = busCtrl.boardingStopSeq == stop.seq;
                           final hasAlightingAlarm = busCtrl.alightingStopSeq == stop.seq;
@@ -955,7 +980,17 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                         child: Material(
                                           color: Colors.transparent,
                                           child: InkWell(
-                                            onTap: () { busCtrl.selectStop(stop.seq); busCtrl.fetchBusETA(); },
+                                            onTap: () {
+                                              busCtrl.selectStop(stop.seq);
+                                              busCtrl.fetchBusETA();
+                                              _readEasyReadArrival(
+                                                busCtrl,
+                                                langCtrl,
+                                                easyRead: easyRead,
+                                                speakArrivals: speakArrivals,
+                                                stopName: stop.getLocalizedName(langCtrl.currentLanguage),
+                                              );
+                                            },
                                             child: Padding(
                                               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0), 
                                               child: Builder(
@@ -970,12 +1005,21 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                                         children: [
                                                           SizedBox(
                                                             width: seqWidth,
-                                                            child: Text('${stop.seq}.', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: stopInfoSize, fontWeight: FontWeight.bold)),
+                                                            child: _StopInfoText(
+                                                              data: '${stop.seq}.',
+                                                              color: isDark ? Colors.white : Colors.black,
+                                                              fontSize: stopInfoSize,
+                                                              fontWeight: FontWeight.bold,
+                                                              matchHeaderScale: easyRead,
+                                                            ),
                                                           ),
                                                           Expanded(
-                                                            child: Text(
-                                                              '${stop.getLocalizedName(langCtrl.currentLanguage)} (${stop.code})', 
-                                                              style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: stopInfoSize, fontWeight: FontWeight.bold)
+                                                            child: _StopInfoText(
+                                                              data: '${stop.getLocalizedName(langCtrl.currentLanguage)} (${stop.code})',
+                                                              color: isDark ? Colors.white : Colors.black,
+                                                              fontSize: stopInfoSize,
+                                                              fontWeight: FontWeight.bold,
+                                                              matchHeaderScale: easyRead,
                                                             ),
                                                           ),
                                                           const SizedBox(width: 8),
@@ -1080,12 +1124,16 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                                                           ),
                                                                         );
                                                                       }
-                                                                      final spoken = statusText;
+                                                                      final spoken = easyReadSpokenArrival(
+                                                                        stopName: stop.getLocalizedName(langCtrl.currentLanguage),
+                                                                        status: statusText,
+                                                                        tr: langCtrl.tr,
+                                                                      );
                                                                       return Padding(
                                                                         key: ValueKey('arrival-$idx'),
                                                                         padding: EdgeInsets.only(top: isSecondBus ? 10.0 : 0.0),
                                                                         child: GestureDetector(
-                                                                          onTap: spoken.isEmpty
+                                                                          onTap: !speakArrivals || statusText.isEmpty
                                                                               ? null
                                                                               : () {
                                                                                   ArrivalSpeaker.shared.speak(spoken, langCtrl.currentLanguage);
@@ -1094,7 +1142,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                                                             crossAxisAlignment: CrossAxisAlignment.start,
                                                                             children: [
                                                                               Text(
-                                                                                spoken,
+                                                                                statusText,
                                                                                 softWrap: true,
                                                                                 style: TextStyle(color: statusColor, fontWeight: FontWeight.w800, fontSize: isSecondBus ? 20 : 22, height: 1.3),
                                                                               ),
@@ -1138,7 +1186,17 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                           return Column(
                             children: [
                               InkWell(
-                                onTap: () { busCtrl.selectStop(stop.seq); busCtrl.fetchBusETA(); },
+                                onTap: () {
+                                  busCtrl.selectStop(stop.seq);
+                                  busCtrl.fetchBusETA();
+                                  _readEasyReadArrival(
+                                    busCtrl,
+                                    langCtrl,
+                                    easyRead: easyRead,
+                                    speakArrivals: speakArrivals,
+                                    stopName: stop.getLocalizedName(langCtrl.currentLanguage),
+                                  );
+                                },
                                 child: Padding(
                                   padding: EdgeInsets.symmetric(horizontal: 16, vertical: easyRead ? 16 : 6), 
                                   child: Row(
@@ -1154,12 +1212,21 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                               children: [
                                                 SizedBox(
                                                   width: seqWidth,
-                                                  child: Text('${stop.seq}.', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: stopInfoSize, fontWeight: FontWeight.w500)),
+                                                  child: _StopInfoText(
+                                                    data: '${stop.seq}.',
+                                                    color: isDark ? Colors.white : Colors.black,
+                                                    fontSize: stopInfoSize,
+                                                    fontWeight: FontWeight.w500,
+                                                    matchHeaderScale: easyRead,
+                                                  ),
                                                 ),
                                                 Expanded(
-                                                  child: Text(
-                                                    '${stop.getLocalizedName(langCtrl.currentLanguage)} (${stop.code})', 
-                                                    style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: stopInfoSize, fontWeight: FontWeight.w500)
+                                                  child: _StopInfoText(
+                                                    data: '${stop.getLocalizedName(langCtrl.currentLanguage)} (${stop.code})',
+                                                    color: isDark ? Colors.white : Colors.black,
+                                                    fontSize: stopInfoSize,
+                                                    fontWeight: FontWeight.w500,
+                                                    matchHeaderScale: easyRead,
                                                   ),
                                                 ),
                                               ],
@@ -1210,17 +1277,94 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
   }
 }
 
-/// Easy Read header captions. Prefer 14pt on one line. On a narrow phone a
-/// long word such as "Timetable" or "Localizar" wraps onto two balanced lines
-/// instead of shrinking back to the normal 11pt size or clipping.
+/// Route-page fare chip. Normal mode uses 13pt; Easy Read uses a larger label.
+class _FareTableButton extends StatelessWidget {
+  const _FareTableButton({
+    required this.label,
+    required this.isDark,
+    required this.fontSize,
+    required this.iconSize,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool isDark;
+  final double fontSize;
+  final double iconSize;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isDark ? Colors.grey[400] : Colors.grey[700];
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: isDark ? Colors.white24 : Colors.black12),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.monetization_on, size: iconSize, color: color),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              softWrap: false,
+              maxLines: 1,
+              style: TextStyle(color: color, fontSize: fontSize, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Stop sequence and name. In Easy Read the header undoes the 1.35 text
+/// scale, so these captions do the same and paint at [fontSize].
+class _StopInfoText extends StatelessWidget {
+  const _StopInfoText({
+    required this.data,
+    required this.color,
+    required this.fontSize,
+    required this.fontWeight,
+    required this.matchHeaderScale,
+  });
+
+  final String data;
+  final Color color;
+  final double fontSize;
+  final FontWeight fontWeight;
+  final bool matchHeaderScale;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Text(
+      data,
+      style: TextStyle(color: color, fontSize: fontSize, fontWeight: fontWeight),
+    );
+    if (!matchHeaderScale) return text;
+    final mq = MediaQuery.of(context);
+    return MediaQuery(
+      data: mq.copyWith(textScaler: EasyReadTheme.undoTextScale(mq.textScaler)),
+      child: text,
+    );
+  }
+}
+
+/// Easy Read header captions. [size] is also the stop-list name size.
+/// A long word such as "Timetable" wraps onto two lines at that size.
 class _FittingHeaderLabel extends StatelessWidget {
   const _FittingHeaderLabel({required this.text, required this.color});
 
   final String text;
   final Color color;
 
-  static const double _preferred = 14;
-  static const double _floor = 11;
+  static const double size = 14;
   static const double _height = 1.15;
 
   @override
@@ -1228,32 +1372,13 @@ class _FittingHeaderLabel extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final maxWidth = constraints.maxWidth;
-        final direction = Directionality.of(context);
-        final scaler = MediaQuery.textScalerOf(context);
         final base = DefaultTextStyle.of(context).style;
-        var size = _preferred;
+        final style = _style(base, size);
         var chosen = text;
         if (maxWidth.isFinite && maxWidth > 0) {
-          var fitted = false;
-          for (var step = 0; step <= 6; step++) {
-            final font = _preferred - step * 0.5;
-            final style = _style(base, font);
-            if (_fits(text, style, maxWidth, direction, scaler, lines: 1)) {
-              size = font;
-              chosen = text;
-              fitted = true;
-              break;
-            }
-            final split = _twoLines(text);
-            if (_fits(split, style, maxWidth, direction, scaler, lines: 2)) {
-              size = font;
-              chosen = split;
-              fitted = true;
-              break;
-            }
-          }
-          if (!fitted) {
-            size = _floor;
+          final direction = Directionality.of(context);
+          final scaler = MediaQuery.textScalerOf(context);
+          if (!_fits(text, style, maxWidth, direction, scaler, lines: 1)) {
             chosen = _twoLines(text);
           }
         }
@@ -1262,7 +1387,7 @@ class _FittingHeaderLabel extends StatelessWidget {
           textAlign: TextAlign.center,
           softWrap: true,
           maxLines: chosen.contains('\n') ? 2 : 1,
-          style: _style(base, size),
+          style: style,
         );
       },
     );

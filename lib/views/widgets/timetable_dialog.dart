@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -160,8 +162,9 @@ Set<int> _weekdaysInTitle(String title) {
       token = token.replaceFirst(RegExp(r'^(星期|週|周)'), '');
     }
     if (!inWeek || token.isEmpty) continue;
-    final range = RegExp(r'^([一二三四五六日天])\s*(?:至|到|-|－)\s*([一二三四五六日天])')
-        .firstMatch(token);
+    final range = RegExp(
+      r'^([一二三四五六日天])\s*(?:至|到|-|－)\s*([一二三四五六日天])',
+    ).firstMatch(token);
     if (range != null) {
       final start = days[range.group(1)!]!;
       final end = days[range.group(2)!]!;
@@ -179,8 +182,9 @@ Set<int> _weekdaysInTitle(String title) {
 
 String _formatBandTime(String raw, String lang) {
   final shown = ServiceLabelI18n.translate(raw, lang).trim();
-  final match = RegExp(r'^(\d{1,2}):(\d{2})\s*[-–－~～]\s*(\d{1,2}):(\d{2})$')
-      .firstMatch(shown);
+  final match = RegExp(
+    r'^(\d{1,2}):(\d{2})\s*[-–－~～]\s*(\d{1,2}):(\d{2})$',
+  ).firstMatch(shown);
   if (match == null) return ServiceLabelI18n.translate(raw, lang);
   String hhmm(String hour, String minute) => '${hour.padLeft(2, '0')}:$minute';
   return '${hhmm(match.group(1)!, match.group(2)!)} - ${hhmm(match.group(3)!, match.group(4)!)}';
@@ -495,70 +499,114 @@ class _BandCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scaler = MediaQuery.textScalerOf(context);
+    final direction = Directionality.of(context);
+    final inherited = DefaultTextStyle.of(context).style;
+    final serviceStyle = inherited.merge(_serviceStyle);
+    final timeStyle = inherited.merge(_timeStyle);
+
     return Container(
       decoration: BoxDecoration(
         color: _bandColor,
         borderRadius: BorderRadius.circular(14),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            flex: 6,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  serviceLabel,
-                  style: const TextStyle(
-                    color: Colors.white60,
-                    fontSize: 12,
-                    height: 1.2,
-                  ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Left text wraps, so it only keeps the width of its longest word.
+          // The rest of the card belongs to the one-line frequency label.
+          const gap = 8.0;
+          final leftFloor = math.max(
+            _widestTokenWidth(serviceLabel, serviceStyle, scaler, direction),
+            _widestTokenWidth(time, timeStyle, scaler, direction),
+          );
+          final maxRight = math.max(
+            0.0,
+            constraints.maxWidth - gap - leftFloor,
+          );
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(serviceLabel, style: _serviceStyle),
+                    const SizedBox(height: 4),
+                    Text(time, style: _timeStyle),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  time,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    height: 1.2,
-                  ),
+              ),
+              const SizedBox(width: gap),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxRight),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _FreqHeading(label: freqLabel),
+                    const SizedBox(height: 4),
+                    Text(
+                      freq,
+                      softWrap: false,
+                      maxLines: 1,
+                      textAlign: TextAlign.end,
+                      style: _freqValueStyle,
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            flex: 5,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                _FreqHeading(label: freqLabel),
-                const SizedBox(height: 4),
-                Text(
-                  freq,
-                  textAlign: TextAlign.end,
-                  style: const TextStyle(
-                    color: _gold,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    height: 1.2,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 }
 
-/// Clock plus frequency label, hugged to the card's right edge.
-/// The minutes value below uses the same edge.
+const _serviceStyle = TextStyle(
+  color: Colors.white60,
+  fontSize: 12,
+  height: 1.2,
+);
+
+const _timeStyle = TextStyle(
+  color: Colors.white,
+  fontSize: 15,
+  fontWeight: FontWeight.w600,
+  height: 1.2,
+);
+
+const _freqValueStyle = TextStyle(
+  color: _gold,
+  fontSize: 16,
+  fontWeight: FontWeight.w700,
+  height: 1.2,
+);
+
+double _widestTokenWidth(
+  String text,
+  TextStyle style,
+  TextScaler textScaler,
+  TextDirection textDirection,
+) {
+  var widest = 0.0;
+  for (final token in text.split(RegExp(r'\s+'))) {
+    if (token.isEmpty) continue;
+    final painter = TextPainter(
+      text: TextSpan(text: token, style: style),
+      maxLines: 1,
+      textDirection: textDirection,
+      textScaler: textScaler,
+    )..layout();
+    if (painter.width > widest) widest = painter.width;
+    painter.dispose();
+  }
+  return widest;
+}
+
+/// Clock plus frequency label on one line, right next to each other.
+/// [FittedBox] scales the row down instead of wrapping it.
 class _FreqHeading extends StatelessWidget {
   const _FreqHeading({required this.label});
 
@@ -573,40 +621,18 @@ class _FreqHeading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        const iconSize = 15.0;
-        const gap = 4.0;
-        final room = constraints.maxWidth - iconSize - gap;
-        final maxText = room.isFinite && room > 0 ? room : double.infinity;
-        final painter = TextPainter(
-          text: TextSpan(text: label, style: _style),
-          textAlign: TextAlign.right,
-          textDirection: Directionality.of(context),
-          textScaler: MediaQuery.textScalerOf(context),
-          maxLines: 4,
-        )..layout(maxWidth: maxText);
-        final measured = painter.size.width;
-        painter.dispose();
-        final textWidth = measured > maxText && maxText.isFinite ? maxText : measured;
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const Icon(Icons.schedule, color: _gold, size: iconSize),
-            const SizedBox(width: gap),
-            SizedBox(
-              width: textWidth,
-              child: Text(
-                label,
-                textAlign: TextAlign.right,
-                softWrap: true,
-                style: _style,
-              ),
-            ),
-          ],
-        );
-      },
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerRight,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const Icon(Icons.schedule, color: _gold, size: 15),
+          const SizedBox(width: 4),
+          Text(label, softWrap: false, maxLines: 1, style: _style),
+        ],
+      ),
     );
   }
 }

@@ -84,9 +84,13 @@ Future<void> _loadRoboto() async {
   await loader.load();
 }
 
-Widget _app({required bool easyRead, required Widget home}) {
+Widget _app({
+  required bool easyRead,
+  required Widget home,
+  Brightness brightness = Brightness.dark,
+}) {
   return MaterialApp(
-    theme: ThemeData(brightness: Brightness.dark, fontFamily: 'Roboto'),
+    theme: ThemeData(brightness: brightness, fontFamily: 'Roboto'),
     builder: (context, child) {
       final on = context.watch<EasyReadModeController>().enabled;
       if (!on || child == null) return child ?? const SizedBox.shrink();
@@ -112,6 +116,7 @@ Future<void> _pumpStation(
   WidgetTester tester, {
   required String langCode,
   required bool easyRead,
+  String route = '3',
   Size size = const Size(320, 568),
 }) async {
   tester.view.physicalSize = size;
@@ -123,7 +128,7 @@ Future<void> _pumpStation(
   final lang = LanguageController();
   await lang.changeLanguage(langCode);
   final bus = BusController();
-  bus.setRoute('3');
+  bus.setRoute(route);
   bus.stopsList = [
     _stop(
       seq: 12,
@@ -152,7 +157,9 @@ Future<void> _pumpStation(
         ChangeNotifierProvider<LocationController>(create: (_) => _QuietLocation()),
         ChangeNotifierProvider(create: (_) => BackgroundController()),
         ChangeNotifierProvider(create: (_) => NavigationController()),
-        ChangeNotifierProvider(create: (_) => EasyReadModeController.fixed(easyRead)),
+        ChangeNotifierProvider<EasyReadModeController>.value(
+          value: EasyReadModeController.fixed(easyRead),
+        ),
       ],
       child: _app(easyRead: easyRead, home: const BusRouteScreen()),
     ),
@@ -165,6 +172,7 @@ Future<void> _pumpSearch(
   WidgetTester tester, {
   required bool easyRead,
   Size size = const Size(390, 844),
+  Brightness brightness = Brightness.dark,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -192,7 +200,7 @@ Future<void> _pumpSearch(
         ChangeNotifierProvider<KeyboardController>.value(value: keyboard),
         ChangeNotifierProvider(create: (_) => EasyReadModeController.fixed(easyRead)),
       ],
-      child: _app(easyRead: easyRead, home: const DashboardScreen()),
+      child: _app(easyRead: easyRead, brightness: brightness, home: const DashboardScreen()),
     ),
   );
   // First frame anchors the menu; the following frame paints it.
@@ -251,6 +259,63 @@ void main() {
     );
   }
 
+  testWidgets('easy read fare button stays clear of the route number', (tester) async {
+    for (final width in [320.0, 390.0]) {
+      for (final language in ['zh', 'zhHans', 'pt', 'en']) {
+        final label = _tr(language, 'fare_table');
+        final where = '$language ${width.toInt()}px';
+        await _pumpStation(
+          tester,
+          langCode: language,
+          easyRead: true,
+          route: '25BS',
+          size: Size(width, 844),
+        );
+
+        final fare = find.text(label);
+        expect(fare, findsOneWidget, reason: where);
+        final fareText = tester.widget<Text>(fare);
+        expect(fareText.softWrap, isFalse, reason: where);
+        expect(fareText.maxLines, 1, reason: where);
+        expect(fareText.style?.fontSize, 18, reason: where);
+        expect(tester.widget<Icon>(find.byIcon(Icons.monetization_on)).size, 22, reason: where);
+
+        final routeRect = tester.getRect(find.text('25BS'));
+        final fareRect = tester.getRect(fare);
+        expect(fareRect.left - routeRect.right, greaterThanOrEqualTo(7), reason: '$where gap=${fareRect.left - routeRect.right}');
+        expect(fareRect.right, lessThanOrEqualTo(width - 19), reason: where);
+        expect(fareRect.top, greaterThanOrEqualTo(routeRect.top), reason: where);
+        expect(fareRect.bottom, lessThanOrEqualTo(routeRect.bottom + 1), reason: where);
+        expect(fareRect.height, lessThan(28), reason: where);
+      }
+    }
+
+    await _pumpStation(
+      tester,
+      langCode: 'pt',
+      easyRead: false,
+      route: '25BS',
+      size: const Size(320, 844),
+    );
+    final normal = tester.widget<Text>(find.text('Tarifas'));
+    expect(normal.style?.fontSize, 13);
+    expect(tester.widget<Icon>(find.byIcon(Icons.monetization_on)).size, 16);
+    final routeRect = tester.getRect(find.text('25BS'));
+    final fareRect = tester.getRect(find.text('Tarifas'));
+    expect(fareRect.left, greaterThan(routeRect.right));
+  });
+
+  testWidgets('easy read more button matches the search title colour', (tester) async {
+    for (final brightness in [Brightness.dark, Brightness.light]) {
+      await _pumpSearch(tester, easyRead: true, brightness: brightness);
+      final title = tester.widget<Text>(find.text('尋找路線'));
+      final button = tester.widget<FilledButton>(find.widgetWithText(FilledButton, '更多'));
+      final background = button.style?.backgroundColor?.resolve(const <WidgetState>{});
+      expect(title.style?.color, Colors.amber.shade600, reason: '$brightness');
+      expect(background, title.style?.color, reason: '$brightness');
+    }
+  });
+
   testWidgets('easy read keeps More on the search page only', (tester) async {
     await _pumpSearch(tester, easyRead: true, size: const Size(320, 568));
     expect(find.text('更多'), findsOneWidget);
@@ -305,26 +370,50 @@ void main() {
             _ => 'Barra (M1/2)',
           };
           final stop = _textMatching(tester, (data) => data.contains(sample));
-          expect(stop.style?.fontSize, 19);
-
           final row = _textMatching(tester, (data) => data.contains('(M12/2)'));
-          expect(row.style?.fontSize, 19);
-          expect(tester.getRect(find.text(row.data!)).right, lessThanOrEqualTo(size.width + 0.5));
+          for (final caption in [stop, row]) {
+            final finder = find.text(caption.data!);
+            final rect = tester.getRect(finder);
+            expect(rect.right, lessThanOrEqualTo(size.width + 0.5), reason: caption.data);
+            final tile = find.ancestor(of: finder, matching: find.byType(InkWell)).first;
+            final bell = find.descendant(of: tile, matching: find.byType(IconButton));
+            expect(rect.right, lessThanOrEqualTo(tester.getRect(bell).left + 0.5), reason: caption.data);
+            final seq = find.descendant(
+              of: tile,
+              matching: find.byWidgetPredicate((widget) {
+                return widget is Text && RegExp(r'^\d+\.$').hasMatch(widget.data ?? '');
+              }),
+            );
+            final seqText = tester.widget<Text>(seq);
+            expect(seqText.style?.fontSize, caption.style?.fontSize, reason: caption.data);
+            expect(tester.getRect(seq).right, lessThanOrEqualTo(rect.left + 0.5), reason: caption.data);
+          }
+          final rowFinder = find.text(row.data!);
 
           final labels = <Rect>[];
+          double? sharedSize;
           for (final key in ['swap_direction', 'location', 'timetable', 'tab_map', 'favorite']) {
             final plain = _tr(lang, key);
             final label = _textMatching(
               tester,
               (data) => data.replaceAll('\n', '') == plain,
             );
-            expect(label.style?.fontSize, greaterThan(11), reason: '$lang $plain');
-            expect(label.style?.fontSize, greaterThanOrEqualTo(13), reason: '$lang $plain');
-            final rect = tester.getRect(
-              find.byWidgetPredicate((widget) {
-                return widget is Text && widget.data?.replaceAll('\n', '') == plain;
-              }),
-            );
+            final labelFinder = find.byWidgetPredicate((widget) {
+              return widget is Text && widget.data?.replaceAll('\n', '') == plain;
+            });
+            sharedSize ??= label.style?.fontSize;
+            expect(label.style?.fontSize, sharedSize, reason: '$lang $plain');
+            expect(stop.style?.fontSize, sharedSize, reason: '$lang stop');
+            expect(row.style?.fontSize, sharedSize, reason: '$lang row');
+            final paintedLabel = MediaQuery.textScalerOf(tester.element(labelFinder))
+                .scale(label.style!.fontSize!);
+            final paintedStop = MediaQuery.textScalerOf(tester.element(find.byWidget(stop)))
+                .scale(stop.style!.fontSize!);
+            final paintedRow = MediaQuery.textScalerOf(tester.element(rowFinder))
+                .scale(row.style!.fontSize!);
+            expect(paintedStop, closeTo(paintedLabel, 0.01), reason: '$lang stop paint');
+            expect(paintedRow, closeTo(paintedLabel, 0.01), reason: '$lang row paint');
+            final rect = tester.getRect(labelFinder);
             expect(rect.left, greaterThanOrEqualTo(-0.5), reason: '$lang $plain $rect');
             expect(rect.right, lessThanOrEqualTo(size.width + 0.5), reason: '$lang $plain $rect');
             expect(rect.top, greaterThanOrEqualTo(0), reason: '$lang $plain $rect');
