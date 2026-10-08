@@ -402,6 +402,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
           (busCtrl.selectedStopSeq! - a.currentStopSeq).compareTo(busCtrl.selectedStopSeq! - b.currentStopSeq));
       
       int firstBusDiff = -1;
+      int? referenceMinutes = firstBusMins;
       
       for (var bus in approachingBuses) {
         int diff = busCtrl.selectedStopSeq! - bus.currentStopSeq;
@@ -409,13 +410,15 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
         String status = '';
         if (diff > 0) {
            final bool isFirst = upcoming.isEmpty;
-           final int estimatedMins = approachingEtaMinutes(
+           final int? estimated = approachingEtaMinutes(
              busEtaMinutes: bus.etaMinutes,
              isFirst: isFirst,
              stopsAway: diff,
              firstStopsAway: firstBusDiff,
-             firstStatusMinutes: firstBusMins,
+             firstStatusMinutes: isFirst ? firstBusMins : referenceMinutes,
            );
+           if (isFirst && estimated != null) referenceMinutes = estimated;
+           final int estimatedMins = estimated ?? 0;
            
            if (diff == 1) {
              status = approachingStatus(

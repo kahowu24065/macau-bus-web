@@ -105,7 +105,7 @@ void main() {
     expect(AppTranslations.data['zh']!['privacy_policy'], '私隱權政策');
   });
 
-  test('later buses use their own etaMinutes', () {
+  test('every bus uses its own etaMinutes before the status text', () {
     expect(
       approachingEtaMinutes(
         busEtaMinutes: 11,
@@ -115,6 +115,36 @@ void main() {
         firstStatusMinutes: 4,
       ),
       11,
+    );
+    expect(
+      approachingEtaMinutes(
+        busEtaMinutes: 1,
+        isFirst: true,
+        stopsAway: 1,
+        firstStopsAway: 1,
+        firstStatusMinutes: null,
+      ),
+      1,
+    );
+    expect(
+      approachingEtaMinutes(
+        busEtaMinutes: 9,
+        isFirst: true,
+        stopsAway: 2,
+        firstStopsAway: 2,
+        firstStatusMinutes: 4,
+      ),
+      9,
+    );
+    expect(
+      approachingEtaMinutes(
+        busEtaMinutes: null,
+        isFirst: true,
+        stopsAway: 1,
+        firstStopsAway: 1,
+        firstStatusMinutes: 6,
+      ),
+      6,
     );
     expect(
       approachingEtaMinutes(
@@ -128,13 +158,66 @@ void main() {
     );
     expect(
       approachingEtaMinutes(
-        busEtaMinutes: 9,
+        busEtaMinutes: null,
         isFirst: true,
-        stopsAway: 2,
-        firstStopsAway: 2,
-        firstStatusMinutes: 4,
+        stopsAway: 1,
+        firstStopsAway: 1,
+        firstStatusMinutes: null,
       ),
-      4,
+      isNull,
+    );
+  });
+
+  test('dataList etaMinutes attach by bus license', () {
+    final buses = [
+      Bus(
+        busLicense: 'MB-1',
+        lat: 22.2,
+        lng: 113.5,
+        speed: 20,
+        currentStopSeq: 4,
+      ),
+      Bus(
+        busLicense: 'mb-2',
+        lat: 22.2,
+        lng: 113.5,
+        speed: 18,
+        currentStopSeq: 1,
+      ),
+    ];
+    final merged = attachDataListEta(buses, [
+      {'busLicense': 'MB-2', 'plate': 'OTHER', 'etaMinutes': 8},
+      {'plate': 'MB-1', 'status': '下一站到達', 'etaMinutes': '1'},
+    ]);
+    expect(merged[0].etaMinutes, 1);
+    expect(merged[0].currentStopSeq, 4);
+    expect(merged[1].etaMinutes, 8);
+
+    final untouched = attachDataListEta(
+      [
+        Bus(
+          busLicense: 'MB-9',
+          lat: 22.2,
+          lng: 113.5,
+          speed: 10,
+          currentStopSeq: 2,
+          etaMinutes: 5,
+        ),
+      ],
+      const [
+        {'busLicense': 'MB-1', 'etaMinutes': 3},
+      ],
+    );
+    expect(untouched.single.etaMinutes, 5);
+    expect(
+      approachingEtaMinutes(
+        busEtaMinutes: untouched.single.etaMinutes,
+        isFirst: true,
+        stopsAway: 1,
+        firstStopsAway: 1,
+        firstStatusMinutes: null,
+      ),
+      5,
     );
   });
 

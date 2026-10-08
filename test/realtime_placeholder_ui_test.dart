@@ -203,6 +203,74 @@ void main() {
     expect(tester.takeException(), isNull);
     await _unmount(tester, bus, lang);
   });
+
+  testWidgets('a one-stop bus uses its etaMinutes instead of a fixed 3', (tester) async {
+    OpenDataConfig.instance.debugApply(
+      configRealtime: true,
+      configRouteNotices: true,
+      etaRealtime: true,
+    );
+    final lang = LanguageController();
+    final bus = BusController();
+    bus.setRoute('3');
+    bus.stopsList = [
+      for (var i = 1; i <= 3; i++)
+        _stop(seq: i, zh: '站$i', en: 'Stop $i', pt: 'Paragem $i'),
+    ];
+    bus.selectedStopSeq = 2;
+    bus.etaData = {'status': '下一站到達', 'busLicense': 'MB-1'};
+    bus.allBusesList = const [
+      Bus(
+        busLicense: 'MB-1',
+        lat: 22.2,
+        lng: 113.55,
+        speed: 20,
+        currentStopSeq: 1,
+        etaMinutes: 1,
+      ),
+    ];
+
+    await _pumpRoute(tester, bus: bus, lang: lang);
+
+    expect(find.text('下站到達 (約 1 分鐘)'), findsOneWidget);
+    expect(find.textContaining('約 3 分鐘'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await _unmount(tester, bus, lang);
+  });
+
+  testWidgets('a one-stop bus with no eta omits the minute count', (tester) async {
+    OpenDataConfig.instance.debugApply(
+      configRealtime: true,
+      configRouteNotices: true,
+      etaRealtime: true,
+    );
+    final lang = LanguageController();
+    final bus = BusController();
+    bus.setRoute('3');
+    bus.stopsList = [
+      for (var i = 1; i <= 3; i++)
+        _stop(seq: i, zh: '站$i', en: 'Stop $i', pt: 'Paragem $i'),
+    ];
+    bus.selectedStopSeq = 2;
+    bus.etaData = {'status': '下一站到達'};
+    bus.allBusesList = const [
+      Bus(
+        busLicense: 'MB-1',
+        lat: 22.2,
+        lng: 113.55,
+        speed: 20,
+        currentStopSeq: 1,
+      ),
+    ];
+
+    await _pumpRoute(tester, bus: bus, lang: lang);
+
+    expect(find.text('下站到達'), findsOneWidget);
+    expect(find.textContaining('3 分鐘'), findsNothing);
+    expect(find.textContaining('約 3'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await _unmount(tester, bus, lang);
+  });
 }
 
 Future<void> _unmount(WidgetTester tester, BusController bus, LanguageController lang) async {
