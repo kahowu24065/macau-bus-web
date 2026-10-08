@@ -413,6 +413,7 @@ void main() {
                 .scale(row.style!.fontSize!);
             expect(paintedStop, closeTo(paintedLabel, 0.01), reason: '$lang stop paint');
             expect(paintedRow, closeTo(paintedLabel, 0.01), reason: '$lang row paint');
+            expect(paintedStop, greaterThanOrEqualTo(19 * EasyReadTheme.textScale - 0.01), reason: '$lang stop size');
             final rect = tester.getRect(labelFinder);
             expect(rect.left, greaterThanOrEqualTo(-0.5), reason: '$lang $plain $rect');
             expect(rect.right, lessThanOrEqualTo(size.width + 0.5), reason: '$lang $plain $rect');

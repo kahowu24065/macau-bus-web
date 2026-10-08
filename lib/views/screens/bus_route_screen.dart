@@ -933,7 +933,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                           final stop = busCtrl.stopsList[index]; 
                           final isSelected = busCtrl.selectedStopSeq == stop.seq;
                           final stopInfoSize = easyRead ? _FittingHeaderLabel.size : 16.0;
-                          final seqWidth = easyRead ? 56.0 : 28.0;
+                          final seqWidth = easyRead ? 72.0 : 28.0;
                           final hasBoardingAlarm = busCtrl.boardingStopSeq == stop.seq;
                           final hasAlightingAlarm = busCtrl.alightingStopSeq == stop.seq;
                           final isAlarmActive = hasBoardingAlarm || hasAlightingAlarm;
@@ -1324,8 +1324,8 @@ class _FareTableButton extends StatelessWidget {
   }
 }
 
-/// Stop sequence and name. In Easy Read the header undoes the 1.35 text
-/// scale, so these captions do the same and paint at [fontSize].
+/// Stop sequence and name. Easy Read paints these at the same size as the
+/// header labels. Both undo the extra 1.35 scale so that size is the painted size.
 class _StopInfoText extends StatelessWidget {
   const _StopInfoText({
     required this.data,
@@ -1357,14 +1357,17 @@ class _StopInfoText extends StatelessWidget {
 }
 
 /// Easy Read header captions. [size] is also the stop-list name size.
-/// A long word such as "Timetable" wraps onto two lines at that size.
+///
+/// 1.0.32 painted stop names at 19pt times the 1.35 text scale. The header
+/// matches that size. A long word wraps onto two lines, and only then scales
+/// down so it stays inside its button.
 class _FittingHeaderLabel extends StatelessWidget {
   const _FittingHeaderLabel({required this.text, required this.color});
 
   final String text;
   final Color color;
 
-  static const double size = 14;
+  static const double size = 19 * EasyReadTheme.textScale;
   static const double _height = 1.15;
 
   @override
@@ -1375,19 +1378,28 @@ class _FittingHeaderLabel extends StatelessWidget {
         final base = DefaultTextStyle.of(context).style;
         final style = _style(base, size);
         var chosen = text;
+        var shrink = false;
         if (maxWidth.isFinite && maxWidth > 0) {
           final direction = Directionality.of(context);
           final scaler = MediaQuery.textScalerOf(context);
           if (!_fits(text, style, maxWidth, direction, scaler, lines: 1)) {
             chosen = _twoLines(text);
           }
+          final lines = chosen.contains('\n') ? 2 : 1;
+          shrink = !_fits(chosen, style, maxWidth, direction, scaler, lines: lines);
         }
-        return Text(
+        final label = Text(
           chosen,
           textAlign: TextAlign.center,
           softWrap: true,
           maxLines: chosen.contains('\n') ? 2 : 1,
           style: style,
+        );
+        if (!shrink) return label;
+        return FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.topCenter,
+          child: label,
         );
       },
     );
