@@ -4,13 +4,13 @@
 
 - Routes, stop locations and route alignments come from the Macao SAR Government Open Data Platform (data.gov.mo).
 - Frequencies and first- and last-bus times are compiled from route timetables published by the Transport Bureau (DSAT). Errors or omissions may occur during compilation.
-- Real-time arrivals, and notices of diversions and stop closures, refer to information provided by DSAT.
+- Real-time arrivals, road traffic speeds, and notices of diversions and stop closures refer to information provided by DSAT.
 
 All rights in the data remain with their original rights holders.
 
 ## 2. Arrival times are estimates
 
-Arrival times are estimates calculated from a bus’s real-time position, the route distance and past running records. They are not a service the bus company has promised. Traffic congestion, boarding and alighting time, diversions or delays in the data may cause the actual arrival time to differ.
+Arrival times are estimates calculated from a bus's real-time position, road traffic speeds, the route distance and past running records. They are not a service the bus company has promised. Traffic congestion, boarding and alighting time, diversions or delays in the data may cause the actual arrival time to differ.
 
 ## 3. Journey planning is for reference only
 
@@ -23,6 +23,8 @@ Information on diversions, temporary stop closures and special services may not 
 ## 5. Service availability
 
 Because of system maintenance, network problems or an interruption at a data source, this application may be temporarily unable to provide some or all of the data, without further notice.
+
+Real-time arrivals and road speed data may be suspended at any time; only timetable frequencies will then be shown.
 
 ## 6. Developer and limitation of liability
 
