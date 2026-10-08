@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -23,10 +24,12 @@ Future<void> _pumpSettings(WidgetTester tester, {required bool easyRead}) async 
   final lang = LanguageController();
   final bus = BusController();
   final purchase = PurchaseController();
+  final easyReadCtrl = EasyReadModeController.fixed(easyRead);
   addTearDown(() {
     lang.dispose();
     bus.dispose();
     purchase.dispose();
+    easyReadCtrl.dispose();
   });
 
   await tester.pumpWidget(
@@ -39,7 +42,7 @@ Future<void> _pumpSettings(WidgetTester tester, {required bool easyRead}) async 
         ChangeNotifierProvider(create: (_) => BackgroundController()),
         ChangeNotifierProvider<LanguageController>.value(value: lang),
         ChangeNotifierProvider(create: (_) => NavigationController()),
-        ChangeNotifierProvider(create: (_) => EasyReadModeController.fixed(easyRead)),
+        ChangeNotifierProvider<EasyReadModeController>.value(value: easyReadCtrl),
       ],
       child: MaterialApp(
         builder: (context, child) {
@@ -68,6 +71,35 @@ Future<void> _pumpSettings(WidgetTester tester, {required bool easyRead}) async 
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('arrival read-aloud switch sits under Easy Read and hides when Easy Read is off', (tester) async {
+    tester.view.physicalSize = const Size(400, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _pumpSettings(tester, easyRead: false);
+    expect(find.text('易讀模式'), findsOneWidget);
+    expect(find.text('讀出到站資訊'), findsNothing);
+
+    await _pumpSettings(tester, easyRead: true);
+    expect(find.text('讀出到站資訊'), findsOneWidget);
+    final easy = tester.getTopLeft(find.text('易讀模式'));
+    final speech = tester.getTopLeft(find.text('讀出到站資訊'));
+    final theme = tester.getTopLeft(find.text('切換日夜模式'));
+    expect(speech.dy, greaterThan(easy.dy));
+    expect(theme.dy, greaterThan(speech.dy));
+
+    final tile = find.ancestor(of: find.text('讀出到站資訊'), matching: find.byType(ListTile));
+    await tester.ensureVisible(tile);
+    await tester.pump();
+    await tester.tap(find.descendant(of: tile, matching: find.byType(CupertinoSwitch)));
+    await tester.pump();
+    expect(
+      tester.element(find.byType(SettingsScreen)).read<EasyReadModeController>().speakArrivals,
+      isFalse,
+    );
+  });
 
   for (final easyRead in [false, true]) {
     testWidgets(

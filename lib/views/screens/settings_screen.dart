@@ -699,6 +699,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             onChanged: easyReadCtrl.setEnabled,
                           ),
                         ),
+                        if (easyReadCtrl.enabled)
+                          _buildTile(
+                            icon: Icons.volume_up_outlined,
+                            title: langCtrl.tr('easy_read_speak_arrivals'),
+                            isDark: isDark,
+                            trailing: _settingsSwitch(
+                              value: easyReadCtrl.speakArrivals,
+                              isDark: isDark,
+                              onChanged: easyReadCtrl.setSpeakArrivals,
+                            ),
+                          ),
                         _buildTile(
                           icon: Icons.dark_mode_outlined, title: langCtrl.tr('switch_theme'), subtitle: langCtrl.tr('easier_on_eyes'), isDark: isDark,
                           trailing: CupertinoSwitch(

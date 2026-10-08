@@ -495,9 +495,10 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     BusController busCtrl,
     LanguageController langCtrl, {
     required bool easyRead,
+    required bool speakArrivals,
     required String stopName,
   }) {
-    if (!easyRead) return;
+    if (!easyRead || !speakArrivals) return;
     final upcoming = _getUpcomingBusesInfo(busCtrl, langCtrl, easyRead: true);
     if (upcoming.isEmpty) return;
     final status = (upcoming.first['status'] ?? '').trim();
@@ -651,6 +652,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     final isFavorite = busCtrl.favoriteRoutes.contains(busCtrl.currentRoute);
     final hasRoute = busCtrl.currentRoute.isNotEmpty;
     final easyRead = EasyReadAccess.enabled(context);
+    final speakArrivals = EasyReadAccess.speakArrivals(context);
 
     final alertStops = busCtrl.stopsList
         .where((stop) => busCtrl.showRouteNotices && _hasAnyStopWarning(stop))
@@ -978,6 +980,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                                 busCtrl,
                                                 langCtrl,
                                                 easyRead: easyRead,
+                                                speakArrivals: speakArrivals,
                                                 stopName: stop.getLocalizedName(langCtrl.currentLanguage),
                                               );
                                             },
@@ -1123,7 +1126,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                                                         key: ValueKey('arrival-$idx'),
                                                                         padding: EdgeInsets.only(top: isSecondBus ? 10.0 : 0.0),
                                                                         child: GestureDetector(
-                                                                          onTap: statusText.isEmpty
+                                                                          onTap: !speakArrivals || statusText.isEmpty
                                                                               ? null
                                                                               : () {
                                                                                   ArrivalSpeaker.shared.speak(spoken, langCtrl.currentLanguage);
@@ -1183,6 +1186,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                     busCtrl,
                                     langCtrl,
                                     easyRead: easyRead,
+                                    speakArrivals: speakArrivals,
                                     stopName: stop.getLocalizedName(langCtrl.currentLanguage),
                                   );
                                 },

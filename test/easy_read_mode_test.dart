@@ -60,16 +60,33 @@ void main() {
   });
 
   test('fixed controller does not read preferences', () async {
-    SharedPreferences.setMockInitialValues({'easy_read_mode': true});
+    SharedPreferences.setMockInitialValues({
+      'easy_read_mode': true,
+      'easy_read_speak_arrivals': false,
+    });
     final fixed = EasyReadModeController.fixed(false);
     await fixed.ready;
     expect(fixed.enabled, isFalse);
+    expect(fixed.speakArrivals, isTrue);
+  });
+
+  test('arrival read-aloud defaults on and persists', () async {
+    final first = EasyReadModeController();
+    await first.ready;
+    expect(first.speakArrivals, isTrue);
+
+    await first.setSpeakArrivals(false);
+    final second = EasyReadModeController();
+    await second.ready;
+    expect(second.speakArrivals, isFalse);
+    expect(second.enabled, isFalse);
   });
 
   test('translations include easy read mode in all four languages', () {
     const keys = [
       'easy_read_mode',
       'easy_read_mode_desc',
+      'easy_read_speak_arrivals',
       'easy_read_eta_mins',
       'easy_read_spoken_mins',
       'easy_read_spoken_line',
@@ -89,6 +106,10 @@ void main() {
       }
     }
     expect(AppTranslations.data['zh']!['easy_read_mode'], '易讀模式');
+    expect(AppTranslations.data['zh']!['easy_read_speak_arrivals'], '讀出到站資訊');
+    expect(AppTranslations.data['zhHans']!['easy_read_speak_arrivals'], '读出到站资讯');
+    expect(AppTranslations.data['en']!['easy_read_speak_arrivals'], 'Read arrivals aloud');
+    expect(AppTranslations.data['pt']!['easy_read_speak_arrivals'], 'Ler chegadas em voz alta');
     expect(AppTranslations.data['zh']!['more_options'], '更多');
     expect(AppTranslations.data['zh']!['easy_read_eta_mins'], '@mins 分鐘後到');
     expect(AppTranslations.data['zh']!['easy_read_mode_desc'], contains('\n'));
