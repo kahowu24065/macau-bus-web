@@ -161,8 +161,8 @@ void main() {
     lang.dispose();
   });
 
-  testWidgets('spoken arrival follows the chosen speech language', (tester) async {
-    tester.view.physicalSize = const Size(400, 1200);
+  testWidgets('spoken arrival follows the app display language', (tester) async {
+    tester.view.physicalSize = const Size(800, 1400);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -188,7 +188,9 @@ void main() {
       ),
     ];
 
-    Future<void> pump(String speechLanguage) async {
+    Future<void> pump(String appLanguage) async {
+      await lang.changeLanguage(appLanguage);
+      await lang.changeLanguage(appLanguage);
       await tester.pumpWidget(
         MultiProvider(
           providers: [
@@ -198,7 +200,7 @@ void main() {
             ChangeNotifierProvider(create: (_) => BackgroundController()),
             ChangeNotifierProvider(create: (_) => NavigationController()),
             ChangeNotifierProvider(
-              create: (_) => EasyReadModeController.fixed(true, speechLanguage: speechLanguage),
+              create: (_) => EasyReadModeController.fixed(true),
             ),
           ],
           child: MaterialApp(
@@ -212,10 +214,10 @@ void main() {
     }
 
     await pump('zhHans');
-    expect(find.text('4 分鐘後到'), findsOneWidget);
-    await tester.ensureVisible(find.text('4 分鐘後到'));
+    expect(find.text('4 分钟后到'), findsOneWidget);
+    await tester.ensureVisible(find.text('4 分钟后到'));
     await tester.pump();
-    await tester.tap(find.text('4 分鐘後到'));
+    await tester.tap(find.text('4 分钟后到'));
     await tester.pump();
     expect(fake.spoken, '站5，4分钟后到');
     expect(fake.language, 'zh-CN');
@@ -223,9 +225,9 @@ void main() {
     fake.reset();
     await tester.pumpWidget(const SizedBox.shrink());
     await pump('en');
-    await tester.ensureVisible(find.text('4 分鐘後到'));
+    await tester.ensureVisible(find.text('In 4 min'));
     await tester.pump();
-    await tester.tap(find.text('4 分鐘後到'));
+    await tester.tap(find.text('In 4 min'));
     await tester.pump();
     expect(fake.spoken, 'Stop 5, arriving in 4 min');
     expect(fake.language, 'en');
@@ -233,12 +235,22 @@ void main() {
     fake.reset();
     await tester.pumpWidget(const SizedBox.shrink());
     await pump('pt');
+    await tester.ensureVisible(find.text('Chega em 4 min'));
+    await tester.pump();
+    await tester.tap(find.text('Chega em 4 min'));
+    await tester.pump();
+    expect(fake.spoken, 'Paragem 5, chega em 4 min');
+    expect(fake.language, 'pt');
+
+    fake.reset();
+    await tester.pumpWidget(const SizedBox.shrink());
+    await pump('zh');
     await tester.ensureVisible(find.text('4 分鐘後到'));
     await tester.pump();
     await tester.tap(find.text('4 分鐘後到'));
     await tester.pump();
-    expect(fake.spoken, 'Paragem 5, chega em 4 min');
-    expect(fake.language, 'pt');
+    expect(fake.spoken, '站5，4分鐘後到啦');
+    expect(fake.language, 'zh-HK');
 
     await tester.pumpWidget(const SizedBox.shrink());
     bus.dispose();

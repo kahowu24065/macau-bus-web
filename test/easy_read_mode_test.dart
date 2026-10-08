@@ -108,22 +108,12 @@ void main() {
     expect(easy.speakArrivals, isTrue);
   });
 
-  test('speech language follows the app language until the user picks', () async {
+  test('a saved readout language is discarded', () async {
+    SharedPreferences.setMockInitialValues({'speech_language': 'zhHans'});
     final first = EasyReadModeController();
     await first.ready;
-    expect(first.speechLanguageFor('zh'), 'zh');
-    expect(first.speechLanguageFor('zhHans'), 'zhHans');
-    expect(first.speechLanguageFor('en'), 'en');
-    expect(first.speechLanguageFor('pt'), 'pt');
-
-    await first.setSpeechLanguage('zhHans');
-    expect(first.speechLanguageFor('zh'), 'zhHans');
-    expect(first.speechLanguageFor('en'), 'zhHans');
-
-    final second = EasyReadModeController();
-    await second.ready;
-    expect(second.speechLanguageFor('pt'), 'zhHans');
-    expect(second.speechLanguageFor('zh'), 'zhHans');
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.containsKey('speech_language'), isFalse);
   });
 
   test('arrival read-aloud keeps a separate choice for each mode', () async {
@@ -200,22 +190,10 @@ void main() {
     expect(AppTranslations.data['zhHans']!['suspended_stops'], '暂时停靠站点：');
     expect(AppTranslations.data['en']!['suspended_stops'], 'Temporary Stops:');
     expect(AppTranslations.data['pt']!['suspended_stops'], 'Paragens temporárias:');
-    expect(AppTranslations.data['zh']!['speech_language'], '讀出語言');
-    expect(AppTranslations.data['zhHans']!['speech_language'], '读出语言');
-    expect(AppTranslations.data['en']!['speech_language'], 'Speech language');
-    expect(AppTranslations.data['pt']!['speech_language'], 'Idioma da leitura');
-    expect(AppTranslations.data['zh']!['speech_lang_yue'], '廣東話');
-    expect(AppTranslations.data['zh']!['speech_lang_cmn'], '普通話');
-    expect(AppTranslations.data['zh']!['speech_lang_en'], 'English');
-    expect(AppTranslations.data['zh']!['speech_lang_pt'], 'Português');
-    expect(AppTranslations.data['zhHans']!['speech_lang_yue'], '广东话');
-    expect(AppTranslations.data['zhHans']!['speech_lang_cmn'], '普通话');
-    expect(AppTranslations.data['en']!['speech_lang_yue'], 'Cantonese');
-    expect(AppTranslations.data['en']!['speech_lang_cmn'], 'Mandarin');
-    expect(AppTranslations.data['en']!['speech_lang_pt'], 'Portuguese');
-    expect(AppTranslations.data['pt']!['speech_lang_yue'], 'Cantonês');
-    expect(AppTranslations.data['pt']!['speech_lang_cmn'], 'Mandarim');
-    expect(AppTranslations.data['pt']!['speech_lang_en'], 'Inglês');
+    for (final lang in ['zh', 'zhHans', 'pt', 'en']) {
+      expect(AppTranslations.data[lang]!.containsKey('speech_language'), isFalse);
+      expect(AppTranslations.data[lang]!.containsKey('speech_lang_yue'), isFalse);
+    }
   });
 
   test('arrival wording keeps next-stop and arriving-soon logic', () {

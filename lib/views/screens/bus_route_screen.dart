@@ -524,14 +524,14 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     if (!speakArrivals) return;
     final spokenStatus = status.trim();
     if (spokenStatus.isEmpty) return;
-    final speechLang = EasyReadAccess.speechLanguage(context, langCtrl.currentLanguage, listen: false);
+    final lang = langCtrl.currentLanguage;
     ArrivalSpeaker.shared.speak(
       easyReadSpokenArrival(
-        stopName: _speechStopName(stop, speechLang),
+        stopName: _speechStopName(stop, lang),
         status: spokenStatus,
-        tr: (key) => AppTranslations.text(speechLang, key),
+        tr: langCtrl.tr,
       ),
-      speechLang,
+      lang,
     );
   }
 
