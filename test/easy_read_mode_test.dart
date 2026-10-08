@@ -178,6 +178,10 @@ void main() {
     expect(AppTranslations.data['zhHans']!['easy_read_stop_closed'], '此站暂时停靠');
     expect(AppTranslations.data['en']!['easy_read_stop_closed'], 'Temporary stop');
     expect(AppTranslations.data['pt']!['easy_read_stop_closed'], 'Paragem temporária');
+    expect(AppTranslations.data['zh']!['suspended_stops'], '暫時停靠站點：');
+    expect(AppTranslations.data['zhHans']!['suspended_stops'], '暂时停靠站点：');
+    expect(AppTranslations.data['en']!['suspended_stops'], 'Temporary Stops:');
+    expect(AppTranslations.data['pt']!['suspended_stops'], 'Paragens temporárias:');
   });
 
   test('arrival wording keeps next-stop and arriving-soon logic', () {

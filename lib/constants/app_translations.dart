@@ -2,7 +2,7 @@ class AppTranslations {
   static const Map<String, Map<String, String>> data = {
     'zh': {
       'service_warning': '服務警告', 'stop_warning_body': '@stop 目前有服務警告或暫停停靠，請留意最新交通消息或考慮改用其他相近站點。', 'err_server_blocked': '伺服器回應逾時或被阻擋，請再試一次', 'err_no_stops': '查無此路線之站點 / 此乃循環路線', 'err_query_failed': '查詢失敗', 'badge_board': '上', 'badge_alight': '落', 'unknown_stop': '未知車站', 'no_valid_route': '沒有可用巴士方案', 'no_valid_route_desc': '起點同終點附近搵唔到官方站表對得通嘅巴士。請試其他目的地或時間。',
-      'suspended_stops': '暫停停靠站點：',
+      'suspended_stops': '暫時停靠站點：',
       'temp_alt_stops': '臨時 / 替代站點：',
       'approx_mins': '約 @mins 分鐘',
       'approx_mins_brackets': '(約 @mins 分鐘)',
@@ -163,7 +163,7 @@ class AppTranslations {
     },
     'zhHans': {
       'service_warning': '服务警告', 'stop_warning_body': '@stop 目前有服务警告或暂停停靠，请留意最新交通消息或考虑改用其他相近站点。', 'err_server_blocked': '服务器响应超时或被阻挡，请再试一次', 'err_no_stops': '查无此路线之站点 / 此乃循环路线', 'err_query_failed': '查询失败', 'badge_board': '上', 'badge_alight': '下', 'unknown_stop': '未知车站', 'no_valid_route': '没有可用巴士方案', 'no_valid_route_desc': '起点和终点附近找不到官方站表相连的巴士。请尝试其他目的地或时间。',
-      'suspended_stops': '暂停停靠站点：',
+      'suspended_stops': '暂时停靠站点：',
       'temp_alt_stops': '临时 / 替代站点：',
       'approx_mins': '约 @mins 分钟',
       'approx_mins_brackets': '(约 @mins 分钟)',
@@ -307,7 +307,7 @@ class AppTranslations {
     },
     'pt': {
       'service_warning': 'Aviso de serviço', 'stop_warning_body': '@stop tem atualmente um aviso de serviço ou paragem suspensa. Consulte as últimas notícias de trânsito ou use uma paragem próxima.', 'err_server_blocked': 'O servidor não respondeu ou bloqueou o pedido. Tente novamente.', 'err_no_stops': 'Sem paragens para esta rota / rota circular', 'err_query_failed': 'Falha na consulta', 'badge_board': 'S', 'badge_alight': 'D', 'unknown_stop': 'Paragem desconhecida', 'no_valid_route': 'Sem rota válida', 'no_valid_route_desc': 'Nenhuma carreira oficial liga as paragens perto do início e do fim. Tente outro destino ou horário.',
-      'suspended_stops': 'Paragens suspensas:',
+      'suspended_stops': 'Paragens temporárias:',
       'temp_alt_stops': 'Paragens temporárias/alternativas:',
       'approx_mins': 'Aprox. @mins min',
       'approx_mins_brackets': '(Aprox. @mins min)',
@@ -451,7 +451,7 @@ class AppTranslations {
     },
     'en': {
       'service_warning': 'Service warning', 'stop_warning_body': '@stop currently has a service warning or suspended stop. Check the latest traffic news or consider a nearby stop.', 'err_server_blocked': 'The server timed out or blocked the request. Please try again.', 'err_no_stops': 'No stops found for this route / circular route', 'err_query_failed': 'Query failed', 'badge_board': 'On', 'badge_alight': 'Off', 'unknown_stop': 'Unknown stop', 'no_valid_route': 'No valid bus route', 'no_valid_route_desc': 'No official bus links the stops near your start and end. Try another destination or time.',
-      'suspended_stops': 'Suspended Stops:',
+      'suspended_stops': 'Temporary Stops:',
       'temp_alt_stops': 'Temporary / Alternative Stops:',
       'approx_mins': '~@mins mins',
       'approx_mins_brackets': '(~@mins mins)',
