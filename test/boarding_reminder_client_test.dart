@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:macau_bus_app/controllers/bus_controller.dart';
 import 'package:macau_bus_app/models/bus.dart';
 import 'package:macau_bus_app/models/bus_stop.dart';
 import 'package:macau_bus_app/services/boarding_reminder_client.dart';
 import 'package:macau_bus_app/services/bus_api_service.dart';
+import 'package:macau_bus_app/services/live_activity_bridge.dart';
 import 'package:macau_bus_app/services/open_data_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -38,6 +41,11 @@ void main() {
     BusApiService.debugFetchBusETA = null;
     BoardingReminderClient.debugRegister = null;
     BoardingReminderClient.debugCancel = null;
+    LiveActivityBridge.debugPushToStartToken = null;
+    LiveActivityBridge.debugStartActivity = null;
+    LiveActivityBridge.debugUpdate = null;
+    LiveActivityBridge.debugEnd = null;
+    LiveActivityBridge.onActivityToken = null;
     OpenDataConfig.instance.debugReset();
   });
 
@@ -175,6 +183,53 @@ void main() {
       expect(bus.boardingStopSeq, isNull);
       expect(posts, 0);
     } finally {
+      bus.dispose();
+    }
+  });
+
+  testWidgets('a live activity token that never arrives still posts and marks the stop', (tester) async {
+    final hung = Completer<String?>();
+    LiveActivityBridge.debugPushToStartToken = () => hung.future;
+    LiveActivityBridge.debugStartActivity = ({
+      required String route,
+      required String stopName,
+      required int minutes,
+      required String text,
+    }) => hung.future;
+    final bodies = <Map<String, dynamic>>[];
+    BoardingReminderClient.debugRegister = (body) async {
+      bodies.add(Map<String, dynamic>.from(body));
+      return const BoardingReminderResponse(
+        ok: true,
+        minutes: 5,
+        text: '約 5 分鐘後到達',
+        startedAt: 1000,
+      );
+    };
+
+    final bus = BusController();
+    try {
+      await tester.pump();
+      await tester.pump();
+      bus.currentRoute = '3A';
+      bus.currentDirection = 0;
+      bus.stopsList = [_stop(1, 0), _stop(2, 500), _stop(3, 1000)];
+      bus.allBusesList = [
+        Bus(busLicense: 'CLOSE', lat: _north(700), lng: _lng, speed: 20, currentStopSeq: 2),
+      ];
+
+      final outcome = await bus.setBoardingStop(3).timeout(const Duration(seconds: 2));
+
+      expect(outcome.started, isTrue);
+      expect(outcome.messageKey, isNull);
+      expect(bus.boardingStopSeq, 3);
+      expect(bodies, hasLength(1));
+      expect(bodies.single.containsKey('pushToStartToken'), isFalse);
+      expect(bodies.single.containsKey('activityToken'), isFalse);
+      expect(bodies.single['stops'], isA<List>());
+    } finally {
+      if (!hung.isCompleted) hung.complete(null);
+      await tester.pump();
       bus.dispose();
     }
   });
