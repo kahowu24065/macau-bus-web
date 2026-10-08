@@ -546,6 +546,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
   }
 
   void _showAlarmBottomSheet(BuildContext context, dynamic stop, BusController busCtrl, LocationController locCtrl, bool isDark) {
+    final hostContext = context;
     final langCtrl = context.read<LanguageController>();
     final localizedName = stop.getLocalizedName(langCtrl.currentLanguage);
     
@@ -572,9 +573,26 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                     title: Text(hasBoarding ? langCtrl.tr('cancel_boarding_alarm') : langCtrl.tr('boarding_alarm'), style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold)),
                     subtitle: Text(langCtrl.tr('boarding_alarm_desc'), style: const TextStyle(color: Colors.grey, fontSize: 12)),
                     trailing: Icon(hasBoarding ? Icons.check_circle : Icons.chevron_right, color: hasBoarding ? Colors.amber : Colors.grey),
-                    onTap: () {
-                      if (hasBoarding) { busCtrl.setBoardingStop(null); } else { busCtrl.setBoardingStop(stop.seq); }
+                    onTap: () async {
+                      if (hasBoarding) {
+                        await busCtrl.setBoardingStop(null);
+                        if (context.mounted) Navigator.pop(context);
+                        return;
+                      }
+                      final outcome = await busCtrl.setBoardingStop(stop.seq);
+                      if (!context.mounted) return;
                       Navigator.pop(context);
+                      final messageKey = outcome.messageKey;
+                      if (messageKey != null && hostContext.mounted) {
+                        ScaffoldMessenger.of(hostContext).showSnackBar(
+                          RouteLiquidGlassNavStyle.snackBar(
+                            context: hostContext,
+                            content: Text(langCtrl.tr(messageKey)),
+                            backgroundColor: Colors.redAccent,
+                            duration: const Duration(seconds: 4),
+                          ),
+                        );
+                      }
                     },
                   ),
                   Divider(height: 1, color: isDark ? Colors.white10 : Colors.black12),
