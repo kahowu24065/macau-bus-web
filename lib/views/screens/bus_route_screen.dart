@@ -34,18 +34,6 @@ class BusRouteScreen extends StatefulWidget {
   @override 
   State<BusRouteScreen> createState() => _BusRouteScreenState();
 }
-
-/// Scroll clearance so the last stop, including its closure line, can sit
-/// fully above the translucent bottom nav. Home usually already reports that
-/// reserve as padding; this still clears the bar when the ambient inset is
-/// only the system safe area, and adds a gap so the row is not flush with
-/// the glass.
-double _stopListBottomInset(BuildContext context) {
-  final ambient = MediaQuery.paddingOf(context).bottom;
-  final reserve = RouteLiquidGlassNavStyle.bottomReserve(context);
-  final cleared = ambient > reserve ? ambient : reserve;
-  return cleared + 24;
-}
 String _lastFetchedLang = '';
 class _BusRouteScreenState extends State<BusRouteScreen> {
   late BusController _busCtrl;
@@ -938,7 +926,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                         controller: _listScrollController,
                         padding: EdgeInsets.only(
                           top: 8,
-                          bottom: _stopListBottomInset(context),
+                          bottom: MediaQuery.paddingOf(context).bottom,
                         ),
                         itemCount: busCtrl.stopsList.length,
                         itemBuilder: (context, index) {
