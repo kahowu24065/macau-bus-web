@@ -17,6 +17,9 @@ import '../routing/open_route_planner.dart';
 import '../screens/easy_read_more_screen.dart';
 import '../widgets/preserve_chrome.dart';
 
+/// Gold used by the search-page title. The Easy Read More button uses it too.
+final Color _searchRouteTitleColor = Colors.amber.shade600;
+
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
   @override 
@@ -523,6 +526,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return SizedBox(
       width: double.infinity,
       child: FilledButton(
+        style: FilledButton.styleFrom(backgroundColor: _searchRouteTitleColor),
         onPressed: () {
           Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const EasyReadMoreScreen()),
@@ -571,7 +575,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(langCtrl.tr('search_route_title'), style: TextStyle(color: Colors.amber.shade600, fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
+                    Text(langCtrl.tr('search_route_title'), style: TextStyle(color: _searchRouteTitleColor, fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
                     const SizedBox(height: 16),
                     Row(
                       children: [

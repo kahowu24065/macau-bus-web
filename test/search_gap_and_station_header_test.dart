@@ -84,9 +84,13 @@ Future<void> _loadRoboto() async {
   await loader.load();
 }
 
-Widget _app({required bool easyRead, required Widget home}) {
+Widget _app({
+  required bool easyRead,
+  required Widget home,
+  Brightness brightness = Brightness.dark,
+}) {
   return MaterialApp(
-    theme: ThemeData(brightness: Brightness.dark, fontFamily: 'Roboto'),
+    theme: ThemeData(brightness: brightness, fontFamily: 'Roboto'),
     builder: (context, child) {
       final on = context.watch<EasyReadModeController>().enabled;
       if (!on || child == null) return child ?? const SizedBox.shrink();
@@ -168,6 +172,7 @@ Future<void> _pumpSearch(
   WidgetTester tester, {
   required bool easyRead,
   Size size = const Size(390, 844),
+  Brightness brightness = Brightness.dark,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -195,7 +200,7 @@ Future<void> _pumpSearch(
         ChangeNotifierProvider<KeyboardController>.value(value: keyboard),
         ChangeNotifierProvider(create: (_) => EasyReadModeController.fixed(easyRead)),
       ],
-      child: _app(easyRead: easyRead, home: const DashboardScreen()),
+      child: _app(easyRead: easyRead, brightness: brightness, home: const DashboardScreen()),
     ),
   );
   // First frame anchors the menu; the following frame paints it.
@@ -298,6 +303,17 @@ void main() {
     final routeRect = tester.getRect(find.text('25BS'));
     final fareRect = tester.getRect(find.text('Tarifas'));
     expect(fareRect.left, greaterThan(routeRect.right));
+  });
+
+  testWidgets('easy read more button matches the search title colour', (tester) async {
+    for (final brightness in [Brightness.dark, Brightness.light]) {
+      await _pumpSearch(tester, easyRead: true, brightness: brightness);
+      final title = tester.widget<Text>(find.text('尋找路線'));
+      final button = tester.widget<FilledButton>(find.widgetWithText(FilledButton, '更多'));
+      final background = button.style?.backgroundColor?.resolve(const <WidgetState>{});
+      expect(title.style?.color, Colors.amber.shade600, reason: '$brightness');
+      expect(background, title.style?.color, reason: '$brightness');
+    }
   });
 
   testWidgets('easy read keeps More on the search page only', (tester) async {
