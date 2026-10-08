@@ -35,32 +35,16 @@ class BusRouteScreen extends StatefulWidget {
   State<BusRouteScreen> createState() => _BusRouteScreenState();
 }
 
-/// Scroll clearance so the last stop can sit above the translucent bottom nav.
-/// Home already reports that reserve as padding; this still clears the bar
-/// when the ambient inset is only the system safe area. Easy Read adds a
-/// gap so the red closure line is not flush with the glass.
-double _stopListBottomInset(BuildContext context, {required bool easyRead}) {
+/// Scroll clearance so the last stop, including its closure line, can sit
+/// fully above the translucent bottom nav. Home usually already reports that
+/// reserve as padding; this still clears the bar when the ambient inset is
+/// only the system safe area, and adds a gap so the row is not flush with
+/// the glass.
+double _stopListBottomInset(BuildContext context) {
   final ambient = MediaQuery.paddingOf(context).bottom;
   final reserve = RouteLiquidGlassNavStyle.bottomReserve(context);
   final cleared = ambient > reserve ? ambient : reserve;
-  return easyRead ? cleared + 16 : cleared;
-}
-
-/// Glyph locale for the closure line. The iOS bundle region is zh-Hant, so
-/// a Simplified string still needs an explicit Hans locale or 暂 can paint
-/// with the Traditional glyph.
-Locale _stopClosedLocale(String langCode) {
-  switch (langCode) {
-    case 'zhHans':
-      return const Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hans');
-    case 'pt':
-      return const Locale('pt');
-    case 'en':
-      return const Locale('en');
-    case 'zh':
-    default:
-      return const Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hant');
-  }
+  return cleared + 24;
 }
 String _lastFetchedLang = '';
 class _BusRouteScreenState extends State<BusRouteScreen> {
@@ -954,7 +938,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                         controller: _listScrollController,
                         padding: EdgeInsets.only(
                           top: 8,
-                          bottom: _stopListBottomInset(context, easyRead: easyRead),
+                          bottom: _stopListBottomInset(context),
                         ),
                         itemCount: busCtrl.stopsList.length,
                         itemBuilder: (context, index) {
@@ -1080,10 +1064,13 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                                         ],
                                                       ),
                                                       if (easyRead && busCtrl.showRouteNotices && _hasAnyStopWarning(stop))
-                                                        _EasyReadStopClosedLine(
-                                                          label: langCtrl.tr('easy_read_stop_closed'),
-                                                          langCode: langCtrl.currentLanguage,
-                                                          isDark: isDark,
+                                                        Padding(
+                                                          padding: const EdgeInsets.only(top: 6),
+                                                          child: Text(
+                                                            langCtrl.tr('easy_read_stop_closed'),
+                                                            softWrap: true,
+                                                            style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w800, fontSize: 18, height: 1.3),
+                                                          ),
                                                         ),
                                                       const SizedBox(height: 8), 
                                                       
@@ -1257,10 +1244,13 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                               ],
                                             ),
                                             if (easyRead && busCtrl.showRouteNotices && _hasAnyStopWarning(stop))
-                                              _EasyReadStopClosedLine(
-                                                label: langCtrl.tr('easy_read_stop_closed'),
-                                                langCode: langCtrl.currentLanguage,
-                                                isDark: isDark,
+                                              Padding(
+                                                padding: const EdgeInsets.only(top: 6),
+                                                child: Text(
+                                                  langCtrl.tr('easy_read_stop_closed'),
+                                                  softWrap: true,
+                                                  style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w800, fontSize: 18, height: 1.3),
+                                                ),
                                               ),
                                           ]
                                         )
@@ -1294,48 +1284,6 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
             ],
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Red closure caption under a stop. A solid plate keeps the words readable
-/// when the row slides under the translucent, magnifying bottom nav.
-class _EasyReadStopClosedLine extends StatelessWidget {
-  const _EasyReadStopClosedLine({
-    required this.label,
-    required this.langCode,
-    required this.isDark,
-  });
-
-  final String label;
-  final String langCode;
-  final bool isDark;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 6),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xF21A1A1E) : const Color(0xF2FFFFFF),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.redAccent.withValues(alpha: 0.85)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          child: Text(
-            label,
-            locale: _stopClosedLocale(langCode),
-            softWrap: true,
-            style: const TextStyle(
-              color: Colors.redAccent,
-              fontWeight: FontWeight.w800,
-              fontSize: 18,
-              height: 1.3,
-            ),
-          ),
-        ),
       ),
     );
   }
