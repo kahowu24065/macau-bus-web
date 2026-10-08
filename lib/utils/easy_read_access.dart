@@ -14,12 +14,13 @@ class EasyReadAccess {
     }
   }
 
-  /// Arrival read-aloud. On when the controller is missing, matching the default.
+  /// Arrival read-aloud for the active mode.
+  /// A missing controller follows the normal-mode default, which is off.
   static bool speakArrivals(BuildContext context, {bool listen = true}) {
     try {
       return Provider.of<EasyReadModeController>(context, listen: listen).speakArrivals;
     } on ProviderNotFoundException {
-      return true;
+      return false;
     }
   }
 }

@@ -71,12 +71,16 @@ String easyReadSpokenArrival({
 }
 
 String _spokenArrivalPhrase(String status, String Function(String key) tr) {
+  final trimmed = status.trim();
   final mins = RegExp(
     r'(\d+)\s*(?:分鐘|分钟|mins|min)',
     caseSensitive: false,
-  ).firstMatch(status);
+  ).firstMatch(trimmed);
   if (mins != null) {
-    return tr('easy_read_spoken_mins').replaceAll('@mins', mins.group(1)!);
+    final easyReadLine = tr('easy_read_eta_mins').replaceAll('@mins', mins.group(1)!);
+    if (trimmed == easyReadLine) {
+      return tr('easy_read_spoken_mins').replaceAll('@mins', mins.group(1)!);
+    }
   }
-  return status.trim();
+  return trimmed;
 }

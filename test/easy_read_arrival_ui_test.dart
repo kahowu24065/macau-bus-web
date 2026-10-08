@@ -216,6 +216,75 @@ void main() {
     lang.dispose();
   });
 
+  testWidgets('normal mode reads the stop row only when arrival read-aloud is on', (tester) async {
+    OpenDataConfig.instance.debugApply(
+      configRealtime: true,
+      configRouteNotices: true,
+      etaRealtime: true,
+    );
+    final lang = LanguageController();
+    final bus = BusController();
+    bus.setRoute('3');
+    bus.stopsList = [for (var i = 1; i <= 5; i++) _stop(i)];
+    bus.selectedStopSeq = 5;
+    bus.etaData = {'status': '約 4 分鐘'};
+    bus.allBusesList = const [
+      Bus(
+        busLicense: 'MB-1',
+        lat: 22.2,
+        lng: 113.55,
+        speed: 20,
+        currentStopSeq: 3,
+        etaMinutes: 4,
+      ),
+    ];
+
+    Future<void> pump({required bool speak}) async {
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<BusController>.value(value: bus),
+            ChangeNotifierProvider<LanguageController>.value(value: lang),
+            ChangeNotifierProvider(create: (_) => LocationController()),
+            ChangeNotifierProvider(create: (_) => BackgroundController()),
+            ChangeNotifierProvider(create: (_) => NavigationController()),
+            ChangeNotifierProvider<EasyReadModeController>.value(
+              value: EasyReadModeController.fixed(false, speakArrivals: speak),
+            ),
+          ],
+          child: MaterialApp(
+            theme: ThemeData.dark(),
+            home: const BusRouteScreen(),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    await pump(speak: false);
+    expect(find.text('尚有 2 站 (約 4 分鐘)'), findsOneWidget);
+    await tester.ensureVisible(find.text('站5 (M5/2)'));
+    await tester.pump();
+    await tester.tap(find.text('站5 (M5/2)'));
+    await tester.pump();
+    expect(fake.spoken, isNull);
+    expect(fake.speakCount, 0);
+
+    fake.reset();
+    await pump(speak: true);
+    await tester.ensureVisible(find.text('站5 (M5/2)'));
+    await tester.pump();
+    await tester.tap(find.text('站5 (M5/2)'));
+    await tester.pump();
+    expect(fake.spoken, '站5，尚有 2 站 (約 4 分鐘)');
+    expect(fake.speakCount, 1);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    bus.dispose();
+    lang.dispose();
+  });
+
   testWidgets('easy read reads the arrival from the stop row and leaves row buttons alone', (tester) async {
     tester.view.physicalSize = const Size(400, 1400);
     tester.view.devicePixelRatio = 1;

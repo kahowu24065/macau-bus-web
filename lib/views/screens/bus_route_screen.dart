@@ -489,8 +489,8 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     return upcoming;
   }
 
-  /// Easy Read: read the first arrival for this stop. Row taps still select
-  /// the stop; the bell and the closure icon keep their own handlers.
+  /// Read the first arrival for this stop. Row taps still select the stop;
+  /// the bell and the closure icon keep their own handlers.
   void _readEasyReadArrival(
     BusController busCtrl,
     LanguageController langCtrl, {
@@ -498,8 +498,8 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     required bool speakArrivals,
     required String stopName,
   }) {
-    if (!easyRead || !speakArrivals) return;
-    final upcoming = _getUpcomingBusesInfo(busCtrl, langCtrl, easyRead: true);
+    if (!speakArrivals) return;
+    final upcoming = _getUpcomingBusesInfo(busCtrl, langCtrl, easyRead: easyRead);
     if (upcoming.isEmpty) return;
     final status = (upcoming.first['status'] ?? '').trim();
     if (status.isEmpty) return;

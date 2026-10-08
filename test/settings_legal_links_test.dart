@@ -72,17 +72,13 @@ Future<void> _pumpSettings(WidgetTester tester, {required bool easyRead}) async 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('arrival read-aloud switch sits under Easy Read and hides when Easy Read is off', (tester) async {
+  testWidgets('arrival read-aloud switch stays visible and follows each mode', (tester) async {
     tester.view.physicalSize = const Size(400, 1600);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
     await _pumpSettings(tester, easyRead: false);
-    expect(find.text('易讀模式'), findsOneWidget);
-    expect(find.text('讀出到站資訊'), findsNothing);
-
-    await _pumpSettings(tester, easyRead: true);
     expect(find.text('讀出到站資訊'), findsOneWidget);
     final easy = tester.getTopLeft(find.text('易讀模式'));
     final speech = tester.getTopLeft(find.text('讀出到站資訊'));
@@ -90,15 +86,43 @@ void main() {
     expect(speech.dy, greaterThan(easy.dy));
     expect(theme.dy, greaterThan(speech.dy));
 
-    final tile = find.ancestor(of: find.text('讀出到站資訊'), matching: find.byType(ListTile));
-    await tester.ensureVisible(tile);
-    await tester.pump();
-    await tester.tap(find.descendant(of: tile, matching: find.byType(CupertinoSwitch)));
-    await tester.pump();
-    expect(
-      tester.element(find.byType(SettingsScreen)).read<EasyReadModeController>().speakArrivals,
-      isFalse,
-    );
+    CupertinoSwitch switchFor(String title) {
+      final tile = find.ancestor(of: find.text(title), matching: find.byType(ListTile)).first;
+      return tester.widget<CupertinoSwitch>(
+        find.descendant(of: tile, matching: find.byType(CupertinoSwitch)),
+      );
+    }
+
+    Future<void> tapSwitch(String title) async {
+      final tile = find.ancestor(of: find.text(title), matching: find.byType(ListTile)).first;
+      await tester.ensureVisible(tile);
+      await tester.pump();
+      await tester.tap(find.descendant(of: tile, matching: find.byType(CupertinoSwitch)));
+      await tester.pump();
+    }
+
+    final ctrl = tester.element(find.byType(SettingsScreen)).read<EasyReadModeController>();
+    expect(ctrl.speakArrivals, isFalse);
+    expect(switchFor('讀出到站資訊').value, isFalse);
+
+    await tapSwitch('易讀模式');
+    expect(ctrl.enabled, isTrue);
+    expect(ctrl.speakArrivals, isTrue);
+    expect(switchFor('讀出到站資訊').value, isTrue);
+
+    await tapSwitch('讀出到站資訊');
+    expect(ctrl.speakArrivals, isFalse);
+
+    await tapSwitch('易讀模式');
+    expect(ctrl.enabled, isFalse);
+    expect(ctrl.speakArrivals, isFalse);
+
+    await tapSwitch('讀出到站資訊');
+    expect(ctrl.speakArrivals, isTrue);
+
+    await tapSwitch('易讀模式');
+    expect(ctrl.enabled, isTrue);
+    expect(ctrl.speakArrivals, isFalse);
   });
 
   for (final easyRead in [false, true]) {

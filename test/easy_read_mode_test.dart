@@ -62,24 +62,45 @@ void main() {
   test('fixed controller does not read preferences', () async {
     SharedPreferences.setMockInitialValues({
       'easy_read_mode': true,
-      'easy_read_speak_arrivals': false,
+      'easy_read_speak_arrivals_normal': true,
+      'easy_read_speak_arrivals_easy': false,
     });
-    final fixed = EasyReadModeController.fixed(false);
-    await fixed.ready;
-    expect(fixed.enabled, isFalse);
-    expect(fixed.speakArrivals, isTrue);
+    final normal = EasyReadModeController.fixed(false);
+    await normal.ready;
+    expect(normal.enabled, isFalse);
+    expect(normal.speakArrivals, isFalse);
+
+    final easy = EasyReadModeController.fixed(true);
+    await easy.ready;
+    expect(easy.speakArrivals, isTrue);
   });
 
-  test('arrival read-aloud defaults on and persists', () async {
+  test('arrival read-aloud keeps a separate choice for each mode', () async {
     final first = EasyReadModeController();
     await first.ready;
+    expect(first.enabled, isFalse);
+    expect(first.speakArrivals, isFalse);
+
+    await first.setEnabled(true);
     expect(first.speakArrivals, isTrue);
 
     await first.setSpeakArrivals(false);
+    await first.setEnabled(false);
+    expect(first.speakArrivals, isFalse);
+
+    await first.setSpeakArrivals(true);
+    await first.setEnabled(true);
+    expect(first.speakArrivals, isFalse);
+
+    await first.setEnabled(false);
+    expect(first.speakArrivals, isTrue);
+
     final second = EasyReadModeController();
     await second.ready;
-    expect(second.speakArrivals, isFalse);
     expect(second.enabled, isFalse);
+    expect(second.speakArrivals, isTrue);
+    await second.setEnabled(true);
+    expect(second.speakArrivals, isFalse);
   });
 
   test('translations include easy read mode in all four languages', () {
