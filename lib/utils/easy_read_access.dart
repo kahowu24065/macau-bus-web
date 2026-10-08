@@ -23,13 +23,4 @@ class EasyReadAccess {
       return false;
     }
   }
-
-  /// Read-aloud language. A missing controller follows [appLanguage].
-  static String speechLanguage(BuildContext context, String appLanguage, {bool listen = true}) {
-    try {
-      return Provider.of<EasyReadModeController>(context, listen: listen).speechLanguageFor(appLanguage);
-    } on ProviderNotFoundException {
-      return EasyReadModeController.defaultSpeechLanguage(appLanguage);
-    }
-  }
 }
