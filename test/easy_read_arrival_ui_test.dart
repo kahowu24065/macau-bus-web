@@ -25,8 +25,9 @@ class _FakeSpeech implements SpeechEngine {
   Future<void> prepareIos() async {}
 
   @override
-  Future<void> setLanguage(String language) async {
+  Future<bool> setLanguage(String language) async {
     this.language = language;
+    return true;
   }
 
   @override

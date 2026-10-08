@@ -18,14 +18,16 @@ String _tr(String lang, String key) =>
 class _FakeSpeech implements SpeechEngine {
   final List<String> calls = [];
   bool failLanguages = false;
+  final Set<String> missing = {};
 
   @override
   Future<void> prepareIos() async {}
 
   @override
-  Future<void> setLanguage(String language) async {
+  Future<bool> setLanguage(String language) async {
     calls.add('lang:$language');
     if (failLanguages) throw StateError('no voice');
+    return !missing.contains(language);
   }
 
   @override
@@ -213,9 +215,41 @@ void main() {
     expect(await webSpeaker.speak('5 分鐘後到', 'zh'), isFalse);
 
     expect(await speaker.speak('   ', 'en'), isFalse);
-    expect(ArrivalSpeaker.localesFor('zhHans').first, 'zh-CN');
-    expect(ArrivalSpeaker.localesFor('pt').first, 'pt-PT');
-    expect(ArrivalSpeaker.localesFor('en').first, 'en-US');
+  });
+
+  test('arrival speech maps each language to a voice', () async {
+    expect(ArrivalSpeaker.localesFor('zh'), ['zh-HK', 'zh-TW', 'zh-CN']);
+    expect(ArrivalSpeaker.localesFor('zhHans'), ['zh-CN', 'zh-Hans']);
+    expect(ArrivalSpeaker.localesFor('en'), ['en', 'en-US', 'en-GB']);
+    expect(ArrivalSpeaker.localesFor('pt'), ['pt', 'pt-PT', 'pt-BR']);
+
+    const phrases = {
+      'zh': '5 分鐘後到',
+      'zhHans': '5 分钟后到',
+      'en': 'In 5 min',
+      'pt': 'Chega em 5 min',
+    };
+    for (final entry in phrases.entries) {
+      final fake = _FakeSpeech();
+      final speaker = ArrivalSpeaker(engine: fake, isWeb: false, isIos: false);
+      expect(await speaker.speak(entry.value, entry.key), isTrue, reason: entry.key);
+      expect(
+        fake.calls.where((call) => call.startsWith('lang:')).toList(),
+        ['lang:${ArrivalSpeaker.localesFor(entry.key).first}'],
+        reason: entry.key,
+      );
+      expect(fake.calls, contains('say:${entry.value}'), reason: entry.key);
+    }
+
+    final missingMandarin = _FakeSpeech()..missing.add('zh-CN');
+    final mandarin = ArrivalSpeaker(engine: missingMandarin, isWeb: false, isIos: false);
+    expect(await mandarin.speak('5 分钟后到', 'zhHans'), isTrue);
+    expect(missingMandarin.calls, containsAllInOrder(['lang:zh-CN', 'lang:zh-Hans', 'say:5 分钟后到']));
+
+    final none = _FakeSpeech()..missing.addAll(['en', 'en-US', 'en-GB']);
+    final english = ArrivalSpeaker(engine: none, isWeb: false, isIos: false);
+    expect(await english.speak('In 5 min', 'en'), isFalse);
+    expect(none.calls.where((call) => call.startsWith('say:')), isEmpty);
   });
 
   testWidgets('easy read more keeps special routes and the full list', (tester) async {
