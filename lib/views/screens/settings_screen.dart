@@ -160,11 +160,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Color get _readable {
-    if (!EasyReadAccess.enabled(context)) return _subText;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    return dark ? Colors.white : const Color(0xFF111111);
-  }
+  /// Secondary grey. Easy Read keeps this colour and only enlarges the type.
+  Color get _readable => _subText;
 
   Widget _buildSectionHeader(String title) {
     return Padding(
@@ -793,7 +790,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     if (_versionLabel != null) ...[
                       const SizedBox(height: 12),
-                      Center(child: Text(_versionLabel!, style: TextStyle(color: EasyReadAccess.enabled(context) ? _readable : (isDark ? const Color(0xFF3A3A3C) : Colors.grey[400]), fontSize: 11, fontFamily: 'Inter', letterSpacing: 0.5))),
+                      Center(child: Text(_versionLabel!, style: TextStyle(color: isDark ? const Color(0xFF3A3A3C) : Colors.grey[400], fontSize: 11, fontFamily: 'Inter', letterSpacing: 0.5))),
                     ],
                   ],
                 ),

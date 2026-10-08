@@ -157,9 +157,7 @@ class _FavoriteRouteRow extends StatelessWidget {
                 routeDesc,
                 softWrap: true,
                 style: TextStyle(
-                  color: easyRead
-                      ? (isDark ? Colors.white : const Color(0xFF111111))
-                      : (isDark ? const Color(0xFFC7C7CC) : Colors.black54),
+                  color: isDark ? const Color(0xFFC7C7CC) : Colors.black54,
                   fontSize: easyRead ? 16 : 13,
                   fontWeight: easyRead ? FontWeight.w700 : FontWeight.normal,
                   height: 1.3,

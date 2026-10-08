@@ -321,11 +321,9 @@ class _HomeScreenState extends State<HomeScreen> {
             selectedColor: isDark
                 ? kRouteLgAccent
                 : const Color.fromARGB(255, 255, 140, 0),
-            unselectedColor: easyRead
-                ? (isDark ? Colors.white : Colors.black)
-                : (isDark
-                    ? Colors.white
-                    : Colors.black.withValues(alpha: 0.55)),
+            unselectedColor: isDark
+                ? Colors.white
+                : Colors.black.withValues(alpha: 0.55),
             items: [
               for (final spec in navItems)
                 RouteLiquidGlassNavItem(
@@ -368,7 +366,6 @@ class GlobalCustomKeyboard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final easyRead = EasyReadAccess.enabled(context);
 
     final keyboardCtrl = context.watch<KeyboardController>();
     final busCtrl = context.read<BusController>();
@@ -419,7 +416,7 @@ class GlobalCustomKeyboard extends StatelessWidget {
                         icon,
                         color: isEnabled
                             ? (isDark ? Colors.white : Colors.black)
-                            : (easyRead ? (isDark ? Colors.white : Colors.black) : Colors.grey[600]),
+                            : Colors.grey[600],
                         size: 26,
                       )
                     : Text(
@@ -429,7 +426,7 @@ class GlobalCustomKeyboard extends StatelessWidget {
                           fontWeight: FontWeight.w500,
                           color: isEnabled
                               ? (isDark ? Colors.white : Colors.black)
-                              : (easyRead ? (isDark ? Colors.white : Colors.black) : Colors.grey[600]),
+                              : Colors.grey[600],
                         ),
                       ),
               ),

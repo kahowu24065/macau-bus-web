@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 /// Visual overrides used only while easy read mode is on.
@@ -12,30 +10,6 @@ abstract final class EasyReadTheme {
   static TextScaler undoTextScale(TextScaler scaled) {
     final factor = scaled.scale(1) / textScale;
     return TextScaler.linear(factor <= 0 ? 1 : factor);
-  }
-
-  static double _saturation(Color color) {
-    final r = color.r;
-    final g = color.g;
-    final b = color.b;
-    final max = math.max(r, math.max(g, b));
-    final min = math.min(r, math.min(g, b));
-    if (max == 0) return 0;
-    return (max - min) / max;
-  }
-
-  /// Grey, faded black, and faded white are hard to read.
-  /// Saturated colours such as amber are left as they are.
-  static bool isLowContrast(Color color) {
-    if (_saturation(color) > 0.22) return false;
-    if (color.a < 0.82) return true;
-    final lum = color.computeLuminance();
-    return lum > 0.22 && lum < 0.78;
-  }
-
-  static Color lift(Color color, Brightness brightness) {
-    if (!isLowContrast(color)) return color;
-    return brightness == Brightness.dark ? Colors.white : lightForeground;
   }
 
   static Color foreground(Brightness brightness) =>
@@ -59,15 +33,12 @@ abstract final class EasyReadTheme {
     final buttonMin = const Size(72, 56);
 
     TextStyle? bold(TextStyle? style) => style?.copyWith(
-          color: fg,
           fontWeight: FontWeight.w700,
         );
 
     final text = base.textTheme;
     return base.copyWith(
       scaffoldBackgroundColor: isDark ? Colors.black : Colors.white,
-      hintColor: fg,
-      disabledColor: fg,
       dividerColor: fg,
       iconTheme: IconThemeData(color: fg, size: 28),
       primaryIconTheme: IconThemeData(color: fg, size: 28),
@@ -78,7 +49,6 @@ abstract final class EasyReadTheme {
         onSecondary: Colors.black,
         surface: isDark ? Colors.black : Colors.white,
         onSurface: fg,
-        onSurfaceVariant: fg,
         outline: fg,
       ),
       textTheme: text.copyWith(
@@ -97,14 +67,12 @@ abstract final class EasyReadTheme {
         minVerticalPadding: 12,
         iconColor: fg,
         textColor: fg,
-        titleTextStyle: TextStyle(
-          color: fg,
+        titleTextStyle: const TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.w800,
           height: 1.3,
         ),
-        subtitleTextStyle: TextStyle(
-          color: fg,
+        subtitleTextStyle: const TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w700,
           height: 1.35,

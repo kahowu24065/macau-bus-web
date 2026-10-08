@@ -166,7 +166,10 @@ void main() {
     expect(AppTranslations.data['pt']!['easy_read_speak_arrivals'], 'Ler chegadas em voz alta');
     expect(AppTranslations.data['zh']!['more_options'], '更多');
     expect(AppTranslations.data['zh']!['easy_read_eta_mins'], '@mins 分鐘後到');
-    expect(AppTranslations.data['zh']!['easy_read_mode_desc'], contains('\n'));
+    expect(AppTranslations.data['zh']!['easy_read_mode_desc'], '字同按鈕會大啲。');
+    expect(AppTranslations.data['zhHans']!['easy_read_mode_desc'], '文字和按钮会更大。');
+    expect(AppTranslations.data['en']!['easy_read_mode_desc'], 'Larger text and buttons.');
+    expect(AppTranslations.data['pt']!['easy_read_mode_desc'], 'Letras e botões maiores.');
     expect(AppTranslations.data['en']!['easy_read_mode'], 'Easy Read Mode');
     expect(AppTranslations.data['pt']!['easy_read_mode'], 'Modo de Leitura Fácil');
     expect(AppTranslations.data['pt']!['more_options'], 'Mais');
@@ -267,17 +270,22 @@ void main() {
     );
   });
 
-  test('contrast lifts grey and keeps saturated colours in both themes', () {
-    expect(EasyReadTheme.lift(Colors.grey.shade500, Brightness.light), EasyReadTheme.lightForeground);
-    expect(EasyReadTheme.lift(Colors.grey.shade500, Brightness.dark), Colors.white);
-    expect(EasyReadTheme.lift(Colors.white70, Brightness.dark), Colors.white);
-    expect(EasyReadTheme.lift(Colors.black54, Brightness.light), EasyReadTheme.lightForeground);
-    expect(EasyReadTheme.lift(Colors.amber, Brightness.light), Colors.amber);
-    expect(EasyReadTheme.lift(Colors.black, Brightness.light), Colors.black);
-    expect(EasyReadTheme.lift(Colors.white, Brightness.dark), Colors.white);
+  test('easy read keeps grey secondary colours and larger controls', () {
+    final lightBase = ThemeData.light();
+    final darkBase = ThemeData.dark();
+    final light = EasyReadTheme.apply(lightBase);
+    final dark = EasyReadTheme.apply(darkBase);
 
-    final light = EasyReadTheme.apply(ThemeData.light());
-    final dark = EasyReadTheme.apply(ThemeData.dark());
+    expect(light.hintColor, lightBase.hintColor);
+    expect(dark.hintColor, darkBase.hintColor);
+    expect(light.disabledColor, lightBase.disabledColor);
+    expect(dark.disabledColor, darkBase.disabledColor);
+    expect(light.colorScheme.onSurfaceVariant, lightBase.colorScheme.onSurfaceVariant);
+    expect(dark.colorScheme.onSurfaceVariant, darkBase.colorScheme.onSurfaceVariant);
+    expect(light.textTheme.bodySmall?.color, lightBase.textTheme.bodySmall?.color);
+    expect(dark.textTheme.bodySmall?.color, darkBase.textTheme.bodySmall?.color);
+    expect(light.listTileTheme.subtitleTextStyle?.color, isNull);
+    expect(light.listTileTheme.subtitleTextStyle?.fontSize, 16);
     expect(light.textButtonTheme.style?.minimumSize?.resolve({}), const Size(72, 56));
     expect(dark.colorScheme.onSurface, Colors.white);
     expect(light.colorScheme.onSurface, EasyReadTheme.lightForeground);
