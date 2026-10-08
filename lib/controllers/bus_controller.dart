@@ -1087,6 +1087,7 @@ class BusController extends ChangeNotifier {
 
         if (showLiveArrivals) {
           allBusesList = result['allBuses'];
+          advanceBusMotion();
           if (_skipNextBoardingAlarmCheck) {
             _skipNextBoardingAlarmCheck = false;
           } else {
@@ -1171,9 +1172,12 @@ class BusController extends ChangeNotifier {
     return null;
   }
 
-  /// 用官方車速沿自己條路線推前。返回 true 代表有車郁過，地圖先需要再畫。
-  bool advanceBusMotion() {
-    final now = DateTime.now();
+  /// 跟最新 GPS。車速 0（或低過約 2km/h）就停低；
+  /// 只有車郁緊先由嗰個 GPS 位再推前，最多一個輪詢間隔。
+  /// 超過 10 秒冇新資料就停，唔好再沿用舊車速。
+  /// [now] 畀測試固定個鐘；平時用而家。
+  bool advanceBusMotion([DateTime? now]) {
+    final clock = now ?? DateTime.now();
     final live = <String>{};
     var changed = false;
     for (final bus in allBusesList) {
@@ -1183,7 +1187,7 @@ class BusController extends ChangeNotifier {
         continue;
       }
       if (bus.atStop) {
-        final terminal = _advanceTerminalArrival(bus, now, live);
+        final terminal = _advanceTerminalArrival(bus, clock, live);
         if (terminal == null) {
           if (_legMotion.remove(key) != null) changed = true;
         } else if (terminal) {
@@ -1203,23 +1207,18 @@ class BusController extends ChangeNotifier {
       }
       live.add(key);
       final length = _segmentMeters(here, next);
-      final nextIsTerminal = index + 1 == stopsList.length - 1;
-      final cap = nextIsTerminal ? length : (length > 40 ? length - 25 : length * 0.85);
-      final prev = _legMotion[key];
-      if (prev == null || prev.stopSeq != bus.currentStopSeq) {
-        _legMotion[key] = _BusLegMotion(bus.currentStopSeq, 0, now, bus.speed);
-        changed = true;
-        continue;
-      }
-      final dt = now.difference(prev.at).inMilliseconds / 1000.0;
-      if (dt <= 0) continue;
-      final speedKmh = bus.speed > 0 ? bus.speed : prev.speedKmh;
-      final metersPerSec = speedKmh > 0 ? speedKmh * 1000 / 3600 : 0.0;
-      var traveled = prev.traveledMeters + metersPerSec * dt;
-      if (traveled > cap) traveled = cap;
-      if (traveled < 0) traveled = 0;
-      if ((traveled - prev.traveledMeters).abs() >= 0.4) changed = true;
-      _legMotion[key] = _BusLegMotion(bus.currentStopSeq, traveled, now, speedKmh);
+      final cap = _legCap(length, nextIsTerminal: index + 1 == stopsList.length - 1);
+      final stepped = _stepLeg(
+        bus: bus,
+        now: clock,
+        from: here,
+        to: next,
+        motionStopSeq: bus.currentStopSeq,
+        cap: cap,
+        prev: _legMotion[key],
+      );
+      _legMotion[key] = stepped.motion;
+      if (stepped.moved) changed = true;
     }
     final before = _legMotion.length;
     _legMotion.removeWhere((key, _) => !live.contains(key));
@@ -1237,22 +1236,177 @@ class BusController extends ChangeNotifier {
     if (here.lat == 0.0 || here.lng == 0.0 || next.lat == 0.0 || next.lng == 0.0) return null;
     live.add(bus.busLicense);
     final length = _segmentMeters(here, next);
-    final prev = _legMotion[bus.busLicense];
-    final continuesLeg = prev != null && (prev.stopSeq == here.seq || prev.stopSeq == bus.currentStopSeq);
-    var speedKmh = bus.speed > 0 ? bus.speed : (continuesLeg ? prev.speedKmh : 0.0);
-    if (speedKmh <= 0) speedKmh = 20;
-    var traveled = continuesLeg ? prev.traveledMeters : _metersAlong(here, next, bus.lat, bus.lng);
-    if (continuesLeg) {
-      final dt = now.difference(prev.at).inMilliseconds / 1000.0;
-      if (dt > 0 && traveled < length) {
-        traveled += speedKmh * 1000 / 3600 * dt;
+    final stepped = _stepLeg(
+      bus: bus,
+      now: now,
+      from: here,
+      to: next,
+      motionStopSeq: here.seq,
+      cap: length,
+      prev: _legMotion[bus.busLicense],
+    );
+    _legMotion[bus.busLicense] = stepped.motion;
+    return stepped.moved;
+  }
+
+  /// 下一站未由資料話已到之前，圖示唔好衝過個站。
+  double _legCap(double length, {required bool nextIsTerminal}) {
+    if (nextIsTerminal) return length;
+    return length > 40 ? length - 25 : length * 0.85;
+  }
+
+  /// 新一次 GPS：投影到呢段路線，約 1 秒滑過去。
+  /// 之後車速 > 2km/h 先由嗰點再推，最多 6 秒；車停就停。
+  ({_BusLegMotion motion, bool moved}) _stepLeg({
+    required Bus bus,
+    required DateTime now,
+    required BusStop from,
+    required BusStop to,
+    required int motionStopSeq,
+    required double cap,
+    required _BusLegMotion? prev,
+  }) {
+    const stopKmh = 2.0;
+    const easeSeconds = 1.0;
+    const extrapolateSeconds = 6.0;
+    const staleSeconds = 10.0;
+
+    final fresh = prev == null || !prev.matchesFix(bus);
+    final double gpsMeters;
+    final double fixLat;
+    final double fixLng;
+    final double fixSpeed;
+    final int fixStopSeq;
+    final bool fixAtStop;
+    final DateTime fixAt;
+    final bool easedIn;
+    final double easeFromLat;
+    final double easeFromLng;
+    final double easeToLat;
+    final double easeToLng;
+    final double easeFromMeters;
+
+    if (!fresh) {
+      final held = prev;
+      gpsMeters = held.gpsMeters;
+      fixLat = held.fixLat;
+      fixLng = held.fixLng;
+      fixSpeed = held.fixSpeed;
+      fixStopSeq = held.fixStopSeq;
+      fixAtStop = held.fixAtStop;
+      fixAt = held.fixAt;
+      easedIn = held.easedIn;
+      easeFromLat = held.easeFromLat;
+      easeFromLng = held.easeFromLng;
+      easeToLat = held.easeToLat;
+      easeToLng = held.easeToLng;
+      easeFromMeters = held.easeFromMeters;
+    } else {
+      final raw = _metersAlong(from, to, bus.lat, bus.lng);
+      gpsMeters = raw > cap ? cap : (raw < 0 ? 0.0 : raw);
+      fixLat = bus.lat;
+      fixLng = bus.lng;
+      fixSpeed = bus.speed;
+      fixStopSeq = bus.currentStopSeq;
+      fixAtStop = bus.atStop;
+      fixAt = now;
+      final target = _pointAtMeters(from, to, gpsMeters);
+      if (prev == null) {
+        easedIn = false;
+        easeFromLat = target.latitude;
+        easeFromLng = target.longitude;
+        easeToLat = target.latitude;
+        easeToLng = target.longitude;
+        easeFromMeters = gpsMeters;
+      } else {
+        easedIn = true;
+        easeFromLat = prev.renderLat;
+        easeFromLng = prev.renderLng;
+        easeToLat = target.latitude;
+        easeToLng = target.longitude;
+        easeFromMeters = prev.stopSeq == motionStopSeq ? prev.traveledMeters : gpsMeters;
       }
     }
-    if (traveled > length) traveled = length;
-    if (traveled < 0) traveled = 0;
-    final moved = !continuesLeg || (prev.traveledMeters - traveled).abs() >= 0.4;
-    _legMotion[bus.busLicense] = _BusLegMotion(here.seq, traveled, now, speedKmh);
-    return moved;
+
+    final ageMs = now.difference(fixAt).inMilliseconds;
+    final age = ageMs <= 0 ? 0.0 : ageMs / 1000.0;
+    final stopped = fixSpeed <= stopKmh;
+
+    final double traveled;
+    final double renderLat;
+    final double renderLng;
+
+    if (!fresh && !stopped && age > staleSeconds) {
+      final held = prev;
+      traveled = held.traveledMeters;
+      renderLat = held.renderLat;
+      renderLng = held.renderLng;
+    } else if (easedIn && age < easeSeconds) {
+      final t = age / easeSeconds;
+      renderLat = easeFromLat + (easeToLat - easeFromLat) * t;
+      renderLng = easeFromLng + (easeToLng - easeFromLng) * t;
+      traveled = easeFromMeters + (gpsMeters - easeFromMeters) * t;
+    } else if (stopped) {
+      traveled = gpsMeters;
+      final point = _pointAtMeters(from, to, traveled);
+      renderLat = point.latitude;
+      renderLng = point.longitude;
+    } else {
+      final delay = easedIn ? easeSeconds : 0.0;
+      final window = age > extrapolateSeconds ? extrapolateSeconds : age;
+      var predict = window - delay;
+      if (predict < 0) predict = 0;
+      var meters = gpsMeters + fixSpeed * 1000 / 3600 * predict;
+      if (meters > cap) meters = cap;
+      if (meters < 0) meters = 0;
+      traveled = meters;
+      final point = _pointAtMeters(from, to, traveled);
+      renderLat = point.latitude;
+      renderLng = point.longitude;
+    }
+
+    final clamped = traveled > cap ? cap : (traveled < 0 ? 0.0 : traveled);
+    final motion = _BusLegMotion(
+      stopSeq: motionStopSeq,
+      traveledMeters: clamped,
+      at: now,
+      speedKmh: fixSpeed,
+      fixLat: fixLat,
+      fixLng: fixLng,
+      fixSpeed: fixSpeed,
+      fixStopSeq: fixStopSeq,
+      fixAtStop: fixAtStop,
+      fixAt: fixAt,
+      gpsMeters: gpsMeters,
+      renderLat: renderLat,
+      renderLng: renderLng,
+      easeFromLat: easeFromLat,
+      easeFromLng: easeFromLng,
+      easeToLat: easeToLat,
+      easeToLng: easeToLng,
+      easeFromMeters: easeFromMeters,
+      easedIn: easedIn,
+    );
+    return (motion: motion, moved: _motionMoved(prev, motion));
+  }
+
+  bool _motionMoved(_BusLegMotion? prev, _BusLegMotion next) {
+    if (prev == null) return true;
+    if ((prev.traveledMeters - next.traveledMeters).abs() >= 0.4) return true;
+    final meters = const Distance().as(
+      LengthUnit.Meter,
+      LatLng(prev.renderLat, prev.renderLng),
+      LatLng(next.renderLat, next.renderLng),
+    );
+    return meters >= 0.4;
+  }
+
+  LatLng _pointAtMeters(BusStop from, BusStop to, double meters) {
+    final length = _segmentMeters(from, to);
+    var t = length <= 0 ? 0.0 : meters / length;
+    if (t < 0) t = 0;
+    if (t > 1) t = 1;
+    return _pointBetweenStops(from, to, t);
   }
 
   double _metersAlong(BusStop from, BusStop to, double lat, double lng) {
@@ -1279,10 +1433,7 @@ class BusController extends ChangeNotifier {
   }
 
   double displaySpeedKmh(Bus bus) {
-    if (hasVisuallyArrived(bus)) return bus.speed;
-    if (bus.speed > 0) return bus.speed;
-    final motion = _legMotion[bus.busLicense];
-    if (motion != null && motion.speedKmh > 0) return motion.speedKmh;
+    if (bus.speed <= 2) return 0;
     return bus.speed;
   }
 
@@ -1353,7 +1504,10 @@ class BusController extends ChangeNotifier {
       if (here.lat != 0.0 && here.lng != 0.0 && next.lat != 0.0 && next.lng != 0.0) {
         final length = _segmentMeters(here, next);
         final motion = _legMotion[bus.busLicense];
-        final traveled = (motion != null && motion.stopSeq == here.seq) ? motion.traveledMeters : _metersAlong(here, next, bus.lat, bus.lng);
+        if (motion != null && motion.stopSeq == here.seq) {
+          return LatLng(motion.renderLat, motion.renderLng);
+        }
+        final traveled = _metersAlong(here, next, bus.lat, bus.lng);
         final t = (traveled / length).clamp(0.0, 1.0);
         return _pointBetweenStops(here, next, t);
       }
@@ -1364,14 +1518,14 @@ class BusController extends ChangeNotifier {
       if (here.lat != 0.0 && here.lng != 0.0 && next.lat != 0.0 && next.lng != 0.0) {
         final length = _segmentMeters(here, next);
         final motion = _legMotion[bus.busLicense];
-        final traveled = (motion != null && motion.stopSeq == bus.currentStopSeq)
-            ? motion.traveledMeters
-            : 0.0;
-        final nextIsTerminal = index + 1 == stopsList.length - 1;
-        final cap = nextIsTerminal ? length : (length > 40 ? length - 25 : length * 0.85);
-        final used = traveled.clamp(0.0, cap);
-        final t = used / length;
-        return _pointBetweenStops(here, next, t);
+        if (motion != null && motion.stopSeq == bus.currentStopSeq) {
+          return LatLng(motion.renderLat, motion.renderLng);
+        }
+        final cap = _legCap(length, nextIsTerminal: index + 1 == stopsList.length - 1);
+        var traveled = _metersAlong(here, next, bus.lat, bus.lng);
+        if (traveled > cap) traveled = cap;
+        if (traveled < 0) traveled = 0;
+        return _pointAtMeters(here, next, traveled);
       }
     }
     if (bus.atStop && index != -1) {
@@ -1418,5 +1572,49 @@ class _BusLegMotion {
   final double traveledMeters;
   final DateTime at;
   final double speedKmh;
-  const _BusLegMotion(this.stopSeq, this.traveledMeters, this.at, [this.speedKmh = 0]);
+  final double fixLat;
+  final double fixLng;
+  final double fixSpeed;
+  final int fixStopSeq;
+  final bool fixAtStop;
+  final DateTime fixAt;
+  final double gpsMeters;
+  final double renderLat;
+  final double renderLng;
+  final double easeFromLat;
+  final double easeFromLng;
+  final double easeToLat;
+  final double easeToLng;
+  final double easeFromMeters;
+  final bool easedIn;
+
+  const _BusLegMotion({
+    required this.stopSeq,
+    required this.traveledMeters,
+    required this.at,
+    required this.speedKmh,
+    required this.fixLat,
+    required this.fixLng,
+    required this.fixSpeed,
+    required this.fixStopSeq,
+    required this.fixAtStop,
+    required this.fixAt,
+    required this.gpsMeters,
+    required this.renderLat,
+    required this.renderLng,
+    required this.easeFromLat,
+    required this.easeFromLng,
+    required this.easeToLat,
+    required this.easeToLng,
+    required this.easeFromMeters,
+    required this.easedIn,
+  });
+
+  bool matchesFix(Bus bus) {
+    return fixLat == bus.lat &&
+        fixLng == bus.lng &&
+        fixSpeed == bus.speed &&
+        fixStopSeq == bus.currentStopSeq &&
+        fixAtStop == bus.atStop;
+  }
 }
