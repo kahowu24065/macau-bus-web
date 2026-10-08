@@ -4,7 +4,14 @@ import 'package:flutter_tts/flutter_tts.dart';
 /// Device speech. Tests can pass a fake [SpeechEngine].
 abstract class SpeechEngine {
   /// Returns false when [language] is not installed.
+  Future<bool> isLanguageAvailable(String language);
   Future<bool> setLanguage(String language);
+
+  /// Installed voices. Each map has at least `name` and `locale`.
+  Future<List<Map<String, String>>> getVoices();
+
+  /// Selects one installed voice. Returns false when it cannot be applied.
+  Future<bool> setVoice(Map<String, String> voice);
   Future<void> setSpeechRate(double rate);
   Future<void> speak(String text);
   Future<void> prepareIos();
@@ -17,15 +24,41 @@ class FlutterTtsEngine implements SpeechEngine {
   var _iosReady = false;
 
   @override
-  Future<bool> setLanguage(String language) async {
+  Future<bool> isLanguageAvailable(String language) async {
     final available = await _tts.isLanguageAvailable(language);
-    if (!_voiceReady(available)) return false;
+    return _voiceReady(available);
+  }
+
+  @override
+  Future<bool> setLanguage(String language) async {
+    final available = await isLanguageAvailable(language);
+    if (!available) return false;
     final result = await _tts.setLanguage(language);
     return _voiceReady(result);
   }
 
   /// flutter_tts reports a usable voice as `true` or `1`.
   static bool _voiceReady(dynamic result) => result == true || result == 1;
+
+  @override
+  Future<List<Map<String, String>>> getVoices() async {
+    final raw = await _tts.getVoices;
+    if (raw is! List) return const [];
+    return [
+      for (final item in raw)
+        if (item is Map)
+          {
+            for (final entry in item.entries)
+              entry.key.toString(): entry.value?.toString() ?? '',
+          },
+    ];
+  }
+
+  @override
+  Future<bool> setVoice(Map<String, String> voice) async {
+    final result = await _tts.setVoice(voice);
+    return _voiceReady(result);
+  }
 
   @override
   Future<void> setSpeechRate(double rate) async {
@@ -66,6 +99,7 @@ class ArrivalSpeaker {
   final SpeechEngine? engine;
   final bool? isWeb;
   final bool? isIos;
+  Future<bool>? _tail;
 
   bool get _web => isWeb ?? kIsWeb;
 
@@ -77,7 +111,7 @@ class ArrivalSpeaker {
   }
 
   /// Preferred voice, then installed fallbacks. Traditional Chinese is
-  /// Cantonese. Simplified Chinese is Mandarin.
+  /// Cantonese. Simplified Chinese is Mandarin and never falls back to zh-HK.
   static List<String> localesFor(String langCode) {
     switch (langCode) {
       case 'zh':
@@ -93,9 +127,45 @@ class ArrivalSpeaker {
     }
   }
 
+  /// A voice whose locale matches [locale]. Simplified Chinese only accepts
+  /// a zh-CN voice, never Cantonese zh-HK.
+  static Map<String, String>? iosVoiceFor(List<Map<String, String>> voices, String locale) {
+    final want = locale.toLowerCase().replaceAll('_', '-');
+    final mandarin = want == 'zh-cn' || want == 'zh-hans' || want.startsWith('zh-hans');
+    Map<String, String>? match;
+    for (final voice in voices) {
+      final loc = (voice['locale'] ?? '').toLowerCase().replaceAll('_', '-');
+      if (loc.isEmpty) continue;
+      if (mandarin) {
+        if (loc == 'zh-cn' || loc.startsWith('zh-cn-')) match ??= voice;
+        continue;
+      }
+      if (loc == want || loc.startsWith('$want-')) match ??= voice;
+    }
+    return match;
+  }
+
   /// Speaks [text]. Returns false when speech is unavailable.
   /// Web failures are swallowed so the rest of the app keeps working.
-  Future<bool> speak(String text, String langCode) async {
+  ///
+  /// Calls are queued so one utterance finishes applying its language before
+  /// the next one starts, and the chosen language is awaited again immediately
+  /// before [SpeechEngine.speak].
+  Future<bool> speak(String text, String langCode) {
+    final previous = _tail;
+    final Future<bool> done;
+    if (previous == null) {
+      done = _speakNow(text, langCode);
+    } else {
+      done = previous.then((_) => _speakNow(text, langCode), onError: (Object _, StackTrace _) {
+        return _speakNow(text, langCode);
+      });
+    }
+    _tail = done;
+    return done;
+  }
+
+  Future<bool> _speakNow(String text, String langCode) async {
     final spoken = text.trim();
     if (spoken.isEmpty) return false;
     try {
@@ -108,24 +178,69 @@ class ArrivalSpeaker {
         }
       }
       await speech.setSpeechRate(0.42);
-      Object? lastError;
-      for (final locale in localesFor(langCode)) {
-        try {
-          final ready = await speech.setLanguage(locale);
-          if (!ready) continue;
-          await speech.speak(spoken);
-          return true;
-        } catch (error) {
-          lastError = error;
-        }
+      final chosen = await _firstAvailable(speech, localesFor(langCode));
+      if (chosen == null) return false;
+
+      final applied = await _applyLanguage(speech, langCode, chosen);
+      if (applied == null) return false;
+
+      if (_ios) {
+        await _applyIosVoice(speech, applied);
       }
-      if (lastError != null) {
-        if (_web) return false;
-        throw lastError;
-      }
-      return false;
+      await speech.speak(spoken);
+      return true;
     } catch (_) {
       return false;
+    }
+  }
+
+  Future<String?> _firstAvailable(SpeechEngine speech, List<String> locales) async {
+    for (final locale in locales) {
+      try {
+        if (await speech.isLanguageAvailable(locale)) return locale;
+      } catch (_) {
+        // Web and device failures stay in this search so the page keeps working.
+        if (!_web) continue;
+      }
+    }
+    return null;
+  }
+
+  /// Applies the locale after the fallback search. Simplified Chinese always
+  /// awaits `zh-CN` first so a previous Cantonese setting cannot stick.
+  /// Returns the locale that was actually applied.
+  Future<String?> _applyLanguage(SpeechEngine speech, String langCode, String chosen) async {
+    if (langCode == 'zhHans') {
+      if (await _setLanguage(speech, 'zh-CN')) return 'zh-CN';
+      if (chosen != 'zh-CN' && await _setLanguage(speech, chosen)) return chosen;
+      return null;
+    }
+    if (await _setLanguage(speech, chosen)) return chosen;
+    return null;
+  }
+
+  Future<bool> _setLanguage(SpeechEngine speech, String language) async {
+    try {
+      return await speech.setLanguage(language);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _applyIosVoice(SpeechEngine speech, String language) async {
+    try {
+      final voices = await speech.getVoices();
+      final voice = iosVoiceFor(voices, language);
+      if (voice == null) return;
+      final payload = <String, String>{
+        if ((voice['name'] ?? '').isNotEmpty) 'name': voice['name']!,
+        if ((voice['locale'] ?? '').isNotEmpty) 'locale': voice['locale']!,
+        if ((voice['identifier'] ?? '').isNotEmpty) 'identifier': voice['identifier']!,
+      };
+      if (payload.isEmpty) return;
+      await speech.setVoice(payload);
+    } catch (_) {
+      // The language is already set. Speech can continue without a named voice.
     }
   }
 }

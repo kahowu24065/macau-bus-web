@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -19,15 +21,46 @@ class _FakeSpeech implements SpeechEngine {
   final List<String> calls = [];
   bool failLanguages = false;
   final Set<String> missing = {};
+  Completer<bool>? languageGate;
+  List<Map<String, String>> voices = const [
+    {'name': 'Sinji', 'locale': 'zh-HK'},
+    {'name': 'Tingting', 'locale': 'zh-CN'},
+  ];
 
   @override
-  Future<void> prepareIos() async {}
+  Future<void> prepareIos() async {
+    calls.add('ios');
+  }
+
+  @override
+  Future<bool> isLanguageAvailable(String language) async {
+    calls.add('avail:$language');
+    if (failLanguages) throw StateError('no voice');
+    return !missing.contains(language);
+  }
 
   @override
   Future<bool> setLanguage(String language) async {
     calls.add('lang:$language');
+    final gate = languageGate;
+    if (gate != null && !gate.isCompleted) {
+      final ok = await gate.future;
+      if (!ok) return false;
+    }
     if (failLanguages) throw StateError('no voice');
     return !missing.contains(language);
+  }
+
+  @override
+  Future<List<Map<String, String>>> getVoices() async {
+    calls.add('voices');
+    return voices;
+  }
+
+  @override
+  Future<bool> setVoice(Map<String, String> voice) async {
+    calls.add('voice:${voice['locale']}');
+    return true;
   }
 
   @override
@@ -133,7 +166,10 @@ void main() {
     expect(AppTranslations.data['pt']!['easy_read_speak_arrivals'], 'Ler chegadas em voz alta');
     expect(AppTranslations.data['zh']!['more_options'], '更多');
     expect(AppTranslations.data['zh']!['easy_read_eta_mins'], '@mins 分鐘後到');
-    expect(AppTranslations.data['zh']!['easy_read_mode_desc'], contains('\n'));
+    expect(AppTranslations.data['zh']!['easy_read_mode_desc'], '字同按鈕會大啲。');
+    expect(AppTranslations.data['zhHans']!['easy_read_mode_desc'], '文字和按钮会更大。');
+    expect(AppTranslations.data['en']!['easy_read_mode_desc'], 'Larger text and buttons.');
+    expect(AppTranslations.data['pt']!['easy_read_mode_desc'], 'Letras e botões maiores.');
     expect(AppTranslations.data['en']!['easy_read_mode'], 'Easy Read Mode');
     expect(AppTranslations.data['pt']!['easy_read_mode'], 'Modo de Leitura Fácil');
     expect(AppTranslations.data['pt']!['more_options'], 'Mais');
@@ -209,19 +245,19 @@ void main() {
       );
     }
 
-    expect(line('zh', '5 分鐘後到'), '慕拉士，仍有5分鐘到');
+    expect(line('zh', '5 分鐘後到'), '慕拉士，5分鐘後到啦');
     expect(line('zh', '下一站到達'), '慕拉士，下一站到達');
     expect(line('zh', '即將到站'), '慕拉士，即將到站');
 
-    expect(line('zhHans', '5 分钟后到'), '慕拉士，仍有5分钟到');
+    expect(line('zhHans', '5 分钟后到'), '慕拉士，5分钟后到');
     expect(line('zhHans', '下一站到达'), '慕拉士，下一站到达');
     expect(line('zhHans', '即将到站'), '慕拉士，即将到站');
 
-    expect(line('en', 'In 5 min'), '慕拉士, still 5 min');
+    expect(line('en', 'In 5 min'), '慕拉士, arriving in 5 min');
     expect(line('en', 'Next stop'), '慕拉士, Next stop');
     expect(line('en', 'Arriving soon'), '慕拉士, Arriving soon');
 
-    expect(line('pt', 'Chega em 5 min'), '慕拉士, ainda 5 min');
+    expect(line('pt', 'Chega em 5 min'), '慕拉士, chega em 5 min');
     expect(line('pt', 'Próxima paragem'), '慕拉士, Próxima paragem');
     expect(line('pt', 'A chegar'), '慕拉士, A chegar');
   });
@@ -234,17 +270,22 @@ void main() {
     );
   });
 
-  test('contrast lifts grey and keeps saturated colours in both themes', () {
-    expect(EasyReadTheme.lift(Colors.grey.shade500, Brightness.light), EasyReadTheme.lightForeground);
-    expect(EasyReadTheme.lift(Colors.grey.shade500, Brightness.dark), Colors.white);
-    expect(EasyReadTheme.lift(Colors.white70, Brightness.dark), Colors.white);
-    expect(EasyReadTheme.lift(Colors.black54, Brightness.light), EasyReadTheme.lightForeground);
-    expect(EasyReadTheme.lift(Colors.amber, Brightness.light), Colors.amber);
-    expect(EasyReadTheme.lift(Colors.black, Brightness.light), Colors.black);
-    expect(EasyReadTheme.lift(Colors.white, Brightness.dark), Colors.white);
+  test('easy read keeps grey secondary colours and larger controls', () {
+    final lightBase = ThemeData.light();
+    final darkBase = ThemeData.dark();
+    final light = EasyReadTheme.apply(lightBase);
+    final dark = EasyReadTheme.apply(darkBase);
 
-    final light = EasyReadTheme.apply(ThemeData.light());
-    final dark = EasyReadTheme.apply(ThemeData.dark());
+    expect(light.hintColor, lightBase.hintColor);
+    expect(dark.hintColor, darkBase.hintColor);
+    expect(light.disabledColor, lightBase.disabledColor);
+    expect(dark.disabledColor, darkBase.disabledColor);
+    expect(light.colorScheme.onSurfaceVariant, lightBase.colorScheme.onSurfaceVariant);
+    expect(dark.colorScheme.onSurfaceVariant, darkBase.colorScheme.onSurfaceVariant);
+    expect(light.textTheme.bodySmall?.color, lightBase.textTheme.bodySmall?.color);
+    expect(dark.textTheme.bodySmall?.color, darkBase.textTheme.bodySmall?.color);
+    expect(light.listTileTheme.subtitleTextStyle?.color, isNull);
+    expect(light.listTileTheme.subtitleTextStyle?.fontSize, 16);
     expect(light.textButtonTheme.style?.minimumSize?.resolve({}), const Size(72, 56));
     expect(dark.colorScheme.onSurface, Colors.white);
     expect(light.colorScheme.onSurface, EasyReadTheme.lightForeground);
@@ -290,8 +331,28 @@ void main() {
   test('arrival speech maps each language to a voice', () async {
     expect(ArrivalSpeaker.localesFor('zh'), ['zh-HK', 'zh-TW', 'zh-CN']);
     expect(ArrivalSpeaker.localesFor('zhHans'), ['zh-CN', 'zh-Hans']);
+    expect(ArrivalSpeaker.localesFor('zhHans'), isNot(contains('zh-HK')));
     expect(ArrivalSpeaker.localesFor('en'), ['en', 'en-US', 'en-GB']);
     expect(ArrivalSpeaker.localesFor('pt'), ['pt', 'pt-PT', 'pt-BR']);
+    expect(
+      ArrivalSpeaker.iosVoiceFor(
+        const [
+          {'name': 'Sinji', 'locale': 'zh-HK'},
+          {'name': 'Tingting', 'locale': 'zh-CN'},
+        ],
+        'zh-CN',
+      )?['locale'],
+      'zh-CN',
+    );
+    expect(
+      ArrivalSpeaker.iosVoiceFor(
+        const [
+          {'name': 'Sinji', 'locale': 'zh-HK'},
+        ],
+        'zh-Hans',
+      ),
+      isNull,
+    );
 
     const phrases = {
       'zh': '5 分鐘後到',
@@ -315,6 +376,29 @@ void main() {
     final mandarin = ArrivalSpeaker(engine: missingMandarin, isWeb: false, isIos: false);
     expect(await mandarin.speak('5 分钟后到', 'zhHans'), isTrue);
     expect(missingMandarin.calls, containsAllInOrder(['lang:zh-CN', 'lang:zh-Hans', 'say:5 分钟后到']));
+    expect(missingMandarin.calls.where((call) => call.contains('zh-HK')), isEmpty);
+
+    final ios = _FakeSpeech();
+    final iosSpeaker = ArrivalSpeaker(engine: ios, isWeb: false, isIos: true);
+    expect(await iosSpeaker.speak('廣東話', 'zh'), isTrue);
+    expect(await iosSpeaker.speak('普通话', 'zhHans'), isTrue);
+    final second = ios.calls.sublist(ios.calls.indexOf('say:廣東話') + 1);
+    expect(second, containsAllInOrder(['lang:zh-CN', 'voice:zh-CN', 'say:普通话']));
+    expect(second.where((call) => call.contains('zh-HK')), isEmpty);
+    expect(second.indexOf('lang:zh-CN'), lessThan(second.indexOf('voice:zh-CN')));
+    expect(second.indexOf('voice:zh-CN'), lessThan(second.indexOf('say:普通话')));
+
+    final gated = _FakeSpeech()..languageGate = Completer<bool>();
+    final waiting = ArrivalSpeaker(engine: gated, isWeb: false, isIos: true);
+    final pending = waiting.speak('3分钟后到', 'zhHans');
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+    expect(gated.calls, isNot(contains('say:3分钟后到')));
+    expect(gated.calls, contains('lang:zh-CN'));
+    gated.languageGate!.complete(true);
+    expect(await pending, isTrue);
+    expect(gated.calls.indexOf('lang:zh-CN'), lessThan(gated.calls.indexOf('voice:zh-CN')));
+    expect(gated.calls.indexOf('voice:zh-CN'), lessThan(gated.calls.indexOf('say:3分钟后到')));
 
     final none = _FakeSpeech()..missing.addAll(['en', 'en-US', 'en-GB']);
     final english = ArrivalSpeaker(engine: none, isWeb: false, isIos: false);

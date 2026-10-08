@@ -55,7 +55,8 @@ String presentArrivalStatus({
 }
 
 /// Read-aloud line: the stop name, then the arrival phrase.
-/// A minute count is spoken as "仍有5分鐘到", not the on-screen "5 分鐘後到".
+/// A minute count is spoken in the colloquial form, for example
+/// 「3分鐘後到啦」, not the on-screen "3 分鐘後到".
 String easyReadSpokenArrival({
   required String stopName,
   required String status,

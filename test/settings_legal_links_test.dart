@@ -141,6 +141,10 @@ void main() {
           expect(text.style?.color, _legalGrey);
           expect(text.style?.decoration, TextDecoration.none);
         }
+
+        final description = tester.widget<Text>(find.text('字同按鈕會大啲。'));
+        expect(description.style?.color, _legalGrey);
+        expect(description.style?.fontSize, 13);
       },
     );
   }
