@@ -144,6 +144,11 @@ class AppTranslations {
       'easy_read_mode': '易讀模式',
       'easy_read_mode_desc': '字同按鈕會大啲。',
       'easy_read_speak_arrivals': '讀出到站資訊',
+      'speech_language': '讀出語言',
+      'speech_lang_yue': '廣東話',
+      'speech_lang_cmn': '普通話',
+      'speech_lang_en': 'English',
+      'speech_lang_pt': 'Português',
       'easy_read_eta_mins': '@mins 分鐘後到',
       'easy_read_spoken_mins': '@mins分鐘後到啦',
       'easy_read_spoken_line': '@stop，@status',
@@ -288,6 +293,11 @@ class AppTranslations {
       'easy_read_mode': '易读模式',
       'easy_read_mode_desc': '文字和按钮会更大。',
       'easy_read_speak_arrivals': '读出到站资讯',
+      'speech_language': '读出语言',
+      'speech_lang_yue': '广东话',
+      'speech_lang_cmn': '普通话',
+      'speech_lang_en': 'English',
+      'speech_lang_pt': 'Português',
       'easy_read_eta_mins': '@mins 分钟后到',
       'easy_read_spoken_mins': '@mins分钟后到',
       'easy_read_spoken_line': '@stop，@status',
@@ -432,6 +442,11 @@ class AppTranslations {
       'easy_read_mode': 'Modo de Leitura Fácil',
       'easy_read_mode_desc': 'Letras e botões maiores.',
       'easy_read_speak_arrivals': 'Ler chegadas em voz alta',
+      'speech_language': 'Idioma da leitura',
+      'speech_lang_yue': 'Cantonês',
+      'speech_lang_cmn': 'Mandarim',
+      'speech_lang_en': 'Inglês',
+      'speech_lang_pt': 'Português',
       'easy_read_eta_mins': 'Chega em @mins min',
       'easy_read_spoken_mins': 'chega em @mins min',
       'easy_read_spoken_line': '@stop, @status',
@@ -576,6 +591,11 @@ class AppTranslations {
       'easy_read_mode': 'Easy Read Mode',
       'easy_read_mode_desc': 'Larger text and buttons.',
       'easy_read_speak_arrivals': 'Read arrivals aloud',
+      'speech_language': 'Speech language',
+      'speech_lang_yue': 'Cantonese',
+      'speech_lang_cmn': 'Mandarin',
+      'speech_lang_en': 'English',
+      'speech_lang_pt': 'Portuguese',
       'easy_read_eta_mins': 'In @mins min',
       'easy_read_spoken_mins': 'arriving in @mins min',
       'easy_read_spoken_line': '@stop, @status',
@@ -594,6 +614,10 @@ class AppTranslations {
       'about_us': 'About Us', 'disclaimer': 'Disclaimer', 'privacy_policy': 'Privacy Policy', 'terms_of_use': 'Terms of Use (EULA)', 'sub_plan_info': 'Subscription: {title} (Remove Ads)\nLength: 1 month', 'sub_plan_info_priced': 'Subscription: {title} (Remove Ads)\nLength: 1 month\nPrice: {price} per month', 'sub_renew_note': 'Auto-renews monthly. Cancel anytime in your {store} account settings; after cancelling, the subscription stops at the end of the current period.',
     },
   };
+
+  static String text(String lang, String key) {
+    return data[lang]?[key] ?? data['zh']?[key] ?? key;
+  }
 
   /// Planner/ETA API often returns Chinese function phrases even when the UI
   /// language is PT/EN. Map those to the current dictionary.

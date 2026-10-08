@@ -1,3 +1,5 @@
+import '../constants/app_translations.dart';
+
 /// Arrival wording.
 ///
 /// The decision of "next stop" versus "arriving now" stays the same.
@@ -73,15 +75,43 @@ String easyReadSpokenArrival({
 
 String _spokenArrivalPhrase(String status, String Function(String key) tr) {
   final trimmed = status.trim();
-  final mins = RegExp(
-    r'(\d+)\s*(?:分鐘|分钟|mins|min)',
-    caseSensitive: false,
-  ).firstMatch(trimmed);
+  final mins = _easyReadMinuteCount(trimmed);
   if (mins != null) {
-    final easyReadLine = tr('easy_read_eta_mins').replaceAll('@mins', mins.group(1)!);
-    if (trimmed == easyReadLine) {
-      return tr('easy_read_spoken_mins').replaceAll('@mins', mins.group(1)!);
+    return tr('easy_read_spoken_mins').replaceAll('@mins', mins);
+  }
+  final key = _exactArrivalKey(trimmed);
+  if (key != null) return tr(key);
+  return trimmed;
+}
+
+/// The on-screen Easy Read minute line in any UI language, for example
+/// "3 分鐘後到" or "In 3 min". Longer sentences that merely contain a number
+/// stay as they are.
+String? _easyReadMinuteCount(String status) {
+  for (final pattern in [
+    RegExp(r'^(\d+)\s*分鐘後到$'),
+    RegExp(r'^(\d+)\s*分钟后到$'),
+    RegExp(r'^in\s+(\d+)\s+mins?$', caseSensitive: false),
+    RegExp(r'^chega em\s+(\d+)\s+mins?$', caseSensitive: false),
+  ]) {
+    final match = pattern.firstMatch(status);
+    if (match != null) return match.group(1);
+  }
+  return null;
+}
+
+const _exactArrivalKeys = [
+  'easy_read_arriving_soon',
+  'easy_read_arriving_next',
+  'arriving_soon',
+  'arriving_next',
+];
+
+String? _exactArrivalKey(String status) {
+  for (final lang in const ['zh', 'zhHans', 'en', 'pt']) {
+    for (final key in _exactArrivalKeys) {
+      if (AppTranslations.data[lang]?[key] == status) return key;
     }
   }
-  return trimmed;
+  return null;
 }

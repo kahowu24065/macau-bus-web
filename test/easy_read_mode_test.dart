@@ -108,6 +108,24 @@ void main() {
     expect(easy.speakArrivals, isTrue);
   });
 
+  test('speech language follows the app language until the user picks', () async {
+    final first = EasyReadModeController();
+    await first.ready;
+    expect(first.speechLanguageFor('zh'), 'zh');
+    expect(first.speechLanguageFor('zhHans'), 'zhHans');
+    expect(first.speechLanguageFor('en'), 'en');
+    expect(first.speechLanguageFor('pt'), 'pt');
+
+    await first.setSpeechLanguage('zhHans');
+    expect(first.speechLanguageFor('zh'), 'zhHans');
+    expect(first.speechLanguageFor('en'), 'zhHans');
+
+    final second = EasyReadModeController();
+    await second.ready;
+    expect(second.speechLanguageFor('pt'), 'zhHans');
+    expect(second.speechLanguageFor('zh'), 'zhHans');
+  });
+
   test('arrival read-aloud keeps a separate choice for each mode', () async {
     final first = EasyReadModeController();
     await first.ready;
@@ -182,6 +200,22 @@ void main() {
     expect(AppTranslations.data['zhHans']!['suspended_stops'], '暂时停靠站点：');
     expect(AppTranslations.data['en']!['suspended_stops'], 'Temporary Stops:');
     expect(AppTranslations.data['pt']!['suspended_stops'], 'Paragens temporárias:');
+    expect(AppTranslations.data['zh']!['speech_language'], '讀出語言');
+    expect(AppTranslations.data['zhHans']!['speech_language'], '读出语言');
+    expect(AppTranslations.data['en']!['speech_language'], 'Speech language');
+    expect(AppTranslations.data['pt']!['speech_language'], 'Idioma da leitura');
+    expect(AppTranslations.data['zh']!['speech_lang_yue'], '廣東話');
+    expect(AppTranslations.data['zh']!['speech_lang_cmn'], '普通話');
+    expect(AppTranslations.data['zh']!['speech_lang_en'], 'English');
+    expect(AppTranslations.data['zh']!['speech_lang_pt'], 'Português');
+    expect(AppTranslations.data['zhHans']!['speech_lang_yue'], '广东话');
+    expect(AppTranslations.data['zhHans']!['speech_lang_cmn'], '普通话');
+    expect(AppTranslations.data['en']!['speech_lang_yue'], 'Cantonese');
+    expect(AppTranslations.data['en']!['speech_lang_cmn'], 'Mandarin');
+    expect(AppTranslations.data['en']!['speech_lang_pt'], 'Portuguese');
+    expect(AppTranslations.data['pt']!['speech_lang_yue'], 'Cantonês');
+    expect(AppTranslations.data['pt']!['speech_lang_cmn'], 'Mandarim');
+    expect(AppTranslations.data['pt']!['speech_lang_en'], 'Inglês');
   });
 
   test('arrival wording keeps next-stop and arriving-soon logic', () {
@@ -268,6 +302,11 @@ void main() {
     expect(line('pt', 'Chega em 5 min'), '慕拉士, chega em 5 min');
     expect(line('pt', 'Próxima paragem'), '慕拉士, Próxima paragem');
     expect(line('pt', 'A chegar'), '慕拉士, A chegar');
+
+    expect(line('zhHans', '3 分鐘後到'), '慕拉士，3分钟后到');
+    expect(line('zh', '3 分钟后到'), '慕拉士，3分鐘後到啦');
+    expect(line('en', '3 分鐘後到'), '慕拉士, arriving in 3 min');
+    expect(line('pt', 'In 3 min'), '慕拉士, chega em 3 min');
   });
 
   test('text scale undo restores the size under the header', () {
@@ -337,7 +376,9 @@ void main() {
   });
 
   test('arrival speech maps each language to a voice', () async {
-    expect(ArrivalSpeaker.localesFor('zh'), ['zh-HK', 'zh-TW', 'zh-CN']);
+    expect(ArrivalSpeaker.localesFor('zh'), ['zh-HK', 'yue-HK']);
+    expect(ArrivalSpeaker.localesFor('zh'), isNot(contains('zh-TW')));
+    expect(ArrivalSpeaker.localesFor('zh'), isNot(contains('zh-CN')));
     expect(ArrivalSpeaker.localesFor('zhHans'), ['zh-CN', 'zh-Hans']);
     expect(ArrivalSpeaker.localesFor('zhHans'), isNot(contains('zh-HK')));
     expect(ArrivalSpeaker.localesFor('en'), ['en', 'en-US', 'en-GB']);
@@ -358,6 +399,28 @@ void main() {
           {'name': 'Sinji', 'locale': 'zh-HK'},
         ],
         'zh-Hans',
+      ),
+      isNull,
+    );
+    expect(
+      ArrivalSpeaker.iosVoiceFor(
+        const [
+          {'name': 'Ting-Ting', 'locale': 'zh-CN'},
+          {'name': 'Mei-Jia', 'locale': 'zh-TW'},
+          {'name': 'Sandy', 'locale': 'zh-HK'},
+          {'name': 'Sin-Ji', 'locale': 'zh-HK', 'identifier': 'com.apple.voice.compact.zh-HK.Sinji'},
+        ],
+        'zh-HK',
+      )?['name'],
+      'Sin-Ji',
+    );
+    expect(
+      ArrivalSpeaker.iosVoiceFor(
+        const [
+          {'name': 'Ting-Ting', 'locale': 'zh-CN'},
+          {'name': 'Mei-Jia', 'locale': 'zh-TW'},
+        ],
+        'zh-HK',
       ),
       isNull,
     );
@@ -395,6 +458,20 @@ void main() {
     expect(second.where((call) => call.contains('zh-HK')), isEmpty);
     expect(second.indexOf('lang:zh-CN'), lessThan(second.indexOf('voice:zh-CN')));
     expect(second.indexOf('voice:zh-CN'), lessThan(second.indexOf('say:普通话')));
+
+    final cantoneseAfter = ArrivalSpeaker(engine: ios, isWeb: false, isIos: true);
+    expect(await cantoneseAfter.speak('再講廣東話', 'zh'), isTrue);
+    final back = ios.calls.sublist(ios.calls.lastIndexOf('say:普通话') + 1);
+    expect(back, containsAllInOrder(['lang:zh-HK', 'voice:zh-HK', 'say:再講廣東話']));
+    expect(back.where((call) => call.contains('zh-CN') || call.contains('zh-TW')), isEmpty);
+    expect(back.indexOf('lang:zh-HK'), lessThan(back.indexOf('voice:zh-HK')));
+    expect(back.indexOf('voice:zh-HK'), lessThan(back.indexOf('say:再講廣東話')));
+
+    final noCantonese = _FakeSpeech()..missing.addAll(['zh-HK', 'yue-HK']);
+    final quiet = ArrivalSpeaker(engine: noCantonese, isWeb: false, isIos: true);
+    expect(await quiet.speak('廣東話', 'zh'), isFalse);
+    expect(noCantonese.calls.where((call) => call.contains('zh-CN') || call.contains('zh-TW')), isEmpty);
+    expect(noCantonese.calls.where((call) => call.startsWith('say:')), isEmpty);
 
     final gated = _FakeSpeech()..languageGate = Completer<bool>();
     final waiting = ArrivalSpeaker(engine: gated, isWeb: false, isIos: true);

@@ -161,6 +161,90 @@ void main() {
     lang.dispose();
   });
 
+  testWidgets('spoken arrival follows the chosen speech language', (tester) async {
+    tester.view.physicalSize = const Size(400, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    OpenDataConfig.instance.debugApply(
+      configRealtime: true,
+      configRouteNotices: true,
+      etaRealtime: true,
+    );
+    final lang = LanguageController();
+    final bus = BusController();
+    bus.setRoute('3');
+    bus.stopsList = [for (var i = 1; i <= 5; i++) _stop(i)];
+    bus.selectedStopSeq = 5;
+    bus.etaData = {'status': '約 4 分鐘'};
+    bus.allBusesList = const [
+      Bus(
+        busLicense: 'MB-1',
+        lat: 22.2,
+        lng: 113.55,
+        speed: 20,
+        currentStopSeq: 3,
+        etaMinutes: 4,
+      ),
+    ];
+
+    Future<void> pump(String speechLanguage) async {
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<BusController>.value(value: bus),
+            ChangeNotifierProvider<LanguageController>.value(value: lang),
+            ChangeNotifierProvider(create: (_) => LocationController()),
+            ChangeNotifierProvider(create: (_) => BackgroundController()),
+            ChangeNotifierProvider(create: (_) => NavigationController()),
+            ChangeNotifierProvider(
+              create: (_) => EasyReadModeController.fixed(true, speechLanguage: speechLanguage),
+            ),
+          ],
+          child: MaterialApp(
+            theme: ThemeData.dark(),
+            home: const BusRouteScreen(),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    await pump('zhHans');
+    expect(find.text('4 分鐘後到'), findsOneWidget);
+    await tester.ensureVisible(find.text('4 分鐘後到'));
+    await tester.pump();
+    await tester.tap(find.text('4 分鐘後到'));
+    await tester.pump();
+    expect(fake.spoken, '站5，4分钟后到');
+    expect(fake.language, 'zh-CN');
+
+    fake.reset();
+    await tester.pumpWidget(const SizedBox.shrink());
+    await pump('en');
+    await tester.ensureVisible(find.text('4 分鐘後到'));
+    await tester.pump();
+    await tester.tap(find.text('4 分鐘後到'));
+    await tester.pump();
+    expect(fake.spoken, 'Stop 5, arriving in 4 min');
+    expect(fake.language, 'en');
+
+    fake.reset();
+    await tester.pumpWidget(const SizedBox.shrink());
+    await pump('pt');
+    await tester.ensureVisible(find.text('4 分鐘後到'));
+    await tester.pump();
+    await tester.tap(find.text('4 分鐘後到'));
+    await tester.pump();
+    expect(fake.spoken, 'Paragem 5, chega em 4 min');
+    expect(fake.language, 'pt');
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    bus.dispose();
+    lang.dispose();
+  });
+
   testWidgets('easy read stop row stays quiet when arrival read-aloud is off', (tester) async {
     OpenDataConfig.instance.debugApply(
       configRealtime: true,

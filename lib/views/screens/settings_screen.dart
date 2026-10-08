@@ -706,6 +706,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             onChanged: easyReadCtrl.setSpeakArrivals,
                           ),
                         ),
+                        if (easyReadCtrl.speakArrivals)
+                          _buildTile(
+                            icon: Icons.record_voice_over_outlined,
+                            title: langCtrl.tr('speech_language'),
+                            trailingText: langCtrl.tr(
+                              EasyReadModeController.speechLanguageLabelKey(
+                                easyReadCtrl.speechLanguageFor(langCtrl.currentLanguage),
+                              ),
+                            ),
+                            isDark: isDark,
+                            onTap: () {
+                              _showActionSheet(
+                                context,
+                                langCtrl,
+                                title: langCtrl.tr('speech_language'),
+                                actions: [
+                                  for (final code in EasyReadModeController.speechLanguageChoices)
+                                    CupertinoActionSheetAction(
+                                      onPressed: () {
+                                        easyReadCtrl.setSpeechLanguage(code);
+                                        Navigator.pop(context);
+                                      },
+                                      child: Text(
+                                        langCtrl.tr(EasyReadModeController.speechLanguageLabelKey(code)),
+                                        style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                                      ),
+                                    ),
+                                ],
+                              );
+                            },
+                          ),
                         _buildTile(
                           icon: Icons.dark_mode_outlined, title: langCtrl.tr('switch_theme'), subtitle: langCtrl.tr('easier_on_eyes'), isDark: isDark,
                           trailing: CupertinoSwitch(
