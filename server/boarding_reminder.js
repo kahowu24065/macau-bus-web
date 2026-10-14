@@ -417,6 +417,11 @@ function createBoardingReminders(options = {}) {
     if (existing) {
       if (body.activityToken) existing.activityToken = String(body.activityToken);
       if (body.pushToStartToken) existing.pushToStartToken = String(body.pushToStartToken);
+      // The first register can run before the phone has a push token. If the
+      // five-minute update is already due and was skipped, send it now.
+      if (!existing.pushDelivered && existing.sendUpdate && pushTarget(existing) && existing.pushDueAt <= now()) {
+        await existing.sendUpdate();
+      }
       return { status: 200, body: publicResponse(existing) };
     }
 
@@ -464,16 +469,25 @@ function createBoardingReminders(options = {}) {
       text: minutesText(lang, plan.minutesNow),
       pushDelaySeconds: plan.pushDelaySeconds,
       endDelaySeconds: plan.endDelaySeconds,
+      pushMinutes: plan.pushMinutes,
+      pushDueAt: now() + Math.round(plan.pushDelaySeconds * 1000),
+      pushDelivered: false,
       startedRemotely: false,
       pushTimer: null,
       endTimer: null,
+      sendUpdate: null,
     };
 
-    const sendUpdate = () => deliver(reminder, {
-      event: 'update',
-      minutes: plan.pushMinutes,
-      text: minutesText(lang, plan.pushMinutes),
-    });
+    const sendUpdate = async () => {
+      const result = await deliver(reminder, {
+        event: 'update',
+        minutes: reminder.pushMinutes,
+        text: minutesText(lang, reminder.pushMinutes),
+      });
+      if (result && result.sent) reminder.pushDelivered = true;
+      return result;
+    };
+    reminder.sendUpdate = sendUpdate;
     if (plan.pushDelaySeconds <= 0) {
       await sendUpdate();
     } else {

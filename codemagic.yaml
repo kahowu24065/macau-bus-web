@@ -77,6 +77,13 @@ workflows:
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             2>&1 | tee /tmp/archive.log | grep -E "error:|ARCHIVE" || true
           grep -q "ARCHIVE SUCCEEDED" /tmp/archive.log || { tail -n 100 /tmp/archive.log; exit 1; }
+          APPEX="$CM_BUILD_DIR/Runner.xcarchive/Products/Applications/Runner.app/PlugIns/BoardingLiveActivity.appex"
+          if [ ! -d "$APPEX" ]; then
+            echo "BoardingLiveActivity.appex is missing from the archive"
+            find "$CM_BUILD_DIR/Runner.xcarchive" -name '*.appex' -print
+            exit 1
+          fi
+          echo "Embedded $APPEX"
 
       - name: Strip vendor signatures from embedded frameworks
         script: |
@@ -115,6 +122,9 @@ workflows:
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             2>&1 | tee /tmp/export.log | tail -n 80
           grep -qE "EXPORT SUCCEEDED|Upload succeeded|Uploaded" /tmp/export.log || { echo "export/upload failed"; exit 1; }
+          IPA=$(ls "$CM_BUILD_DIR/export"/*.ipa | head -1)
+          unzip -l "$IPA" | grep -q "BoardingLiveActivity.appex/" || { echo "exported ipa is missing BoardingLiveActivity.appex"; unzip -l "$IPA" | grep -i plugin || true; exit 1; }
+          echo "Signed export includes mo.mbka.bus and mo.mbka.bus.BoardingLiveActivity"
 
       - name: Clean up API key
         script: |
