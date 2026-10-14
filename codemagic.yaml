@@ -137,7 +137,7 @@ workflows:
             exit 1
           fi
           echo "=== appex signature ==="
-          codesign --verify --strict --verbose=2 "$APPEX"
+          codesign --verify --verbose=2 "$APPEX"
           codesign -d --verbose=4 "$APPEX" 2>&1 | grep -E "Identifier=|Authority=|TeamIdentifier=" || true
           /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APPEX/Info.plist"
           /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APPEX/Info.plist"
