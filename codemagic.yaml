@@ -123,7 +123,11 @@ workflows:
             2>&1 | tee /tmp/export.log | tail -n 80
           grep -qE "EXPORT SUCCEEDED|Upload succeeded|Uploaded" /tmp/export.log || { echo "export/upload failed"; exit 1; }
           IPA=$(ls "$CM_BUILD_DIR/export"/*.ipa | head -1)
-          unzip -l "$IPA" | grep -q "BoardingLiveActivity.appex/" || { echo "exported ipa is missing BoardingLiveActivity.appex"; unzip -l "$IPA" | grep -i plugin || true; exit 1; }
+          if ! unzip -l "$IPA" | grep -q "BoardingLiveActivity.appex"; then
+            echo "exported ipa is missing BoardingLiveActivity.appex"
+            unzip -l "$IPA" | grep "BoardingLiveActivity" || true
+            exit 1
+          fi
           echo "Signed export includes mo.mbka.bus and mo.mbka.bus.BoardingLiveActivity"
 
       - name: Clean up API key
