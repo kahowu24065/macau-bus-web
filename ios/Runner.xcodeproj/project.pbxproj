@@ -16,6 +16,8 @@
 		C0A1D1A11ED2DC5600515812 /* AlightingLocationBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A1D1A01ED2DC5600515812 /* AlightingLocationBridge.swift */; };
 		D1A1B0A11ED2DC5600515820 /* BoardingLiveActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D1A1B0A01ED2DC5600515820 /* BoardingLiveActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		D1A1B0A31ED2DC5600515820 /* BoardingLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A1B0A21ED2DC5600515820 /* BoardingLiveActivity.swift */; };
+		E1A1C0DE1ED2DC5600515832 /* BoardingActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A1C0DE1ED2DC5600515831 /* BoardingActivityAttributes.swift */; };
+		E1A1C0DE1ED2DC5600515833 /* BoardingActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A1C0DE1ED2DC5600515831 /* BoardingActivityAttributes.swift */; };
 		78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */ = {isa = PBXBuildFile; productRef = 78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */; };
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
@@ -77,6 +79,7 @@
 		C0A1D1A01ED2DC5600515812 /* AlightingLocationBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlightingLocationBridge.swift; sourceTree = "<group>"; };
 		D1A1B0A01ED2DC5600515820 /* BoardingLiveActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BoardingLiveActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		D1A1B0A21ED2DC5600515820 /* BoardingLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardingLiveActivity.swift; sourceTree = "<group>"; };
+		E1A1C0DE1ED2DC5600515831 /* BoardingActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardingActivityAttributes.swift; sourceTree = "<group>"; };
 		D1A1B0A41ED2DC5600515820 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B0A1D1A21ED2DC5600515811 /* Runner.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Runner.entitlements; sourceTree = "<group>"; };
 		B0A1D1A31ED2DC5600515811 /* Runner-Debug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Runner-Debug.entitlements"; sourceTree = "<group>"; };
@@ -136,6 +139,14 @@
 			name = Flutter;
 			sourceTree = "<group>";
 		};
+		E1A1C0DE1ED2DC5600515834 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				E1A1C0DE1ED2DC5600515831 /* BoardingActivityAttributes.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
 		D1A1B0A51ED2DC5600515820 /* BoardingLiveActivity */ = {
 			isa = PBXGroup;
 			children = (
@@ -151,6 +162,7 @@
 				9740EEB11CF90186004384FC /* Flutter */,
 				97C146F01CF9000F007C117D /* Runner */,
 				D1A1B0A51ED2DC5600515820 /* BoardingLiveActivity */,
+				E1A1C0DE1ED2DC5600515834 /* Shared */,
 				97C146EF1CF9000F007C117D /* Products */,
 				331C8082294A63A400263BE5 /* RunnerTests */,
 			);
@@ -377,6 +389,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D1A1B0A31ED2DC5600515820 /* BoardingLiveActivity.swift in Sources */,
+				E1A1C0DE1ED2DC5600515833 /* BoardingActivityAttributes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -386,6 +399,7 @@
 			files = (
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
 				B0A1D1A11ED2DC5600515811 /* BoardingLiveActivityBridge.swift in Sources */,
+				E1A1C0DE1ED2DC5600515832 /* BoardingActivityAttributes.swift in Sources */,
 				C0A1D1A11ED2DC5600515812 /* AlightingLocationBridge.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,

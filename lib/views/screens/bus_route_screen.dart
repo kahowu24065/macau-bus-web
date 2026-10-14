@@ -609,10 +609,14 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                       Navigator.pop(context);
                       final messageKey = outcome.messageKey;
                       if (messageKey != null && hostContext.mounted) {
+                        final detail = outcome.detail;
+                        final label = detail == null || detail.isEmpty
+                            ? langCtrl.tr(messageKey)
+                            : '${langCtrl.tr(messageKey)} ($detail)';
                         ScaffoldMessenger.of(hostContext).showSnackBar(
                           RouteLiquidGlassNavStyle.snackBar(
                             context: hostContext,
-                            content: Text(langCtrl.tr(messageKey)),
+                            content: Text(label),
                             backgroundColor: Colors.redAccent,
                             duration: const Duration(seconds: 4),
                           ),

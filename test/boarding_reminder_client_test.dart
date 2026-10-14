@@ -195,7 +195,9 @@ void main() {
       required String stopName,
       required int minutes,
       required String text,
-    }) => hung.future;
+    }) async {
+      return const LiveActivityStart(started: true);
+    };
     final bodies = <Map<String, dynamic>>[];
     BoardingReminderClient.debugRegister = (body) async {
       bodies.add(Map<String, dynamic>.from(body));
@@ -241,7 +243,7 @@ void main() {
       required int minutes,
       required String text,
     }) async {
-      return 'abc123hex';
+      return const LiveActivityStart(started: true, token: 'abc123hex');
     };
     LiveActivityBridge.debugPushToStartToken = () async => null;
     final bodies = <Map<String, dynamic>>[];
@@ -272,6 +274,98 @@ void main() {
 
       expect(bodies.first.containsKey('activityToken'), isFalse);
       expect(bodies.any((body) => body['activityToken'] == 'abc123hex'), isTrue);
+      expect(bodies.last['reminderId'], bodies.first['reminderId']);
+    } finally {
+      bus.dispose();
+    }
+  });
+
+  testWidgets('a Live Activity start failure still marks the stop and says why', (tester) async {
+    LiveActivityBridge.debugStartActivity = ({
+      required String route,
+      required String stopName,
+      required int minutes,
+      required String text,
+    }) async {
+      return const LiveActivityStart(started: false, error: 'activities_disabled');
+    };
+    LiveActivityBridge.debugPushToStartToken = () async => null;
+    final bodies = <Map<String, dynamic>>[];
+    BoardingReminderClient.debugRegister = (body) async {
+      bodies.add(Map<String, dynamic>.from(body));
+      return const BoardingReminderResponse(
+        ok: true,
+        minutes: 5,
+        text: '約 5 分鐘後到達',
+        startedAt: 1000,
+      );
+    };
+
+    final bus = BusController();
+    try {
+      await tester.pump();
+      await tester.pump();
+      bus.currentRoute = '3A';
+      bus.currentDirection = 0;
+      bus.stopsList = [_stop(1, 0), _stop(2, 500), _stop(3, 1000)];
+      bus.allBusesList = [
+        Bus(busLicense: 'CLOSE', lat: _north(700), lng: _lng, speed: 20, currentStopSeq: 2),
+      ];
+
+      final outcome = await bus.setBoardingStop(3);
+
+      expect(outcome.started, isTrue);
+      expect(outcome.messageKey, 'boarding_live_disabled');
+      expect(outcome.detail, 'activities_disabled');
+      expect(bus.boardingStopSeq, 3);
+      expect(bodies, hasLength(1));
+      expect(bodies.single.containsKey('activityToken'), isFalse);
+    } finally {
+      bus.dispose();
+    }
+  });
+
+  testWidgets('a token that arrives after start is posted on the follow-up register', (tester) async {
+    LiveActivityBridge.debugStartActivity = ({
+      required String route,
+      required String stopName,
+      required int minutes,
+      required String text,
+    }) async {
+      return const LiveActivityStart(started: true);
+    };
+    LiveActivityBridge.debugPushToStartToken = () async => null;
+    final bodies = <Map<String, dynamic>>[];
+    BoardingReminderClient.debugRegister = (body) async {
+      bodies.add(Map<String, dynamic>.from(body));
+      return const BoardingReminderResponse(
+        ok: true,
+        minutes: 5,
+        text: '約 5 分鐘後到達',
+        startedAt: 1000,
+      );
+    };
+
+    final bus = BusController();
+    try {
+      await tester.pump();
+      await tester.pump();
+      bus.currentRoute = '3A';
+      bus.currentDirection = 0;
+      bus.stopsList = [_stop(1, 0), _stop(2, 500), _stop(3, 1000)];
+      bus.allBusesList = [
+        Bus(busLicense: 'CLOSE', lat: _north(700), lng: _lng, speed: 20, currentStopSeq: 2),
+      ];
+
+      final outcome = await bus.setBoardingStop(3);
+      expect(outcome.started, isTrue);
+      expect(outcome.messageKey, isNull);
+      LiveActivityBridge.onActivityToken?.call('latehex');
+      await tester.pump();
+      await tester.pump();
+
+      expect(bodies.first.containsKey('activityToken'), isFalse);
+      expect(bodies.any((body) => body['activityToken'] == 'latehex'), isTrue);
       expect(bodies.last['reminderId'], bodies.first['reminderId']);
     } finally {
       bus.dispose();

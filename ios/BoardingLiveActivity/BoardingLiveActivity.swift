@@ -9,18 +9,8 @@ import WidgetKit
 /// There is no second notification. The text is the predicted-minutes sentence
 /// from the app, never a remaining-stop count.
 ///
-/// BoardingActivityAttributes must stay identical to the copy in
-/// ios/Runner/BoardingLiveActivityBridge.swift.
-
-struct BoardingActivityAttributes: ActivityAttributes {
-  public struct ContentState: Codable, Hashable {
-    var minutes: Int
-    var text: String
-  }
-
-  var route: String
-  var stopName: String
-}
+/// BoardingActivityAttributes is ios/Shared/BoardingActivityAttributes.swift,
+/// compiled into this extension and into the app.
 
 struct BoardingLiveActivityWidget: Widget {
   var body: some WidgetConfiguration {

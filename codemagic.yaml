@@ -128,6 +128,28 @@ workflows:
             unzip -l "$IPA" | grep "BoardingLiveActivity" || true
             exit 1
           fi
+          TMP=$(mktemp -d)
+          unzip -q "$IPA" -d "$TMP"
+          APPEX=$(find "$TMP" -path '*/PlugIns/BoardingLiveActivity.appex' -type d | head -1)
+          if [ -z "$APPEX" ]; then
+            echo "PlugIns/BoardingLiveActivity.appex missing after unzip"
+            find "$TMP" -name '*.appex' -print
+            exit 1
+          fi
+          echo "=== appex signature ==="
+          codesign --verify --strict --verbose=2 "$APPEX"
+          codesign -d --verbose=4 "$APPEX" 2>&1 | grep -E "Identifier=|Authority=|TeamIdentifier=" || true
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APPEX/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APPEX/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APPEX/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :NSSupportsLiveActivities' "$APPEX/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' "$APPEX/Info.plist"
+          APP=$(find "$TMP" -name 'Runner.app' -type d | head -1)
+          echo "=== host aps-environment ==="
+          codesign -d --entitlements :- "$APP" 2>/dev/null | grep -A1 aps-environment || {
+            echo "aps-environment missing from Runner.app"
+            exit 1
+          }
           echo "Signed export includes mo.mbka.bus and mo.mbka.bus.BoardingLiveActivity"
 
       - name: Clean up API key
