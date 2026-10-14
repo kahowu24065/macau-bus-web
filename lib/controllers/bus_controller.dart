@@ -562,24 +562,9 @@ class BusController extends ChangeNotifier {
     notifyListeners();
     final minutes = response.minutes ?? 0;
     final text = (response.text == null || response.text!.isEmpty) ? stopName : response.text!;
-    unawaited(_presentBoardingActivity(
-      reminderId: reminderId,
-      stopName: stopName,
-      minutes: minutes,
-      text: text,
-    ));
-    return const BoardingReminderOutcome.started();
-  }
-
-  /// Shows the one Live Activity and, if a token arrives, hands it to the server.
-  /// Neither step is allowed to delay [setBoardingStop].
-  Future<void> _presentBoardingActivity({
-    required String reminderId,
-    required String stopName,
-    required int minutes,
-    required String text,
-  }) async {
-    final activityToken = await LiveActivityBridge.startActivity(
+    // Activity.request itself is fast. The push token is not: it arrives later
+    // on [LiveActivityBridge.onActivityToken] and is posted from there.
+    final start = await LiveActivityBridge.startActivity(
       route: currentRoute,
       stopName: stopName,
       minutes: minutes,
@@ -587,31 +572,53 @@ class BusController extends ChangeNotifier {
     );
     if (_boardingReminderId != reminderId) {
       await LiveActivityBridge.end();
-      return;
+      return const BoardingReminderOutcome.started();
     }
-    final pushToStart = await LiveActivityBridge.pushToStartToken();
-    if (_boardingReminderId != reminderId) {
-      await LiveActivityBridge.end();
-      return;
-    }
+    final activityToken = start.token;
     if (activityToken != null && activityToken.isNotEmpty) {
-      final prefs = await SharedPreferences.getInstance();
+      await _postActivityCredentials(reminderId, activityToken: activityToken);
+    }
+    unawaited(_postPushToStartToken(reminderId));
+    if (!start.started && !start.unavailable) {
+      debugPrint('Boarding Live Activity did not start: ${start.error}');
+      return BoardingReminderOutcome.started(
+        messageKey: start.messageKey,
+        detail: start.error,
+      );
+    }
+    return const BoardingReminderOutcome.started();
+  }
+
+  Future<void> _postActivityCredentials(
+    String reminderId, {
+    String? activityToken,
+    String? pushToStart,
+  }) async {
+    if (_boardingReminderId != reminderId) return;
+    final prefs = await SharedPreferences.getInstance();
+    if (_boardingReminderId != reminderId) return;
+    if (activityToken != null && activityToken.isNotEmpty) {
       await prefs.setString(_reminderTokenKey, activityToken);
     }
     if (pushToStart != null && pushToStart.isNotEmpty) {
-      final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_reminderPushStartKey, pushToStart);
-    }
-    if (_boardingReminderId != reminderId) return;
-    if ((activityToken == null || activityToken.isEmpty) &&
-        (pushToStart == null || pushToStart.isEmpty)) {
-      return;
     }
     await BoardingReminderClient.register({
       'reminderId': reminderId,
       if (activityToken != null && activityToken.isNotEmpty) 'activityToken': activityToken,
       if (pushToStart != null && pushToStart.isNotEmpty) 'pushToStartToken': pushToStart,
     });
+  }
+
+  /// Push-to-start can take a couple of seconds and must not hold the sheet.
+  Future<void> _postPushToStartToken(String reminderId) async {
+    final pushToStart = await LiveActivityBridge.pushToStartToken();
+    if (_boardingReminderId != reminderId) {
+      await LiveActivityBridge.end();
+      return;
+    }
+    if (pushToStart == null || pushToStart.isEmpty) return;
+    await _postActivityCredentials(reminderId, pushToStart: pushToStart);
   }
 
   BusStop? _stopBySeq(int seq) {

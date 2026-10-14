@@ -8,17 +8,9 @@ import Foundation
 /// carry a stop count. The same activity is rendered by the BoardingLiveActivity
 /// widget extension: Dynamic Island on phones that have one, and the Lock Screen
 /// plus the notification list on phones that do not.
-@available(iOS 16.1, *)
-struct BoardingActivityAttributes: ActivityAttributes {
-  public struct ContentState: Codable, Hashable {
-    var minutes: Int
-    var text: String
-  }
-
-  var route: String
-  var stopName: String
-}
-
+///
+/// BoardingActivityAttributes lives in ios/Shared and is compiled into both
+/// targets.
 enum BoardingLiveActivityBridge {
   static let channelName = "mbka/boarding_live_activity"
   private static var channel: FlutterMethodChannel?
@@ -53,9 +45,35 @@ enum BoardingLiveActivityBridge {
     }
   }
 
+  /// Tells Dart whether the activity is on screen. A push token, when it
+  /// exists, is delivered separately on `activityToken` so this result is not
+  /// held open by the token stream.
+  private static func finishStart(
+    _ result: @escaping FlutterResult,
+    started: Bool,
+    token: String?,
+    error: String?
+  ) {
+    var payload: [String: Any] = ["started": started]
+    if let token, !token.isEmpty {
+      payload["token"] = token
+    }
+    if let error, !error.isEmpty {
+      payload["error"] = error
+    }
+    result(payload)
+  }
+
   private static func startActivity(args: [String: Any], result: @escaping FlutterResult) {
     guard #available(iOS 16.1, *) else {
-      result(nil)
+      log("start skipped: iOS < 16.1")
+      finishStart(result, started: false, token: nil, error: "unsupported_os")
+      return
+    }
+    let enabled = ActivityAuthorizationInfo().areActivitiesEnabled
+    log("areActivitiesEnabled=\(enabled)")
+    if !enabled {
+      finishStart(result, started: false, token: nil, error: "activities_disabled")
       return
     }
     let route = args["route"] as? String ?? ""
@@ -64,34 +82,108 @@ enum BoardingLiveActivityBridge {
     let text = args["text"] as? String ?? ""
     let state = BoardingActivityAttributes.ContentState(minutes: minutes, text: text)
     let attributes = BoardingActivityAttributes(route: route, stopName: stopName)
+
+    let activity: Activity<BoardingActivityAttributes>
+    let wantsPushToken: Bool
     do {
-      let activity: Activity<BoardingActivityAttributes>
-      if #available(iOS 16.2, *) {
-        let content = ActivityContent(state: state, staleDate: nil)
-        activity = try Activity.request(attributes: attributes, content: content, pushType: .token)
-      } else {
-        activity = try Activity.request(attributes: attributes, contentState: state, pushType: .token)
-      }
-      let store = BoardingActivityTokenStore.shared
-      store.activity = activity
-      // One reader of this activity's pushTokenUpdates. activityUpdates often
-      // never replays the activity Activity.request just returned.
-      guard store.claim(activity.id) else {
-        result(nil)
+      activity = try requestActivity(attributes: attributes, state: state, pushToken: true)
+      wantsPushToken = true
+    } catch {
+      logRequestFailure(error, context: "pushType.token")
+      // A thrown .token request never creates the activity, so the Lock Screen
+      // stays empty. Retry without a push type so the activity can still appear.
+      do {
+        activity = try requestActivity(attributes: attributes, state: state, pushToken: false)
+        wantsPushToken = false
+        log("started without a push token after token request failed")
+      } catch {
+        logRequestFailure(error, context: "pushType.nil")
+        finishStart(result, started: false, token: nil, error: errorCode(error))
         return
       }
-      Task {
-        let token = await store.waitForPushToken(activity: activity)
-        DispatchQueue.main.async {
-          if let token, !token.isEmpty {
-            channel?.invokeMethod("activityToken", arguments: token)
-          }
-          result(token)
+    }
+
+    let store = BoardingActivityTokenStore.shared
+    store.activity = activity
+    let immediate = activity.pushToken.flatMap { data in
+      data.isEmpty ? nil : hex(data)
+    }
+    log("started id=\(activity.id) state=\(activity.activityState) push=\(wantsPushToken ? "token" : "none")")
+    // The activity is already visible. Do not wait out the token stream before
+    // telling Dart; a missing token must not look like a failed start.
+    finishStart(result, started: true, token: immediate, error: nil)
+
+    guard wantsPushToken else { return }
+    // One reader of this activity's pushTokenUpdates. activityUpdates often
+    // never replays the activity Activity.request just returned. If that
+    // observer already claimed this id, it delivers the token.
+    guard store.claim(activity.id) else {
+      log("token reader already claimed id=\(activity.id)")
+      return
+    }
+    let methodChannel = channel
+    Task {
+      let token = await store.waitForPushToken(activity: activity)
+      DispatchQueue.main.async {
+        if let token, !token.isEmpty {
+          methodChannel?.invokeMethod("activityToken", arguments: token)
+        } else {
+          log("no push token within 8s id=\(activity.id)")
         }
       }
-    } catch {
-      result(nil)
     }
+  }
+
+  @available(iOS 16.1, *)
+  private static func requestActivity(
+    attributes: BoardingActivityAttributes,
+    state: BoardingActivityAttributes.ContentState,
+    pushToken: Bool
+  ) throws -> Activity<BoardingActivityAttributes> {
+    let pushType: Activity<BoardingActivityAttributes>.PushType? = pushToken ? .token : nil
+    if #available(iOS 16.2, *) {
+      return try Activity.request(
+        attributes: attributes,
+        content: ActivityContent(state: state, staleDate: nil),
+        pushType: pushType
+      )
+    }
+    return try Activity.request(
+      attributes: attributes,
+      contentState: state,
+      pushType: pushType
+    )
+  }
+
+  private static func log(_ message: String) {
+    NSLog("%@", "[BoardingLiveActivity] \(message)" as NSString)
+  }
+
+  private static func logRequestFailure(_ error: Error, context: String) {
+    let ns = error as NSError
+    log("\(context) failed domain=\(ns.domain) code=\(ns.code) desc=\(ns.localizedDescription) raw=\(error)")
+  }
+
+  /// Stable code for Dart. The full NSError is already in the device log.
+  private static func errorCode(_ error: Error) -> String {
+    let text = String(describing: error)
+    let known = [
+      "denied",
+      "unentitled",
+      "unsupported",
+      "visibility",
+      "persistenceFailure",
+      "attributesTooLarge",
+      "globalMaximumExceeded",
+      "targetMaximumExceeded",
+    ]
+    for name in known where text.contains(name) {
+      if name == "globalMaximumExceeded" || name == "targetMaximumExceeded" {
+        return "maximum"
+      }
+      return name
+    }
+    return "request_failed"
   }
 
   private static func updateActivity(args: [String: Any], result: @escaping FlutterResult) {

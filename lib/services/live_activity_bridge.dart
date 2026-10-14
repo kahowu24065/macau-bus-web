@@ -3,6 +3,61 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+/// Result of asking ActivityKit to show the boarding reminder.
+class LiveActivityStart {
+  final bool started;
+  final String? token;
+  final String? error;
+
+  /// This platform has no Live Activity. That is not a failure of the reminder.
+  final bool unavailable;
+
+  const LiveActivityStart({
+    required this.started,
+    this.token,
+    this.error,
+    this.unavailable = false,
+  });
+
+  const LiveActivityStart.unavailable()
+      : started = false,
+        token = null,
+        error = null,
+        unavailable = true;
+
+  /// Snackbar key when the activity did not start. Null when it did, or when
+  /// this platform does not show Live Activities.
+  String? get messageKey {
+    if (started || unavailable || error == null || error!.isEmpty) return null;
+    switch (error) {
+      case 'activities_disabled':
+      case 'denied':
+      case 'visibility':
+        return 'boarding_live_disabled';
+      default:
+        return 'boarding_live_failed';
+    }
+  }
+
+  static LiveActivityStart fromChannel(Object? raw) {
+    if (raw is Map) {
+      final token = raw['token'];
+      final error = raw['error'];
+      final tokenText = token is String && token.isNotEmpty ? token : null;
+      final errorText = error is String && error.isNotEmpty ? error : null;
+      return LiveActivityStart(
+        started: raw['started'] == true,
+        token: tokenText,
+        error: errorText,
+      );
+    }
+    if (raw is String && raw.isNotEmpty) {
+      return LiveActivityStart(started: true, token: raw);
+    }
+    return const LiveActivityStart(started: false, error: 'empty');
+  }
+}
+
 /// Talks to ActivityKit. Off iOS, and in tests, the token stays null.
 class LiveActivityBridge {
   static const MethodChannel _channel = MethodChannel('mbka/boarding_live_activity');
@@ -13,7 +68,7 @@ class LiveActivityBridge {
   static Future<String?> Function()? debugPushToStartToken;
 
   @visibleForTesting
-  static Future<String?> Function({
+  static Future<LiveActivityStart> Function({
     required String route,
     required String stopName,
     required int minutes,
@@ -57,7 +112,7 @@ class LiveActivityBridge {
     }
   }
 
-  static Future<String?> startActivity({
+  static Future<LiveActivityStart> startActivity({
     required String route,
     required String stopName,
     required int minutes,
@@ -67,20 +122,25 @@ class LiveActivityBridge {
     if (override != null) {
       return override(route: route, stopName: stopName, minutes: minutes, text: text);
     }
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return null;
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) {
+      return const LiveActivityStart.unavailable();
+    }
     _ensureHandler();
     try {
-      final token = await _channel.invokeMethod<String>('startActivity', {
+      final raw = await _channel.invokeMethod<dynamic>('startActivity', {
         'route': route,
         'stopName': stopName,
         'minutes': minutes,
         'text': text,
       });
-      if (token == null || token.isEmpty) return null;
-      return token;
+      final start = LiveActivityStart.fromChannel(raw);
+      if (!start.started) {
+        debugPrint('startActivity failed: ${start.error}');
+      }
+      return start;
     } catch (e) {
       debugPrint('startActivity: $e');
-      return null;
+      return const LiveActivityStart(started: false, error: 'channel');
     }
   }
 
