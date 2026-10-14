@@ -68,15 +68,36 @@ The shape request should be HTTP 200 with `"source":"ROUTE_NETWORK"`. The old GP
 
 The phone sends one `POST /api/boarding-reminder` with the single chosen bus's coordinates and the stop coordinates it already has. Copy `server/boarding_reminder.js` to `~/macau-bus/boarding_reminder.js` and mount it on the same app as `/api/bus-stops`:
 
-```js
-const { mountBoardingReminder } = require('./boarding_reminder');
+This repo does not contain `server.js`. The mount below is what `~/macau-bus/server.js` runs. `learnedEta` is the object already in that file. Without `loadSegments`, the module only reads `segment_times.json` and returns `segment_times_missing` for routes that exist only in `learned_eta` (route 102 was one of those).
 
+```js
 mountBoardingReminder(app, {
-  shapeDir: "/home/ubuntu/macau-bus",
+  shapeDir: __dirname,
+  loadSegments: (route, dir) => {
+    const d = (dir === "A" || dir === "a") ? 0 : (dir === "B" || dir === "b") ? 1 : dir;
+    const stopCount = typeof learnedEta.routeDirStopCount === "function"
+      ? learnedEta.routeDirStopCount(route, d) : 0;
+    if (stopCount < 2) return null;
+    const hops = learnedEta.getSegmentSeconds(route, d, 1, stopCount);
+    if (!hops) return null;
+    const segs = [];
+    for (let i = 0; i < hops.length; i++) {
+      if (hops[i] == null) continue;
+      segs.push({
+        fromSeq: i + 1,
+        toSeq: i + 2,
+        travelSeconds: hops[i],
+        dwellSeconds: 25,
+      });
+    }
+    return segs.length ? segs : null;
+  },
 });
 ```
 
-`express.json()` must already be parsing the body. The module does not call motransportinfo. It estimates from `segment_times.json` (or `SEGMENT_TIMES_PATH`). That file is the per-segment average travel times the live server already uses; it is not in this git repo. `travelSeconds` includes lights and congestion. `dwellSeconds` is the dwell at `toSeq` and is not added at the target stop. If the file is missing, the route returns `segment_times_missing` and the app does not arm the reminder.
+`segmentsFromLearnedEta` in `boarding_reminder.js` is that same mapping. Dir `A`/`a` is 0 and `B`/`b` is 1. A null hop is skipped. Each hop's dwell is 25 seconds, and dwell is not added at the target stop. `travelSeconds` includes lights and congestion. If `learned_eta` has no chain, the route still returns `segment_times_missing`. `segment_times.json` (or `SEGMENT_TIMES_PATH`) is used only when `loadSegments` is omitted.
+
+`express.json()` must already be parsing the body. The module does not call motransportinfo. The module does not import `estimateLiveSeconds`; that name is not exported here.
 
 ```json
 { "3A": { "0": [ { "fromSeq": 1, "toSeq": 2, "travelSeconds": 90, "dwellSeconds": 20 } ] } }

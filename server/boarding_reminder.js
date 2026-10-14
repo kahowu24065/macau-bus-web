@@ -10,16 +10,19 @@
  * is separate and is not added at the target stop.
  *
  * It does not call motransportinfo or any other transport-bureau URL.
- * The segment averages are not in this git repo. Point SEGMENT_TIMES_PATH
- * (or shapeDir/segment_times.json) at the table the live server already uses.
- * If that file is missing, the reminder is refused with segment_times_missing.
+ * The live host passes loadSegments from learned_eta (see segmentsFromLearnedEta).
+ * segment_times.json is only the fallback when that callback is omitted.
+ * If neither source has the route, the reminder is refused with segment_times_missing.
  *
  * Drop-in for the Oracle host (~/macau-bus/server.js), same pattern as
  * route_shape.js. The app process must stay up: the five-minute and arrival
  * timers are in memory.
  *
- *   const { mountBoardingReminder } = require('./boarding_reminder');
- *   mountBoardingReminder(app, { shapeDir: '/home/ubuntu/macau-bus' });
+ *   mountBoardingReminder(app, {
+ *     shapeDir: __dirname,
+ *     loadSegments: (route, dir) => segmentsFromLearnedEta(learnedEta, route, dir),
+ *   });
+ * segmentsFromLearnedEta is the learned_eta mapping inlined in ~/macau-bus/server.js.
  *
  * segment_times.json:
  *   { "3A": { "0": [ { "fromSeq": 1, "toSeq": 2, "travelSeconds": 90, "dwellSeconds": 20 } ] } }
@@ -325,6 +328,32 @@ function segmentsFromTable(table, route, dir) {
   return Array.isArray(dirEntry) ? dirEntry : null;
 }
 
+/**
+ * Segment rows from the host's learned_eta object.
+ * Dir A/a is 0 and B/b is 1; a numeric dir is left as-is.
+ * A missing hop is skipped. Dwell is the fixed 25s the live server uses.
+ * Returns null when learned_eta has no usable chain for this route.
+ */
+function segmentsFromLearnedEta(learnedEta, route, dir) {
+  const d = (dir === 'A' || dir === 'a') ? 0 : (dir === 'B' || dir === 'b') ? 1 : dir;
+  const stopCount = learnedEta && typeof learnedEta.routeDirStopCount === 'function'
+    ? learnedEta.routeDirStopCount(route, d) : 0;
+  if (stopCount < 2) return null;
+  const hops = learnedEta.getSegmentSeconds(route, d, 1, stopCount);
+  if (!hops) return null;
+  const segs = [];
+  for (let i = 0; i < hops.length; i += 1) {
+    if (hops[i] == null) continue;
+    segs.push({
+      fromSeq: i + 1,
+      toSeq: i + 2,
+      travelSeconds: hops[i],
+      dwellSeconds: 25,
+    });
+  }
+  return segs.length ? segs : null;
+}
+
 function resolveSegmentPath(options = {}) {
   if (options.segmentTimesPath) return options.segmentTimesPath;
   if (process.env.SEGMENT_TIMES_PATH) return process.env.SEGMENT_TIMES_PATH;
@@ -547,6 +576,7 @@ module.exports = {
   mountBoardingReminder,
   loadSegmentTable,
   segmentsFromTable,
+  segmentsFromLearnedEta,
   resolveSegmentPath,
   apnsJwt,
 };

@@ -9,6 +9,7 @@ const {
   buildLiveActivityPayload,
   createBoardingReminders,
   minutesText,
+  segmentsFromLearnedEta,
 } = require('./boarding_reminder');
 
 const LAT_METERS = 110540;
@@ -344,6 +345,55 @@ test('a passed bus does not schedule a push', async () => {
   });
   assert.equal(result.body.code, 'passed');
   assert.equal(timers, 0);
+});
+
+test('learned_eta hops become segment rows, including route 102', async () => {
+  const learnedEta = {
+    routeDirStopCount(route, dir) {
+      if (route === '102' && dir === 0) return 4;
+      return 0;
+    },
+    getSegmentSeconds(route, dir, fromSeq, stopCount) {
+      if (route === '102' && dir === 0 && fromSeq === 1 && stopCount === 4) {
+        return [100, 80, 40];
+      }
+      return null;
+    },
+  };
+  const withGap = {
+    routeDirStopCount: () => 4,
+    getSegmentSeconds: () => [90, null, 40],
+  };
+
+  assert.deepEqual(segmentsFromLearnedEta(withGap, '102', 0), [
+    { fromSeq: 1, toSeq: 2, travelSeconds: 90, dwellSeconds: 25 },
+    { fromSeq: 3, toSeq: 4, travelSeconds: 40, dwellSeconds: 25 },
+  ]);
+  assert.equal(segmentsFromLearnedEta(learnedEta, '102', 'A')[0].fromSeq, 1);
+  assert.equal(segmentsFromLearnedEta(learnedEta, '102', 'B'), null);
+  assert.equal(segmentsFromLearnedEta(learnedEta, '3A', 0), null);
+  assert.equal(segmentsFromLearnedEta({ routeDirStopCount: () => 1 }, '102', 0), null);
+
+  const book = createBoardingReminders({
+    now: () => 6_000_000,
+    loadSegments: (route, dir) => segmentsFromLearnedEta(learnedEta, route, dir),
+    credentials: () => ({ configured: false }),
+    setTimer: () => 1,
+    clearTimer: () => {},
+  });
+  const result = await book.register({
+    reminderId: 'r102',
+    route: '102',
+    dir: 0,
+    targetSeq: 4,
+    lat: north(0),
+    lng,
+    lang: 'zh',
+    stops: [stop(1, 0), stop(2, 400), stop(3, 800), stop(4, 1200)],
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.success, true);
+  assert.notEqual(result.body.code, 'segment_times_missing');
 });
 
 test('planReminder uses five minutes as the push point', () => {
