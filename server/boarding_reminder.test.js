@@ -183,6 +183,79 @@ test('about eight minutes pushes at three minutes; under five minutes pushes now
   assert.equal(Math.round(immediate.body.endDelaySeconds), 200);
 });
 
+test('a token that arrives after a due reminder sends that update', async () => {
+  const pushes = [];
+  const book = createBoardingReminders({
+    now: () => 2_000_000,
+    loadSegments: () => [{ fromSeq: 1, toSeq: 2, travelSeconds: 200, dwellSeconds: 0 }],
+    credentials: () => ({ configured: true, bundleId: 'mo.mbka.bus', sandbox: false }),
+    setTimer: () => 1,
+    clearTimer: () => {},
+    sendPush: async (message) => {
+      pushes.push(message);
+      return { sent: true };
+    },
+  });
+  const first = await book.register({
+    reminderId: 'late',
+    route: '3A',
+    dir: 0,
+    targetSeq: 2,
+    lat: north(0),
+    lng,
+    lang: 'zh',
+    stops: [stop(1, 0), stop(2, 500)],
+  });
+  assert.equal(first.body.pushDelaySeconds, 0);
+  assert.equal(pushes.length, 0);
+  assert.equal(book.reminders.get('late').activityToken, '');
+
+  const second = await book.register({ reminderId: 'late', activityToken: 'abc123hex' });
+  assert.equal(second.status, 200);
+  assert.equal(book.reminders.get('late').activityToken, 'abc123hex');
+  assert.equal(pushes.length, 1);
+  assert.equal(pushes[0].token, 'abc123hex');
+  assert.equal(pushes[0].payload.aps.event, 'update');
+  assert.equal(pushes[0].payload.aps['content-state'].text, '約 3 分鐘後到達');
+  assert.doesNotMatch(JSON.stringify(pushes[0].payload), /stopsAway|stopCount|stopsLeft/);
+});
+
+test('a token that arrives before the five-minute push does not send early', async () => {
+  const pushes = [];
+  const timers = [];
+  const book = createBoardingReminders({
+    now: () => 3_000_000,
+    loadSegments: () => [{ fromSeq: 1, toSeq: 2, travelSeconds: 480, dwellSeconds: 0 }],
+    credentials: () => ({ configured: true, bundleId: 'mo.mbka.bus', sandbox: false }),
+    setTimer: (fn, ms) => {
+      timers.push({ ms, fn });
+      return timers.length;
+    },
+    clearTimer: () => {},
+    sendPush: async (message) => {
+      pushes.push(message);
+      return { sent: true };
+    },
+  });
+  await book.register({
+    reminderId: 'wait',
+    route: '3A',
+    dir: 0,
+    targetSeq: 2,
+    lat: north(0),
+    lng,
+    lang: 'en',
+    stops: [stop(1, 0), stop(2, 500)],
+  });
+  await book.register({ reminderId: 'wait', activityToken: 'later-token' });
+  assert.equal(pushes.length, 0);
+  const pushTimer = timers.find((timer) => timer.ms === 180000);
+  await pushTimer.fn();
+  assert.equal(pushes.length, 1);
+  assert.equal(pushes[0].token, 'later-token');
+  assert.equal(pushes[0].payload.aps['content-state'].minutes, 5);
+});
+
 test('the same reminder id does not schedule a second time', async () => {
   let timers = 0;
   const book = createBoardingReminders({

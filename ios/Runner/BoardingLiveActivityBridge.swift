@@ -72,10 +72,23 @@ enum BoardingLiveActivityBridge {
       } else {
         activity = try Activity.request(attributes: attributes, contentState: state, pushType: .token)
       }
-      BoardingActivityTokenStore.shared.activity = activity
-      // The activity is already on screen. Do not wait for its push token;
-      // that stream can stay silent, and the method call would never return.
-      result(nil)
+      let store = BoardingActivityTokenStore.shared
+      store.activity = activity
+      // One reader of this activity's pushTokenUpdates. activityUpdates often
+      // never replays the activity Activity.request just returned.
+      guard store.claim(activity.id) else {
+        result(nil)
+        return
+      }
+      Task {
+        let token = await store.waitForPushToken(activity: activity)
+        DispatchQueue.main.async {
+          if let token, !token.isEmpty {
+            channel?.invokeMethod("activityToken", arguments: token)
+          }
+          result(token)
+        }
+      }
     } catch {
       result(nil)
     }
@@ -132,21 +145,40 @@ final class BoardingActivityTokenStore {
   var activity: Activity<BoardingActivityAttributes>?
   private var observeTask: Task<Void, Never>?
 
+  private var claimedIds: Set<String> = []
+  private let claimLock = NSLock()
+
+  /// Returns false when this activity's push-token stream is already being read.
+  /// Two readers on one `pushTokenUpdates` sequence can drop the token.
+  func claim(_ activityId: String) -> Bool {
+    claimLock.lock()
+    defer { claimLock.unlock() }
+    if claimedIds.contains(activityId) { return false }
+    claimedIds.insert(activityId)
+    return true
+  }
+
+  /// Hex APNs token for this activity, or nil after a few seconds.
+  ///
+  /// Reads `activity.pushToken` and then that same activity's `pushTokenUpdates`.
+  /// The wait is bounded so a silent stream still returns.
+  func waitForPushToken(activity: Activity<BoardingActivityAttributes>) async -> String? {
+    if let existing = activity.pushToken, !existing.isEmpty {
+      return hex(existing)
+    }
+    return await Self.firstToken(from: activity.pushTokenUpdates, timeoutSeconds: 8)
+  }
+
   func observeNewActivities(onToken: @escaping (String) -> Void) {
     observeTask?.cancel()
     observeTask = Task {
       do {
         for try await activity in Activity<BoardingActivityAttributes>.activityUpdates {
-          let updates = activity.pushTokenUpdates
+          guard claim(activity.id) else { continue }
+          let watched = activity
           Task {
-            do {
-              for try await data in updates {
-                let token = hex(data)
-                DispatchQueue.main.async { onToken(token) }
-                return
-              }
-            } catch {
-              return
+            if let token = await self.waitForPushToken(activity: watched), !token.isEmpty {
+              DispatchQueue.main.async { onToken(token) }
             }
           }
         }

@@ -82,6 +82,6 @@ mountBoardingReminder(app, {
 { "3A": { "0": [ { "fromSeq": 1, "toSeq": 2, "travelSeconds": 90, "dwellSeconds": 20 } ] } }
 ```
 
-When the estimate first reaches about 5 minutes, the process sends an Apple Live Activity push (`apns-push-type: liveactivity`, topic `mo.mbka.bus.push-type.liveactivity`). The content is predicted minutes, not a stop count. An end push is sent when that estimate says the bus has reached the stop. Both timers are in memory, so the Node process has to stay up. `POST /api/boarding-reminder/cancel` clears them. The same `reminderId` does not schedule a second pair of timers.
+When the estimate first reaches about 5 minutes, the process sends an Apple Live Activity push (`apns-push-type: liveactivity`, topic `mo.mbka.bus.push-type.liveactivity`). The content is predicted minutes, not a stop count. An end push is sent when that estimate says the bus has reached the stop. Both timers are in memory, so the Node process has to stay up. `POST /api/boarding-reminder/cancel` clears them. The same `reminderId` does not schedule a second pair of timers. A later POST with that same id and `activityToken` stores the token. If the five-minute update was already due and had no token, that POST sends it.
 
 Apple push is sent only when `APNS_KEY_ID`, `APNS_TEAM_ID`, and `APNS_KEY_P8` or `APNS_KEY_PATH` are set. `APNS_USE_SANDBOX=1` uses the sandbox host. Do not invent a key. Without those values the reminder is still stored and `pushConfigured` is false.

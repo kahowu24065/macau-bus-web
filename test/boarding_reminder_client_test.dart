@@ -233,4 +233,48 @@ void main() {
       bus.dispose();
     }
   });
+
+  testWidgets('a live activity token is posted on the follow-up register', (tester) async {
+    LiveActivityBridge.debugStartActivity = ({
+      required String route,
+      required String stopName,
+      required int minutes,
+      required String text,
+    }) async {
+      return 'abc123hex';
+    };
+    LiveActivityBridge.debugPushToStartToken = () async => null;
+    final bodies = <Map<String, dynamic>>[];
+    BoardingReminderClient.debugRegister = (body) async {
+      bodies.add(Map<String, dynamic>.from(body));
+      return const BoardingReminderResponse(
+        ok: true,
+        minutes: 5,
+        text: '約 5 分鐘後到達',
+        startedAt: 1000,
+      );
+    };
+
+    final bus = BusController();
+    try {
+      await tester.pump();
+      await tester.pump();
+      bus.currentRoute = '3A';
+      bus.currentDirection = 0;
+      bus.stopsList = [_stop(1, 0), _stop(2, 500), _stop(3, 1000)];
+      bus.allBusesList = [
+        Bus(busLicense: 'CLOSE', lat: _north(700), lng: _lng, speed: 20, currentStopSeq: 2),
+      ];
+
+      final outcome = await bus.setBoardingStop(3);
+      expect(outcome.started, isTrue);
+      await tester.pump();
+
+      expect(bodies.first.containsKey('activityToken'), isFalse);
+      expect(bodies.any((body) => body['activityToken'] == 'abc123hex'), isTrue);
+      expect(bodies.last['reminderId'], bodies.first['reminderId']);
+    } finally {
+      bus.dispose();
+    }
+  });
 }
