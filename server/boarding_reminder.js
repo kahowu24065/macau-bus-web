@@ -201,21 +201,28 @@ function stopSuffix(stopName) {
   return stopName ? String(stopName).trim() : '';
 }
 
+function arrivalLabel(lang) {
+  if (lang === 'zhHans') return '预测到站时间尚余';
+  if (lang === 'en') return 'Predicted arrival in';
+  if (lang === 'pt') return 'Chegada prevista em';
+  return '預測到站時間尚餘';
+}
+
 function minutesText(lang, minutes, stopName) {
   const n = String(minutes);
   const stop = stopSuffix(stopName);
-  if (lang === 'zhHans') {
-    return stop ? `约 ${n} 分钟后到达${stop}` : `约 ${n} 分钟后到达`;
-  }
+  const place = stop ? ` · ${stop}` : '';
+  const label = arrivalLabel(lang);
   if (lang === 'en') {
-    if (minutes === 1) return stop ? `About 1 minute to ${stop}` : 'About 1 minute away';
-    return stop ? `About ${n} minutes to ${stop}` : `About ${n} minutes away`;
+    const unit = minutes === 1 ? 'minute' : 'minutes';
+    return `${label} ${n} ${unit}${place}`;
   }
   if (lang === 'pt') {
-    if (minutes === 1) return stop ? `A cerca de 1 minuto até ${stop}` : 'A cerca de 1 minuto';
-    return stop ? `A cerca de ${n} minutos até ${stop}` : `A cerca de ${n} minutos`;
+    const unit = minutes === 1 ? 'minuto' : 'minutos';
+    return `${label} ${n} ${unit}${place}`;
   }
-  return stop ? `約 ${n} 分鐘後到達${stop}` : `約 ${n} 分鐘後到達`;
+  const unit = lang === 'zhHans' ? '分钟' : '分鐘';
+  return `${label} ${n} ${unit}${place}`;
 }
 
 function arrivedText(lang, stopName) {
@@ -227,10 +234,10 @@ function arrivedText(lang, stopName) {
 }
 
 /**
- * Live Activity payload. content-state is predicted minutes and that sentence.
- * It never includes a stop count.
+ * Live Activity payload. content-state is predicted minutes and a sentence
+ * that labels them as the predicted arrival time. It never includes a stop count.
  */
-function buildLiveActivityPayload({ event, minutes, text, route, stopName, nowSeconds, endsAt }) {
+function buildLiveActivityPayload({ event, minutes, text, route, stopName, nowSeconds, endsAt, lang }) {
   const contentState = { minutes, text };
   if (Number.isFinite(endsAt) && endsAt > 0) contentState.endsAt = endsAt;
   const aps = {
@@ -240,7 +247,11 @@ function buildLiveActivityPayload({ event, minutes, text, route, stopName, nowSe
   };
   if (event === 'start') {
     aps['attributes-type'] = 'BoardingActivityAttributes';
-    aps.attributes = { route: route || '', stopName: stopName || '' };
+    aps.attributes = {
+      route: route || '',
+      stopName: stopName || '',
+      etaLabel: arrivalLabel(lang),
+    };
     aps.alert = { title: route || '', body: text };
   } else if (event === 'update' || event === 'end') {
     aps.alert = { title: route || '', body: text };
@@ -415,6 +426,7 @@ function createBoardingReminders(options = {}) {
       text,
       route: reminder.route,
       stopName: reminder.stopName,
+      lang: reminder.lang,
       nowSeconds: Math.floor(now() / 1000),
       endsAt: Math.floor(now() / 1000) + Math.max(0, Math.round(remainingSeconds(reminder))),
     });

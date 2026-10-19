@@ -6,11 +6,12 @@ import WidgetKit
 ///
 /// Phones with a Dynamic Island show this configuration there. Phones without
 /// one show the same activity on the Lock Screen and in the notification list.
-/// There is no second notification. The text is the predicted-minutes sentence
-/// from the app, never a remaining-stop count.
+/// There is no second notification. The countdown is labeled as a predicted
+/// arrival (預測到站時間尚餘), never a remaining-stop count.
 ///
 /// When content-state carries endsAt, the system Text(timerInterval:) drives
 /// the minute display so it keeps ticking without APNs Live Activity pushes.
+/// The label sits on the same line, in front of that countdown.
 
 struct BoardingLiveActivityWidget: Widget {
   var body: some WidgetConfiguration {
@@ -22,7 +23,7 @@ struct BoardingLiveActivityWidget: Widget {
           Text(context.attributes.stopName)
             .font(.subheadline)
         }
-        remainingView(context.state)
+        remainingView(context.state, label: predictedLabel(context.attributes))
           .font(.body)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -43,14 +44,15 @@ struct BoardingLiveActivityWidget: Widget {
               Text(context.attributes.stopName)
                 .font(.headline)
             }
-            remainingView(context.state)
+            remainingView(context.state, label: predictedLabel(context.attributes))
               .font(.body)
           }
         }
       } compactLeading: {
-        Text(context.attributes.stopName.isEmpty ? context.attributes.route : context.attributes.stopName)
+        Text(predictedLabel(context.attributes))
           .font(.caption2)
           .lineLimit(1)
+          .minimumScaleFactor(0.55)
       } compactTrailing: {
         remainingBadge(context.state)
       } minimal: {
@@ -60,27 +62,48 @@ struct BoardingLiveActivityWidget: Widget {
   }
 }
 
+private let defaultPredictedLabel = "預測到站時間尚餘"
+
+private func predictedLabel(_ attributes: BoardingActivityAttributes) -> String {
+  let custom = attributes.etaLabel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+  return custom.isEmpty ? defaultPredictedLabel : custom
+}
+
 @ViewBuilder
 private func remainingBadge(_ state: BoardingActivityAttributes.ContentState) -> some View {
-  if let ends = endsDate(state), ends > Date() {
-    Text(timerInterval: Date()...ends, countsDown: true)
-      .monospacedDigit()
-      .multilineTextAlignment(.trailing)
+  remainingTime(state)
+    .multilineTextAlignment(.trailing)
+}
+
+/// Label, then the remaining time, on one line so the island and banner stay short.
+@ViewBuilder
+private func remainingView(_ state: BoardingActivityAttributes.ContentState, label: String) -> some View {
+  if state.minutes <= 0, !state.text.isEmpty, endsDate(state).map({ $0 > Date() }) != true {
+    Text(state.text)
   } else {
-    Text(minuteLabel(state.minutes))
+    HStack(alignment: .firstTextBaseline, spacing: 6) {
+      Text(label)
+        .lineLimit(1)
+        .minimumScaleFactor(0.65)
+      Spacer(minLength: 4)
+      remainingTime(state)
+        .layoutPriority(1)
+    }
   }
 }
 
 @ViewBuilder
-private func remainingView(_ state: BoardingActivityAttributes.ContentState) -> some View {
+private func remainingTime(_ state: BoardingActivityAttributes.ContentState) -> some View {
   if let ends = endsDate(state), ends > Date() {
     // Timer ticks every second on the Lock Screen without a push token.
     Text(timerInterval: Date()...ends, countsDown: true)
       .monospacedDigit()
-  } else if !state.text.isEmpty {
+  } else if state.minutes <= 0, !state.text.isEmpty {
     Text(state.text)
+      .lineLimit(1)
   } else {
     Text(minuteLabel(state.minutes))
+      .monospacedDigit()
   }
 }
 

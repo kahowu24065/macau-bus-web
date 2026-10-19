@@ -8,6 +8,7 @@ import '../models/bus_stop.dart';
 import '../models/bus.dart';
 import '../services/bus_api_service.dart';
 import '../services/open_data_config.dart';
+import '../constants/app_translations.dart';
 import '../constants/feature_flags.dart';
 import '../services/gpx_service.dart';
 import '../services/notification_service.dart';
@@ -585,6 +586,7 @@ class BusController extends ChangeNotifier {
       minutes: minutes,
       text: text,
       endsAt: endsAt,
+      etaLabel: _predictedArrivalLabel(currentLang),
     );
     if (_boardingReminderId != reminderId) {
       await LiveActivityBridge.end();
@@ -603,6 +605,13 @@ class BusController extends ChangeNotifier {
       );
     }
     return const BoardingReminderOutcome.started();
+  }
+
+  /// Lock Screen / Dynamic Island label in front of the countdown.
+  String _predictedArrivalLabel(String lang) {
+    return AppTranslations.data[lang]?['predicted_arrival_remaining'] ??
+        AppTranslations.data['zh']?['predicted_arrival_remaining'] ??
+        '預測到站時間尚餘';
   }
 
   Future<void> _postActivityCredentials(

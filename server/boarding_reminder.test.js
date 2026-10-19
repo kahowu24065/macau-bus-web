@@ -89,20 +89,47 @@ test('push content is predicted minutes and does not include a stop count', () =
   const state = payload.aps['content-state'];
   assert.deepEqual(Object.keys(state).sort(), ['minutes', 'text']);
   assert.equal(state.minutes, 5);
-  assert.equal(state.text, 'About 5 minutes away');
+  assert.equal(state.text, 'Predicted arrival in 5 minutes');
   const encoded = JSON.stringify(payload);
   assert.doesNotMatch(encoded, /stopsAway|stopCount|stopsLeft|paragens|站數/);
   assert.doesNotMatch(state.text, /\d+\s+stops/);
 });
 
 test('the countdown names the stop in every language', () => {
-  assert.equal(minutesText('zh', 3, '關閘'), '約 3 分鐘後到達關閘');
-  assert.equal(minutesText('zhHans', 3, '关闸'), '约 3 分钟后到达关闸');
-  assert.equal(minutesText('en', 3, 'Border Gate'), 'About 3 minutes to Border Gate');
-  assert.equal(minutesText('en', 1, 'Border Gate'), 'About 1 minute to Border Gate');
-  assert.equal(minutesText('pt', 3, 'Portas do Cerco'), 'A cerca de 3 minutos até Portas do Cerco');
-  assert.equal(minutesText('pt', 1, 'Portas do Cerco'), 'A cerca de 1 minuto até Portas do Cerco');
-  assert.equal(minutesText('zh', 3, ''), '約 3 分鐘後到達');
+  assert.equal(minutesText('zh', 3, '關閘'), '預測到站時間尚餘 3 分鐘 · 關閘');
+  assert.equal(minutesText('zhHans', 3, '关闸'), '预测到站时间尚余 3 分钟 · 关闸');
+  assert.equal(minutesText('en', 3, 'Border Gate'), 'Predicted arrival in 3 minutes · Border Gate');
+  assert.equal(minutesText('en', 1, 'Border Gate'), 'Predicted arrival in 1 minute · Border Gate');
+  assert.equal(minutesText('pt', 3, 'Portas do Cerco'), 'Chegada prevista em 3 minutos · Portas do Cerco');
+  assert.equal(minutesText('pt', 1, 'Portas do Cerco'), 'Chegada prevista em 1 minuto · Portas do Cerco');
+  assert.equal(minutesText('zh', 3, ''), '預測到站時間尚餘 3 分鐘');
+});
+
+test('a remote start puts the predicted-arrival label on the activity and the banner', () => {
+  const payload = buildLiveActivityPayload({
+    event: 'start',
+    minutes: 3,
+    text: minutesText('zh', 3, '關閘'),
+    route: '3A',
+    stopName: '關閘',
+    lang: 'zh',
+    nowSeconds: 1_700_000_000,
+  });
+  assert.equal(payload.aps.attributes.etaLabel, '預測到站時間尚餘');
+  assert.equal(payload.aps.alert.title, '3A');
+  assert.equal(payload.aps.alert.body, '預測到站時間尚餘 3 分鐘 · 關閘');
+  assert.equal(
+    buildLiveActivityPayload({
+      event: 'start',
+      minutes: 1,
+      text: minutesText('en', 1, 'Border Gate'),
+      route: '3A',
+      stopName: 'Border Gate',
+      lang: 'en',
+      nowSeconds: 1_700_000_000,
+    }).aps.attributes.etaLabel,
+    'Predicted arrival in',
+  );
 });
 
 test('updates every 20 seconds from the original estimate, then ends at the stop', async () => {
@@ -139,7 +166,7 @@ test('updates every 20 seconds from the original estimate, then ends at the stop
   });
   assert.equal(eight.body.success, true);
   assert.equal(eight.body.minutes, 8);
-  assert.equal(eight.body.text, 'About 8 minutes to Border Gate');
+  assert.equal(eight.body.text, 'Predicted arrival in 8 minutes · Border Gate');
   assert.equal(eight.body.updateIntervalSeconds, 20);
   assert.equal(Math.round(eight.body.pushDelaySeconds), 20);
   assert.equal(Math.round(eight.body.endDelaySeconds), 480);
@@ -153,7 +180,7 @@ test('updates every 20 seconds from the original estimate, then ends at the stop
   assert.equal(pushes[0].payload.aps.event, 'update');
   assert.equal(pushes[0].payload.aps['content-state'].minutes, 8);
   assert.ok(Number.isFinite(pushes[0].payload.aps['content-state'].endsAt));
-  assert.equal(pushes[0].payload.aps['content-state'].text, 'About 8 minutes to Border Gate');
+  assert.equal(pushes[0].payload.aps['content-state'].text, 'Predicted arrival in 8 minutes · Border Gate');
   assert.equal(pushes[0].topic, 'mo.mbka.bus.push-type.liveactivity');
   assert.doesNotMatch(JSON.stringify(pushes[0].payload), /stopsAway|stopCount|stopsLeft|paragens/);
 
@@ -161,7 +188,7 @@ test('updates every 20 seconds from the original estimate, then ends at the stop
   await timers[timers.length - 1].fn();
   assert.equal(pushes[1].payload.aps.event, 'update');
   assert.equal(pushes[1].payload.aps['content-state'].minutes, 6);
-  assert.equal(pushes[1].payload.aps['content-state'].text, 'About 6 minutes to Border Gate');
+  assert.equal(pushes[1].payload.aps['content-state'].text, 'Predicted arrival in 6 minutes · Border Gate');
 
   clock = 1_000_000 + 480000;
   await timers[timers.length - 1].fn();
@@ -217,7 +244,7 @@ test('a token that arrives after a missed tick sends the current countdown', asy
   assert.equal(pushes[0].token, 'abc123hex');
   assert.equal(pushes[0].payload.aps.event, 'update');
   assert.equal(pushes[0].payload.aps['content-state'].minutes, 3);
-  assert.equal(pushes[0].payload.aps['content-state'].text, '約 3 分鐘後到達關閘');
+  assert.equal(pushes[0].payload.aps['content-state'].text, '預測到站時間尚餘 3 分鐘 · 關閘');
   assert.doesNotMatch(JSON.stringify(pushes[0].payload), /stopsAway|stopCount|stopsLeft/);
 });
 
@@ -257,7 +284,7 @@ test('a token that arrives before the first 20 second tick does not send early',
   assert.equal(pushes.length, 1);
   assert.equal(pushes[0].token, 'later-token');
   assert.equal(pushes[0].payload.aps['content-state'].minutes, 8);
-  assert.equal(pushes[0].payload.aps['content-state'].text, 'About 8 minutes to Border Gate');
+  assert.equal(pushes[0].payload.aps['content-state'].text, 'Predicted arrival in 8 minutes · Border Gate');
 });
 
 test('the same reminder id does not schedule a second time', async () => {
@@ -460,5 +487,5 @@ test('cancel stops a later tick, and a new reminder replaces one with the same t
   await timers[timers.length - 1].fn();
   assert.equal(pushes.length, 1);
   assert.equal(pushes[0].token, 'phone-token');
-  assert.equal(pushes[0].payload.aps['content-state'].text, 'About 5 minutes to Ferry');
+  assert.equal(pushes[0].payload.aps['content-state'].text, 'Predicted arrival in 5 minutes · Ferry');
 });
