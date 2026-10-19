@@ -140,18 +140,33 @@ enum BoardingLiveActivityBridge {
     state: BoardingActivityAttributes.ContentState,
     pushToken: Bool
   ) throws -> Activity<BoardingActivityAttributes> {
-    let pushType: Activity<BoardingActivityAttributes>.PushType? = pushToken ? .token : nil
+    // Current ActivityKit exposes PushType on its own. Activity<T>.PushType
+    // does not compile on the Xcode Codemagic uses.
     if #available(iOS 16.2, *) {
+      if pushToken {
+        return try Activity.request(
+          attributes: attributes,
+          content: ActivityContent(state: state, staleDate: nil),
+          pushType: .token
+        )
+      }
       return try Activity.request(
         attributes: attributes,
         content: ActivityContent(state: state, staleDate: nil),
-        pushType: pushType
+        pushType: nil
+      )
+    }
+    if pushToken {
+      return try Activity.request(
+        attributes: attributes,
+        contentState: state,
+        pushType: .token
       )
     }
     return try Activity.request(
       attributes: attributes,
       contentState: state,
-      pushType: pushType
+      pushType: nil
     )
   }
 
