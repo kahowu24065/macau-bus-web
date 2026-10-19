@@ -9,8 +9,8 @@ import WidgetKit
 /// There is no second notification. The text is the predicted-minutes sentence
 /// from the app, never a remaining-stop count.
 ///
-/// BoardingActivityAttributes is ios/Shared/BoardingActivityAttributes.swift,
-/// compiled into this extension and into the app.
+/// When content-state carries endsAt, the system Text(timerInterval:) drives
+/// the minute display so it keeps ticking without APNs Live Activity pushes.
 
 struct BoardingLiveActivityWidget: Widget {
   var body: some WidgetConfiguration {
@@ -22,7 +22,7 @@ struct BoardingLiveActivityWidget: Widget {
           Text(context.attributes.stopName)
             .font(.subheadline)
         }
-        Text(context.state.text)
+        remainingView(context.state)
           .font(.body)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -34,7 +34,7 @@ struct BoardingLiveActivityWidget: Widget {
             .font(.headline)
         }
         DynamicIslandExpandedRegion(.trailing) {
-          Text(minuteLabel(context.state.minutes))
+          remainingBadge(context.state)
             .font(.title2)
         }
         DynamicIslandExpandedRegion(.bottom) {
@@ -43,7 +43,7 @@ struct BoardingLiveActivityWidget: Widget {
               Text(context.attributes.stopName)
                 .font(.headline)
             }
-            Text(context.state.text)
+            remainingView(context.state)
               .font(.body)
           }
         }
@@ -52,12 +52,41 @@ struct BoardingLiveActivityWidget: Widget {
           .font(.caption2)
           .lineLimit(1)
       } compactTrailing: {
-        Text(minuteLabel(context.state.minutes))
+        remainingBadge(context.state)
       } minimal: {
-        Text(minuteLabel(context.state.minutes))
+        remainingBadge(context.state)
       }
     }
   }
+}
+
+@ViewBuilder
+private func remainingBadge(_ state: BoardingActivityAttributes.ContentState) -> some View {
+  if let ends = endsDate(state), ends > Date() {
+    Text(timerInterval: Date()...ends, countsDown: true)
+      .monospacedDigit()
+      .multilineTextAlignment(.trailing)
+  } else {
+    Text(minuteLabel(state.minutes))
+  }
+}
+
+@ViewBuilder
+private func remainingView(_ state: BoardingActivityAttributes.ContentState) -> some View {
+  if let ends = endsDate(state), ends > Date() {
+    // Timer ticks every second on the Lock Screen without a push token.
+    Text(timerInterval: Date()...ends, countsDown: true)
+      .monospacedDigit()
+  } else if !state.text.isEmpty {
+    Text(state.text)
+  } else {
+    Text(minuteLabel(state.minutes))
+  }
+}
+
+private func endsDate(_ state: BoardingActivityAttributes.ContentState) -> Date? {
+  guard let endsAt = state.endsAt, endsAt > 1_000_000_000 else { return nil }
+  return Date(timeIntervalSince1970: endsAt)
 }
 
 private func minuteLabel(_ minutes: Int) -> String {

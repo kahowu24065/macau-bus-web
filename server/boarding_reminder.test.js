@@ -152,6 +152,7 @@ test('updates every 20 seconds from the original estimate, then ends at the stop
   assert.equal(pushes.length, 1);
   assert.equal(pushes[0].payload.aps.event, 'update');
   assert.equal(pushes[0].payload.aps['content-state'].minutes, 8);
+  assert.ok(Number.isFinite(pushes[0].payload.aps['content-state'].endsAt));
   assert.equal(pushes[0].payload.aps['content-state'].text, 'About 8 minutes to Border Gate');
   assert.equal(pushes[0].topic, 'mo.mbka.bus.push-type.liveactivity');
   assert.doesNotMatch(JSON.stringify(pushes[0].payload), /stopsAway|stopCount|stopsLeft|paragens/);

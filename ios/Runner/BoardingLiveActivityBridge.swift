@@ -80,7 +80,13 @@ enum BoardingLiveActivityBridge {
     let stopName = args["stopName"] as? String ?? ""
     let minutes = args["minutes"] as? Int ?? 0
     let text = args["text"] as? String ?? ""
-    let state = BoardingActivityAttributes.ContentState(minutes: minutes, text: text)
+    let endsAt = (args["endsAt"] as? Double)
+      ?? (args["endsAt"] as? NSNumber)?.doubleValue
+    let state = BoardingActivityAttributes.ContentState(
+      minutes: minutes,
+      text: text,
+      endsAt: endsAt
+    )
     let attributes = BoardingActivityAttributes(route: route, stopName: stopName)
 
     let activity: Activity<BoardingActivityAttributes>
@@ -128,7 +134,7 @@ enum BoardingLiveActivityBridge {
         if let token, !token.isEmpty {
           methodChannel?.invokeMethod("activityToken", arguments: token)
         } else {
-          log("no push token within 8s id=\(activity.id)")
+          log("no push token within 30s id=\(activity.id)")
         }
       }
     }
@@ -209,7 +215,13 @@ enum BoardingLiveActivityBridge {
     }
     let minutes = args["minutes"] as? Int ?? 0
     let text = args["text"] as? String ?? ""
-    let state = BoardingActivityAttributes.ContentState(minutes: minutes, text: text)
+    let endsAt = (args["endsAt"] as? Double)
+      ?? (args["endsAt"] as? NSNumber)?.doubleValue
+    let state = BoardingActivityAttributes.ContentState(
+      minutes: minutes,
+      text: text,
+      endsAt: endsAt
+    )
     Task {
       if #available(iOS 16.2, *) {
         await activity.update(ActivityContent(state: state, staleDate: nil))
@@ -273,7 +285,7 @@ final class BoardingActivityTokenStore {
     if let existing = activity.pushToken, !existing.isEmpty {
       return hex(existing)
     }
-    return await Self.firstToken(from: activity.pushTokenUpdates, timeoutSeconds: 8)
+    return await Self.firstToken(from: activity.pushTokenUpdates, timeoutSeconds: 30)
   }
 
   func observeNewActivities(onToken: @escaping (String) -> Void) {
