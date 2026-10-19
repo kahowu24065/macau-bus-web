@@ -15,6 +15,8 @@ import '../../utils/alighting_location.dart';
 import '../../services/bus_api_service.dart';
 import '../../services/open_data_config.dart';
 import '../../utils/bus_eta_estimate.dart';
+import '../../utils/timetable_eta.dart';
+import '../../services/dsat_timetable.dart';
 import '../../models/bus.dart';
 import '../../controllers/background_controller.dart';
 import '../widgets/glowing_badge.dart';
@@ -70,6 +72,9 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
         _lastFetchedRoute = _busCtrl.currentRoute;
         _fetchRouteAlerts(_busCtrl.currentRoute);
       }
+      unawaited(DsatTimetable.ensureLoaded().then((_) {
+        if (mounted) setState(() {});
+      }));
     });
   }
 
@@ -351,7 +356,15 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
 
   List<Map<String, String>> _getUpcomingBusesInfo(BusController busCtrl, LanguageController langCtrl, {required bool easyRead}) {
     if (!busCtrl.showLiveArrivals) return [];
-    if (busCtrl.etaData == null && busCtrl.allBusesList.isEmpty) return [];
+    final timetableLabel = _timetableEtaLabel(busCtrl, langCtrl, easyRead: easyRead);
+    final noService = langCtrl.tr('no_service_today');
+    if (busCtrl.etaData == null && busCtrl.allBusesList.isEmpty) {
+      return withTimetableEta(
+        upcoming: const [],
+        timetableLabel: timetableLabel,
+        noServiceToday: noService,
+      );
+    }
     
     String rawEtaStatus = busCtrl.etaData?['status']?.toString() ?? '';
     String cleanEta = rawEtaStatus.replaceAll(RegExp(r'[\(（].*?[\)）]'), '').trim();
@@ -499,7 +512,53 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
       }
     }
     
-    return upcoming;
+    return withTimetableEta(
+      upcoming: upcoming,
+      timetableLabel: timetableLabel,
+      noServiceToday: noService,
+    );
+  }
+
+  /// Timetable minutes for the selected stop when the next terminus
+  /// departure is a published clock or the opening of a service period.
+  String? _timetableEtaLabel(
+    BusController busCtrl,
+    LanguageController langCtrl, {
+    required bool easyRead,
+  }) {
+    if (!FeatureFlags.showTimetable) return null;
+    final seq = busCtrl.selectedStopSeq;
+    if (seq == null || busCtrl.currentRoute.isEmpty) return null;
+    if (DsatTimetable.routeCount == 0) return null;
+    final sections = DsatTimetable.sectionsFor(
+      busCtrl.currentRoute,
+      busCtrl.currentDirection,
+    );
+    if (sections.isEmpty) return null;
+    final travel = timetableTravelMinutes(
+      [
+        for (final stop in busCtrl.stopsList)
+          TimetableStopPoint(stop.seq, stop.lat, stop.lng),
+      ],
+      seq,
+    );
+    if (travel == null) return null;
+    final now = DateTime.now();
+    final today = timetableSectionIndexFor(sections, now);
+    final tomorrow = timetableSectionIndexFor(
+      sections,
+      now.add(const Duration(days: 1)),
+    );
+    final mins = timetableArrivalMinutes(
+      rows: sections[today].items,
+      now: now,
+      travelMinutes: travel,
+      nextDayRows: sections[tomorrow].items,
+    );
+    if (mins == null) return null;
+    final shown = mins <= 0 ? 1 : mins;
+    final key = easyRead ? 'easy_read_timetable_eta' : 'timetable_eta_mins';
+    return langCtrl.tr(key).replaceAll('@mins', '$shown');
   }
 
   /// Read the first arrival for this stop. Row taps still select the stop;
