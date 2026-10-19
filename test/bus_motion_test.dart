@@ -7,7 +7,7 @@ import 'package:macau_bus_app/models/bus.dart';
 import 'package:macau_bus_app/models/bus_stop.dart';
 import 'package:macau_bus_app/services/open_data_config.dart';
 
-BusStop _stop(int seq, double lat) {
+BusStop _stop(int seq, double lat, {double lng = 113.54}) {
   return BusStop(
     seq: seq,
     name: '站$seq',
@@ -17,7 +17,7 @@ BusStop _stop(int seq, double lat) {
     nameEn: 'Stop $seq',
     code: 'M$seq',
     lat: lat,
-    lng: 113.54,
+    lng: lng,
   );
 }
 
@@ -25,13 +25,14 @@ Bus _bus({
   required double lat,
   required double speed,
   required int seq,
+  double lng = 113.54,
   bool atStop = false,
   String plate = 'MB-1',
 }) {
   return Bus(
     busLicense: plate,
     lat: lat,
-    lng: 113.54,
+    lng: lng,
     speed: speed,
     currentStopSeq: seq,
     atStop: atStop,
@@ -315,6 +316,64 @@ void main() {
     expect(icon.longitude, greaterThan(113.5403));
     expect(icon.longitude, lessThan(113.545));
     expect(apart(icon, const LatLng(22.19, 113.54)), greaterThan(40));
+  });
+
+  test('short samples keep the reported speed instead of hopping', () {
+    final bus = route();
+    addTearDown(bus.dispose);
+    final t0 = DateTime.utc(2026, 10, 8, 8);
+    bus.allBusesList = [_bus(lat: 22.195, speed: 36, seq: 1)];
+    bus.advanceBusMotion(t0);
+    expect(bus.displaySpeedKmh(bus.allBusesList.single), 36);
+    var previous = bus.snapBusToStop(bus.allBusesList.single)!;
+    final origin = previous;
+    for (var step = 1; step <= 10; step++) {
+      bus.advanceBusMotion(t0.add(Duration(milliseconds: 100 * step)));
+      final here = bus.snapBusToStop(bus.allBusesList.single)!;
+      final moved = apart(here, previous);
+      expect(moved, greaterThan(0.6));
+      expect(moved, lessThan(1.6));
+      previous = here;
+    }
+    expect(apart(previous, origin), greaterThan(9));
+    expect(apart(previous, origin), lessThan(12));
+    expect(bus.displaySpeedKmh(bus.allBusesList.single), 36);
+    expect(BusController.mapMotionFrame.inMilliseconds, inInclusiveRange(16, 40));
+  });
+
+  test('a same-leg correction eases along the bend instead of cutting the corner', () {
+    final bus = route();
+    addTearDown(bus.dispose);
+    const corner = LatLng(22.19072, 113.54);
+    const end = LatLng(22.19072, 113.54078);
+    bus.stopsList = [
+      _stop(1, 22.19),
+      _stop(2, end.latitude, lng: end.longitude),
+    ];
+    bus.gpxRoutePoints = const [
+      LatLng(22.19, 113.54),
+      corner,
+      end,
+    ];
+    final t0 = DateTime.utc(2026, 10, 8, 8);
+    bus.allBusesList = [_bus(lat: 22.19, speed: 18, seq: 1)];
+    bus.advanceBusMotion(t0);
+    final fixAt = t0.add(const Duration(seconds: 2));
+    bus.advanceBusMotion(fixAt);
+    final before = bus.snapBusToStop(bus.allBusesList.single)!;
+
+    bus.allBusesList = [_bus(lat: end.latitude, lng: end.longitude, speed: 18, seq: 1)];
+    bus.advanceBusMotion(fixAt);
+    bus.advanceBusMotion(fixAt.add(const Duration(milliseconds: 500)));
+    final mid = bus.snapBusToStop(bus.allBusesList.single)!;
+    final chord = LatLng(
+      (before.latitude + end.latitude) / 2,
+      (before.longitude + end.longitude) / 2,
+    );
+    // The bend goes north first. A straight ease is still south of the corner
+    // at the halfway mark; the route ease is already up at the corner.
+    expect(mid.latitude, greaterThan(chord.latitude + 0.0001), reason: 'before=$before mid=$mid chord=$chord');
+    expect(apart(mid, corner), lessThan(apart(chord, corner)));
   });
 
   test('without motion yet, the icon still follows GPS instead of the last stop', () {

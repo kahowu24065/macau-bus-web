@@ -1438,6 +1438,10 @@ class BusController extends ChangeNotifier {
   /// 地圖圖示：呢個車速或以下當停低，唔沿路線推前。
   static const double _mapIconStopKmh = 5;
 
+  /// 地圖幾密取一次樣。位置係跟時間同車速計出嚟，
+  /// 所以格數密就會沿路線滑，而唔係半秒跳一格。
+  static const Duration mapMotionFrame = Duration(milliseconds: 32);
+
   /// 跟最新 GPS。車速 0（或 5km/h 或以下）就停低；
   /// 車郁緊就由嗰個 GPS 位沿路線推前，直到下一個定位。
   /// 超過 10 秒冇新資料就停，唔好再沿用舊車速。
@@ -1602,10 +1606,24 @@ class BusController extends ChangeNotifier {
     final double renderLng;
 
     if (easedIn && age < easeSeconds) {
+      // 同一段路線就沿紫色線滑過去，唔好拉直線切彎。
+      // smoothstep 令補正開頭同收尾慢少少，中間仍然貼住新定位。
       final t = age / easeSeconds;
-      renderLat = easeFromLat + (easeToLat - easeFromLat) * t;
-      renderLng = easeFromLng + (easeToLng - easeFromLng) * t;
-      traveled = easeFromMeters + (gpsMeters - easeFromMeters) * t;
+      final s = _smoothStep(t);
+      final alongRoute = (easeFromMeters - gpsMeters).abs() >= 0.5;
+      if (alongRoute) {
+        var meters = easeFromMeters + (gpsMeters - easeFromMeters) * s;
+        if (meters > cap) meters = cap;
+        if (meters < 0) meters = 0;
+        traveled = meters;
+        final point = _pointAtMeters(from, to, traveled);
+        renderLat = point.latitude;
+        renderLng = point.longitude;
+      } else {
+        renderLat = easeFromLat + (easeToLat - easeFromLat) * s;
+        renderLng = easeFromLng + (easeToLng - easeFromLng) * s;
+        traveled = easeFromMeters + (gpsMeters - easeFromMeters) * s;
+      }
     } else if (stopped) {
       traveled = gpsMeters;
       final point = _pointAtMeters(from, to, traveled);
@@ -1655,13 +1673,20 @@ class BusController extends ChangeNotifier {
 
   bool _motionMoved(_BusLegMotion? prev, _BusLegMotion next) {
     if (prev == null) return true;
-    if ((prev.traveledMeters - next.traveledMeters).abs() >= 0.4) return true;
+    // 細過一格車速嘅步進都要畫。門檻太高，密取樣會當成冇郁。
+    const minMeters = 0.02;
+    if ((prev.traveledMeters - next.traveledMeters).abs() >= minMeters) return true;
     final meters = const Distance().as(
       LengthUnit.Meter,
       LatLng(prev.renderLat, prev.renderLng),
       LatLng(next.renderLat, next.renderLng),
     );
-    return meters >= 0.4;
+    return meters >= minMeters;
+  }
+
+  double _smoothStep(double t) {
+    final x = t < 0 ? 0.0 : (t > 1 ? 1.0 : t);
+    return x * x * (3 - 2 * x);
   }
 
   LatLng _pointAtMeters(BusStop from, BusStop to, double meters) {
@@ -1695,9 +1720,16 @@ class BusController extends ChangeNotifier {
     return motion.traveledMeters >= length - 12;
   }
 
+  /// 圖示實際用緊嘅車速。有路線動畫就用嗰個定位嘅速度，同埋推進公式一致。
   double displaySpeedKmh(Bus bus) {
-    if (bus.speed <= _mapIconStopKmh) return 0;
-    return bus.speed;
+    final motion = _legMotion[bus.busLicense];
+    final speed = motion != null &&
+            motion.fixStopSeq == bus.currentStopSeq &&
+            motion.fixAtStop == bus.atStop
+        ? motion.fixSpeed
+        : bus.speed;
+    if (speed <= _mapIconStopKmh) return 0;
+    return speed;
   }
 
   double _segmentMeters(BusStop a, BusStop b) {

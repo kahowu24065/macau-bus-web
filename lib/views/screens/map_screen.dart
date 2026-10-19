@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
@@ -22,6 +23,49 @@ import '../widgets/routing_bottom_sheet.dart';
 import '../widgets/route_liquid_glass_nav.dart';
 import '../widgets/fit_marquee_text.dart';
 
+/// 只重畫巴士圖示。跟車速沿路線密取樣，唔好成個地圖連頂欄一齊重建。
+class _TickingBusLayer extends StatefulWidget {
+  const _TickingBusLayer({
+    required this.controller,
+    required this.buildMarkers,
+  });
+
+  final BusController controller;
+  final List<Marker> Function() buildMarkers;
+
+  @override
+  State<_TickingBusLayer> createState() => _TickingBusLayerState();
+}
+
+class _TickingBusLayerState extends State<_TickingBusLayer> with SingleTickerProviderStateMixin {
+  late final Ticker _ticker;
+  Duration _paintedAt = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = createTicker(_onTick)..start();
+  }
+
+  void _onTick(Duration elapsed) {
+    if (elapsed - _paintedAt < BusController.mapMotionFrame) return;
+    _paintedAt = elapsed;
+    if (!mounted) return;
+    if (widget.controller.advanceBusMotion()) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MarkerLayer(markers: widget.buildMarkers());
+  }
+}
+
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key, this.onClose});
   final VoidCallback? onClose;
@@ -36,7 +80,6 @@ class _MapScreenState extends State<MapScreen> {
   bool _mapReady = false;
   int _fittedPolySig = 0;
   Timer? _tileKickTimer;
-  Timer? _motionTimer;
   double? _labelZoom;
   double? _labelRotation;
   String? _openBusLicense;
@@ -49,10 +92,6 @@ class _MapScreenState extends State<MapScreen> {
     _navCtrl = context.read<NavigationController>();
     _busCtrl.addListener(_onBusStateChanged);
     _navCtrl.addListener(_onNavChanged);
-    _motionTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
-      if (!mounted) return;
-      if (_busCtrl.advanceBusMotion()) setState(() {});
-    });
   }
 
   void _onBusStateChanged() {
@@ -91,7 +130,6 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void dispose() {
     _tileKickTimer?.cancel();
-    _motionTimer?.cancel();
     _busCtrl.removeListener(_onBusStateChanged);
     _navCtrl.removeListener(_onNavChanged);
     super.dispose();
@@ -436,81 +474,11 @@ class _MapScreenState extends State<MapScreen> {
       );
     }
 
-    final List<Marker> busMarkers = [];
-    int actualMapBusCount = 0;
     final showLiveArrivals = busCtrl.showLiveArrivals;
+    var actualMapBusCount = 0;
     if (!shouldHideOriginalRoute && showLiveArrivals) {
-      final drawn = <({Bus bus, LatLng loc, bool atStop})>[];
       for (final bus in busCtrl.allBusesList) {
-        final loc = busCtrl.snapBusToStop(bus);
-        if (loc == null) continue;
-        drawn.add((bus: bus, loc: loc, atStop: busCtrl.hasVisuallyArrived(bus)));
-      }
-      actualMapBusCount = drawn.length;
-      final mapRotation = _mapReady ? _mapController.camera.rotation : 0.0;
-      for (final item in drawn) {
-        final speedLabel = '${busCtrl.displaySpeedKmh(item.bus).toInt()}km/h';
-        final headingName = item.atStop
-            ? ''
-            : _busHeadingStopName(busCtrl, item.bus, false, langCtrl.currentLanguage);
-        final middle = item.atStop
-            ? approachingStatus(
-                easyRead: easyRead,
-                stopsAway: 0,
-                estimatedMins: 0,
-                tr: langCtrl.tr,
-              )
-            : headingName.isEmpty
-                ? ''
-                : '${langCtrl.tr('direction_to')} $headingName';
-        final iconColor = item.atStop ? Colors.orangeAccent : Colors.amber;
-        final open = _openBusLicense == item.bus.busLicense;
-        final tab = _measureBusTab(
-          plate: item.bus.busLicense,
-          middle: middle,
-          speed: speedLabel,
-          atStop: item.atStop,
-          easyRead: easyRead,
-        );
-        final bearing = _busTravelBearing(busCtrl, item.bus, item.loc, item.atStop);
-        final chevronRadians = bearing == null
-            ? null
-            : busChevronRadians(bearingDegrees: bearing, mapRotationDegrees: mapRotation);
-        final hit = _BusPin.hitFor(easyRead);
-        final tabCenter = busMarkerTabCenter(
-          easyRead: easyRead,
-          iconSize: hit,
-          tabWidth: tab.width,
-          tabHeight: tab.height,
-          gap: _BusPin.gap,
-          chevronRadians: chevronRadians,
-        );
-        final markerWidth = open ? math.max(hit, (tabCenter.dx.abs() + tab.width / 2) * 2) : hit;
-        final markerHeight = open ? math.max(hit, (tabCenter.dy.abs() + tab.height / 2) * 2) : hit;
-        busMarkers.add(Marker(
-          point: item.loc,
-          width: markerWidth,
-          height: markerHeight,
-          alignment: Alignment.center,
-          rotate: true,
-          child: _BusPin(
-            plate: item.bus.busLicense,
-            middle: middle,
-            speed: speedLabel,
-            atStop: item.atStop,
-            iconColor: iconColor,
-            open: open,
-            easyRead: easyRead,
-            tabWidth: tab.width,
-            tabHeight: tab.height,
-            chevronRadians: chevronRadians,
-            onTap: () {
-              setState(() {
-                _openBusLicense = _openBusLicense == item.bus.busLicense ? null : item.bus.busLicense;
-              });
-            },
-          ),
-        ));
+        if (busCtrl.snapBusToStop(bus) != null) actualMapBusCount++;
       }
     }
 
@@ -776,7 +744,16 @@ class _MapScreenState extends State<MapScreen> {
                               Polyline(points: line, strokeWidth: 5.0, color: const Color.fromARGB(255, 114, 0, 162)),
                       ],
                     ),
-                  MarkerLayer(markers: [...stopMarkers, ...busMarkers, ...extraMarkers]),
+                  MarkerLayer(markers: stopMarkers),
+                  _TickingBusLayer(
+                    controller: busCtrl,
+                    buildMarkers: () => _busMarkers(
+                      easyRead: easyRead,
+                      langCtrl: langCtrl,
+                      shouldHideOriginalRoute: shouldHideOriginalRoute,
+                    ),
+                  ),
+                  MarkerLayer(markers: extraMarkers),
                 ],
               ),
               if (busCtrl.isPickingMapStart || busCtrl.isPickingMapEnd)
@@ -986,6 +963,87 @@ class _MapScreenState extends State<MapScreen> {
     // Extra slack covers font leading that TextPainter measures short of the
     // painted paragraph, so the tab is not clipped or flexed past its box.
     return (width: width + 24, height: height + 40);
+  }
+
+  List<Marker> _busMarkers({
+    required bool easyRead,
+    required LanguageController langCtrl,
+    required bool shouldHideOriginalRoute,
+  }) {
+    if (shouldHideOriginalRoute || !_busCtrl.showLiveArrivals) return const [];
+    final drawn = <({Bus bus, LatLng loc, bool atStop})>[];
+    for (final bus in _busCtrl.allBusesList) {
+      final loc = _busCtrl.snapBusToStop(bus);
+      if (loc == null) continue;
+      drawn.add((bus: bus, loc: loc, atStop: _busCtrl.hasVisuallyArrived(bus)));
+    }
+    final mapRotation = _mapReady ? _mapController.camera.rotation : 0.0;
+    final markers = <Marker>[];
+    for (final item in drawn) {
+      final speedLabel = '${_busCtrl.displaySpeedKmh(item.bus).toInt()}km/h';
+      final headingName = item.atStop
+          ? ''
+          : _busHeadingStopName(_busCtrl, item.bus, false, langCtrl.currentLanguage);
+      final middle = item.atStop
+          ? approachingStatus(
+              easyRead: easyRead,
+              stopsAway: 0,
+              estimatedMins: 0,
+              tr: langCtrl.tr,
+            )
+          : headingName.isEmpty
+              ? ''
+              : '${langCtrl.tr('direction_to')} $headingName';
+      final iconColor = item.atStop ? Colors.orangeAccent : Colors.amber;
+      final open = _openBusLicense == item.bus.busLicense;
+      final tab = _measureBusTab(
+        plate: item.bus.busLicense,
+        middle: middle,
+        speed: speedLabel,
+        atStop: item.atStop,
+        easyRead: easyRead,
+      );
+      final bearing = _busTravelBearing(_busCtrl, item.bus, item.loc, item.atStop);
+      final chevronRadians = bearing == null
+          ? null
+          : busChevronRadians(bearingDegrees: bearing, mapRotationDegrees: mapRotation);
+      final hit = _BusPin.hitFor(easyRead);
+      final tabCenter = busMarkerTabCenter(
+        easyRead: easyRead,
+        iconSize: hit,
+        tabWidth: tab.width,
+        tabHeight: tab.height,
+        gap: _BusPin.gap,
+        chevronRadians: chevronRadians,
+      );
+      final markerWidth = open ? math.max(hit, (tabCenter.dx.abs() + tab.width / 2) * 2) : hit;
+      final markerHeight = open ? math.max(hit, (tabCenter.dy.abs() + tab.height / 2) * 2) : hit;
+      markers.add(Marker(
+        point: item.loc,
+        width: markerWidth,
+        height: markerHeight,
+        alignment: Alignment.center,
+        rotate: true,
+        child: _BusPin(
+          plate: item.bus.busLicense,
+          middle: middle,
+          speed: speedLabel,
+          atStop: item.atStop,
+          iconColor: iconColor,
+          open: open,
+          easyRead: easyRead,
+          tabWidth: tab.width,
+          tabHeight: tab.height,
+          chevronRadians: chevronRadians,
+          onTap: () {
+            setState(() {
+              _openBusLicense = _openBusLicense == item.bus.busLicense ? null : item.bus.busLicense;
+            });
+          },
+        ),
+      ));
+    }
+    return markers;
   }
 
   double? _busTravelBearing(BusController busCtrl, Bus bus, LatLng loc, bool atStop) {
