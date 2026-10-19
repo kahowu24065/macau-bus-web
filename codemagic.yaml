@@ -122,35 +122,55 @@ workflows:
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             2>&1 | tee /tmp/export.log | tail -n 80
           grep -qE "EXPORT SUCCEEDED|Upload succeeded|Uploaded" /tmp/export.log || { echo "export/upload failed"; exit 1; }
-          IPA=$(ls "$CM_BUILD_DIR/export"/*.ipa | head -1)
-          if ! unzip -l "$IPA" | grep -q "BoardingLiveActivity.appex"; then
-            echo "exported ipa is missing BoardingLiveActivity.appex"
-            unzip -l "$IPA" | grep "BoardingLiveActivity" || true
-            exit 1
+          # destination=upload often leaves no local .ipa after a successful ASC upload.
+          shopt -s nullglob
+          ipas=( "$CM_BUILD_DIR/export"/*.ipa )
+          if [ ${#ipas[@]} -eq 0 ]; then
+            echo "No local IPA after upload; verifying BoardingLiveActivity.appex in the archive"
+            APPEX="$CM_BUILD_DIR/Runner.xcarchive/Products/Applications/Runner.app/PlugIns/BoardingLiveActivity.appex"
+            if [ ! -d "$APPEX" ]; then
+              echo "BoardingLiveActivity.appex is missing from the archive"
+              find "$CM_BUILD_DIR/Runner.xcarchive" -name '*.appex' -print
+              exit 1
+            fi
+            echo "Archive appex: $APPEX"
+            /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APPEX/Info.plist"
+            /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APPEX/Info.plist"
+            /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APPEX/Info.plist"
+            /usr/libexec/PlistBuddy -c 'Print :NSSupportsLiveActivities' "$APPEX/Info.plist"
+            /usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' "$APPEX/Info.plist"
+            echo "Upload succeeded; archive includes BoardingLiveActivity.appex"
+          else
+            IPA="${ipas[0]}"
+            if ! unzip -l "$IPA" | grep -q "BoardingLiveActivity.appex"; then
+              echo "exported ipa is missing BoardingLiveActivity.appex"
+              unzip -l "$IPA" | grep "BoardingLiveActivity" || true
+              exit 1
+            fi
+            TMP=$(mktemp -d)
+            unzip -q "$IPA" -d "$TMP"
+            APPEX=$(find "$TMP" -path '*/PlugIns/BoardingLiveActivity.appex' -type d | head -1)
+            if [ -z "$APPEX" ]; then
+              echo "PlugIns/BoardingLiveActivity.appex missing after unzip"
+              find "$TMP" -name '*.appex' -print
+              exit 1
+            fi
+            echo "=== appex signature ==="
+            codesign --verify --verbose=2 "$APPEX"
+            codesign -d --verbose=4 "$APPEX" 2>&1 | grep -E "Identifier=|Authority=|TeamIdentifier=" || true
+            /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APPEX/Info.plist"
+            /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APPEX/Info.plist"
+            /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APPEX/Info.plist"
+            /usr/libexec/PlistBuddy -c 'Print :NSSupportsLiveActivities' "$APPEX/Info.plist"
+            /usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' "$APPEX/Info.plist"
+            APP=$(find "$TMP" -name 'Runner.app' -type d | head -1)
+            echo "=== host aps-environment ==="
+            codesign -d --entitlements :- "$APP" 2>/dev/null | grep -A1 aps-environment || {
+              echo "aps-environment missing from Runner.app"
+              exit 1
+            }
+            echo "Signed export includes mo.mbka.bus and mo.mbka.bus.BoardingLiveActivity"
           fi
-          TMP=$(mktemp -d)
-          unzip -q "$IPA" -d "$TMP"
-          APPEX=$(find "$TMP" -path '*/PlugIns/BoardingLiveActivity.appex' -type d | head -1)
-          if [ -z "$APPEX" ]; then
-            echo "PlugIns/BoardingLiveActivity.appex missing after unzip"
-            find "$TMP" -name '*.appex' -print
-            exit 1
-          fi
-          echo "=== appex signature ==="
-          codesign --verify --verbose=2 "$APPEX"
-          codesign -d --verbose=4 "$APPEX" 2>&1 | grep -E "Identifier=|Authority=|TeamIdentifier=" || true
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APPEX/Info.plist"
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APPEX/Info.plist"
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APPEX/Info.plist"
-          /usr/libexec/PlistBuddy -c 'Print :NSSupportsLiveActivities' "$APPEX/Info.plist"
-          /usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' "$APPEX/Info.plist"
-          APP=$(find "$TMP" -name 'Runner.app' -type d | head -1)
-          echo "=== host aps-environment ==="
-          codesign -d --entitlements :- "$APP" 2>/dev/null | grep -A1 aps-environment || {
-            echo "aps-environment missing from Runner.app"
-            exit 1
-          }
-          echo "Signed export includes mo.mbka.bus and mo.mbka.bus.BoardingLiveActivity"
 
       - name: Clean up API key
         script: |
