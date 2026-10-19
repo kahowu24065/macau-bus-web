@@ -26,4 +26,7 @@ struct BoardingActivityAttributes: ActivityAttributes {
 
   var route: String
   var stopName: String
+  /// Phrase shown before the countdown, e.g. 「預測到站時間尚餘」.
+  /// Nil on older or server-started activities; the widget then uses Traditional Chinese.
+  var etaLabel: String? = nil
 }

@@ -195,6 +195,8 @@ void main() {
       required String stopName,
       required int minutes,
       required String text,
+      double? endsAt,
+      String? etaLabel,
     }) async {
       return const LiveActivityStart(started: true);
     };
@@ -242,6 +244,8 @@ void main() {
       required String stopName,
       required int minutes,
       required String text,
+      double? endsAt,
+      String? etaLabel,
     }) async {
       return const LiveActivityStart(started: true, token: 'abc123hex');
     };
@@ -286,6 +290,8 @@ void main() {
       required String stopName,
       required int minutes,
       required String text,
+      double? endsAt,
+      String? etaLabel,
     }) async {
       return const LiveActivityStart(started: false, error: 'activities_disabled');
     };
@@ -331,6 +337,8 @@ void main() {
       required String stopName,
       required int minutes,
       required String text,
+      double? endsAt,
+      String? etaLabel,
     }) async {
       return const LiveActivityStart(started: true);
     };
@@ -387,8 +395,10 @@ void main() {
       required String stopName,
       required int minutes,
       required String text,
+      double? endsAt,
+      String? etaLabel,
     }) async {
-      started.add('$stopName|$text');
+      started.add('$stopName|$text|${etaLabel ?? ''}');
       return const LiveActivityStart(started: true);
     };
     LiveActivityBridge.debugPushToStartToken = () async => null;
@@ -427,7 +437,7 @@ void main() {
       expect(ends, 1);
       expect(bodies.last['reminderId'], isNot(firstId));
       expect(bodies.last['targetSeq'], 3);
-      expect(started.last, 'Stop 3|約 5 分鐘後到達Stop 3');
+      expect(started.last, 'Stop 3|約 5 分鐘後到達Stop 3|預測到站時間尚餘');
     } finally {
       bus.dispose();
     }

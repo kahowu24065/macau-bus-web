@@ -74,6 +74,7 @@ class LiveActivityBridge {
     required int minutes,
     required String text,
     double? endsAt,
+    String? etaLabel,
   })? debugStartActivity;
 
   @visibleForTesting
@@ -119,6 +120,7 @@ class LiveActivityBridge {
     required int minutes,
     required String text,
     double? endsAt,
+    String? etaLabel,
   }) async {
     final override = debugStartActivity;
     if (override != null) {
@@ -128,6 +130,7 @@ class LiveActivityBridge {
         minutes: minutes,
         text: text,
         endsAt: endsAt,
+        etaLabel: etaLabel,
       );
     }
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) {
@@ -141,6 +144,7 @@ class LiveActivityBridge {
         'minutes': minutes,
         'text': text,
         if (endsAt != null) 'endsAt': endsAt,
+        if (etaLabel != null && etaLabel.isNotEmpty) 'etaLabel': etaLabel,
       });
       final start = LiveActivityStart.fromChannel(raw);
       if (!start.started) {

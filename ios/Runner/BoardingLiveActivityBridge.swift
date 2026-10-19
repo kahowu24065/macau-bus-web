@@ -4,8 +4,9 @@ import Foundation
 
 /// Live Activity for the boarding reminder.
 ///
-/// Content state is predicted minutes and a localized sentence. It does not
-/// carry a stop count. The same activity is rendered by the BoardingLiveActivity
+/// Content state is predicted minutes and a localized sentence. The activity
+/// label (etaLabel) is shown before that countdown. It does not carry a stop
+/// count. The same activity is rendered by the BoardingLiveActivity
 /// widget extension: Dynamic Island on phones that have one, and the Lock Screen
 /// plus the notification list on phones that do not.
 ///
@@ -80,6 +81,7 @@ enum BoardingLiveActivityBridge {
     let stopName = args["stopName"] as? String ?? ""
     let minutes = args["minutes"] as? Int ?? 0
     let text = args["text"] as? String ?? ""
+    let etaLabel = args["etaLabel"] as? String
     let endsAt = (args["endsAt"] as? Double)
       ?? (args["endsAt"] as? NSNumber)?.doubleValue
     let state = BoardingActivityAttributes.ContentState(
@@ -87,7 +89,7 @@ enum BoardingLiveActivityBridge {
       text: text,
       endsAt: endsAt
     )
-    let attributes = BoardingActivityAttributes(route: route, stopName: stopName)
+    let attributes = BoardingActivityAttributes(route: route, stopName: stopName, etaLabel: etaLabel)
 
     let activity: Activity<BoardingActivityAttributes>
     let wantsPushToken: Bool
