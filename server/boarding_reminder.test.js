@@ -95,11 +95,22 @@ test('push content is predicted minutes and does not include a stop count', () =
   assert.doesNotMatch(state.text, /\d+\s+stops/);
 });
 
-test('about eight minutes pushes at three minutes; under five minutes pushes now', async () => {
+test('the countdown names the stop in every language', () => {
+  assert.equal(minutesText('zh', 3, '關閘'), '約 3 分鐘後到達關閘');
+  assert.equal(minutesText('zhHans', 3, '关闸'), '约 3 分钟后到达关闸');
+  assert.equal(minutesText('en', 3, 'Border Gate'), 'About 3 minutes to Border Gate');
+  assert.equal(minutesText('en', 1, 'Border Gate'), 'About 1 minute to Border Gate');
+  assert.equal(minutesText('pt', 3, 'Portas do Cerco'), 'A cerca de 3 minutos até Portas do Cerco');
+  assert.equal(minutesText('pt', 1, 'Portas do Cerco'), 'A cerca de 1 minuto até Portas do Cerco');
+  assert.equal(minutesText('zh', 3, ''), '約 3 分鐘後到達');
+});
+
+test('updates every 20 seconds from the original estimate, then ends at the stop', async () => {
   const pushes = [];
   const timers = [];
+  let clock = 1_000_000;
   const book = createBoardingReminders({
-    now: () => 1_000_000,
+    now: () => clock,
     loadSegments: () => [{ fromSeq: 1, toSeq: 2, travelSeconds: 480, dwellSeconds: 30 }],
     credentials: () => ({ configured: true, bundleId: 'mo.mbka.bus', sandbox: false }),
     setTimer: (fn, ms) => {
@@ -128,69 +139,50 @@ test('about eight minutes pushes at three minutes; under five minutes pushes now
   });
   assert.equal(eight.body.success, true);
   assert.equal(eight.body.minutes, 8);
-  assert.equal(eight.body.text, 'About 8 minutes away');
-  assert.equal(Math.round(eight.body.pushDelaySeconds), 180);
+  assert.equal(eight.body.text, 'About 8 minutes to Border Gate');
+  assert.equal(eight.body.updateIntervalSeconds, 20);
+  assert.equal(Math.round(eight.body.pushDelaySeconds), 20);
   assert.equal(Math.round(eight.body.endDelaySeconds), 480);
   assert.equal(pushes.length, 0);
+  assert.equal(timers.length, 1);
+  assert.equal(timers[0].ms, 20000);
 
-  const pushTimer = timers.find((timer) => timer.ms === 180000);
-  const endTimer = timers.find((timer) => timer.ms === 480000);
-  assert.ok(pushTimer);
-  assert.ok(endTimer);
-  await pushTimer.fn();
+  clock += 20000;
+  await timers[timers.length - 1].fn();
+  assert.equal(pushes.length, 1);
   assert.equal(pushes[0].payload.aps.event, 'update');
-  assert.equal(pushes[0].payload.aps['content-state'].minutes, 5);
-  assert.equal(pushes[0].payload.aps['content-state'].text, 'About 5 minutes away');
+  assert.equal(pushes[0].payload.aps['content-state'].minutes, 8);
+  assert.equal(pushes[0].payload.aps['content-state'].text, 'About 8 minutes to Border Gate');
   assert.equal(pushes[0].topic, 'mo.mbka.bus.push-type.liveactivity');
-  assert.doesNotMatch(JSON.stringify(pushes[0].payload), /stopsAway|stopCount|stopsLeft/);
+  assert.doesNotMatch(JSON.stringify(pushes[0].payload), /stopsAway|stopCount|stopsLeft|paragens/);
 
-  await endTimer.fn();
-  assert.equal(pushes[1].payload.aps.event, 'end');
-  assert.equal(pushes[1].payload.aps['content-state'].minutes, 0);
-  assert.equal(pushes[1].payload.aps['content-state'].text, 'Arrived');
-  assert.doesNotMatch(JSON.stringify(pushes[1].payload), /stopsAway|stopCount|stopsLeft/);
+  clock += 80000;
+  await timers[timers.length - 1].fn();
+  assert.equal(pushes[1].payload.aps.event, 'update');
+  assert.equal(pushes[1].payload.aps['content-state'].minutes, 6);
+  assert.equal(pushes[1].payload.aps['content-state'].text, 'About 6 minutes to Border Gate');
 
-  const soon = [];
-  const soonBook = createBoardingReminders({
-    now: () => 2_000_000,
-    loadSegments: () => [{ fromSeq: 1, toSeq: 2, travelSeconds: 200, dwellSeconds: 15 }],
-    credentials: () => ({ configured: true, bundleId: 'mo.mbka.bus', sandbox: false }),
-    setTimer: (fn, ms) => {
-      soon.push({ ms, fn });
-      return soon.length;
-    },
-    clearTimer: () => {},
-    sendPush: async (message) => {
-      soon.push({ message });
-      return { sent: true };
-    },
-  });
-  const immediate = await soonBook.register({
-    reminderId: 'soon',
-    route: '3A',
-    dir: 0,
-    targetSeq: 2,
-    lat: north(0),
-    lng,
-    lang: 'en',
-    activityToken: 'activity-token',
-    stops: [stop(1, 0), stop(2, 500)],
-  });
-  assert.equal(immediate.body.pushDelaySeconds, 0);
-  assert.equal(immediate.body.minutes, 3);
-  assert.equal(immediate.body.text, 'About 3 minutes away');
-  const sent = soon.find((item) => item.message);
-  assert.equal(sent.message.payload.aps['content-state'].minutes, 3);
-  assert.equal(Math.round(immediate.body.endDelaySeconds), 200);
+  clock = 1_000_000 + 480000;
+  await timers[timers.length - 1].fn();
+  assert.equal(pushes[2].payload.aps.event, 'end');
+  assert.equal(pushes[2].payload.aps['content-state'].minutes, 0);
+  assert.equal(pushes[2].payload.aps['content-state'].text, 'Arrived at Border Gate');
+  assert.equal(book.reminders.has('eight'), false);
+  assert.doesNotMatch(JSON.stringify(pushes[2].payload), /stopsAway|stopCount|stopsLeft/);
 });
 
-test('a token that arrives after a due reminder sends that update', async () => {
+test('a token that arrives after a missed tick sends the current countdown', async () => {
   const pushes = [];
+  const timers = [];
+  let clock = 2_000_000;
   const book = createBoardingReminders({
-    now: () => 2_000_000,
+    now: () => clock,
     loadSegments: () => [{ fromSeq: 1, toSeq: 2, travelSeconds: 200, dwellSeconds: 0 }],
     credentials: () => ({ configured: true, bundleId: 'mo.mbka.bus', sandbox: false }),
-    setTimer: () => 1,
+    setTimer: (fn, ms) => {
+      timers.push({ ms, fn });
+      return timers.length;
+    },
     clearTimer: () => {},
     sendPush: async (message) => {
       pushes.push(message);
@@ -202,14 +194,20 @@ test('a token that arrives after a due reminder sends that update', async () => 
     route: '3A',
     dir: 0,
     targetSeq: 2,
+    stopName: '關閘',
     lat: north(0),
     lng,
     lang: 'zh',
     stops: [stop(1, 0), stop(2, 500)],
   });
-  assert.equal(first.body.pushDelaySeconds, 0);
+  assert.equal(Math.round(first.body.pushDelaySeconds), 20);
   assert.equal(pushes.length, 0);
   assert.equal(book.reminders.get('late').activityToken, '');
+
+  clock += 20000;
+  await timers[timers.length - 1].fn();
+  assert.equal(pushes.length, 0);
+  assert.equal(book.reminders.get('late').pendingTokenPush, true);
 
   const second = await book.register({ reminderId: 'late', activityToken: 'abc123hex' });
   assert.equal(second.status, 200);
@@ -217,15 +215,17 @@ test('a token that arrives after a due reminder sends that update', async () => 
   assert.equal(pushes.length, 1);
   assert.equal(pushes[0].token, 'abc123hex');
   assert.equal(pushes[0].payload.aps.event, 'update');
-  assert.equal(pushes[0].payload.aps['content-state'].text, '約 3 分鐘後到達');
+  assert.equal(pushes[0].payload.aps['content-state'].minutes, 3);
+  assert.equal(pushes[0].payload.aps['content-state'].text, '約 3 分鐘後到達關閘');
   assert.doesNotMatch(JSON.stringify(pushes[0].payload), /stopsAway|stopCount|stopsLeft/);
 });
 
-test('a token that arrives before the five-minute push does not send early', async () => {
+test('a token that arrives before the first 20 second tick does not send early', async () => {
   const pushes = [];
   const timers = [];
+  let clock = 3_000_000;
   const book = createBoardingReminders({
-    now: () => 3_000_000,
+    now: () => clock,
     loadSegments: () => [{ fromSeq: 1, toSeq: 2, travelSeconds: 480, dwellSeconds: 0 }],
     credentials: () => ({ configured: true, bundleId: 'mo.mbka.bus', sandbox: false }),
     setTimer: (fn, ms) => {
@@ -243,6 +243,7 @@ test('a token that arrives before the five-minute push does not send early', asy
     route: '3A',
     dir: 0,
     targetSeq: 2,
+    stopName: 'Border Gate',
     lat: north(0),
     lng,
     lang: 'en',
@@ -250,11 +251,12 @@ test('a token that arrives before the five-minute push does not send early', asy
   });
   await book.register({ reminderId: 'wait', activityToken: 'later-token' });
   assert.equal(pushes.length, 0);
-  const pushTimer = timers.find((timer) => timer.ms === 180000);
-  await pushTimer.fn();
+  clock += 20000;
+  await timers[timers.length - 1].fn();
   assert.equal(pushes.length, 1);
   assert.equal(pushes[0].token, 'later-token');
-  assert.equal(pushes[0].payload.aps['content-state'].minutes, 5);
+  assert.equal(pushes[0].payload.aps['content-state'].minutes, 8);
+  assert.equal(pushes[0].payload.aps['content-state'].text, 'About 8 minutes to Border Gate');
 });
 
 test('the same reminder id does not schedule a second time', async () => {
@@ -283,7 +285,7 @@ test('the same reminder id does not schedule a second time', async () => {
   const second = await book.register({ ...body, activityToken: 'later-token' });
   assert.equal(first.body.reminderId, 'same');
   assert.equal(second.body.reminderId, 'same');
-  assert.equal(timers, 2);
+  assert.equal(timers, 1);
   assert.equal(book.reminders.get('same').activityToken, 'later-token');
 });
 
@@ -396,13 +398,66 @@ test('learned_eta hops become segment rows, including route 102', async () => {
   assert.notEqual(result.body.code, 'segment_times_missing');
 });
 
-test('planReminder uses five minutes as the push point', () => {
+test('planReminder counts down every 20 seconds instead of waiting for five minutes', () => {
   const later = planReminder(8 * 60);
-  assert.equal(later.pushDelaySeconds, 3 * 60);
-  assert.equal(later.pushMinutes, 5);
+  assert.equal(later.updateIntervalSeconds, 20);
+  assert.equal(later.nextDelaySeconds, 20);
+  assert.equal(later.minutesNow, 8);
   assert.equal(later.endDelaySeconds, 8 * 60);
   const close = planReminder(200);
-  assert.equal(close.pushDelaySeconds, 0);
-  assert.equal(close.pushMinutes, 3);
+  assert.equal(close.nextDelaySeconds, 20);
   assert.equal(close.minutesNow, 3);
+  const almost = planReminder(12);
+  assert.equal(almost.nextDelaySeconds, 12);
+  assert.equal(almost.minutesNow, 1);
+});
+
+test('cancel stops a later tick, and a new reminder replaces one with the same token', async () => {
+  const pushes = [];
+  const timers = [];
+  let clock = 7_000_000;
+  const book = createBoardingReminders({
+    now: () => clock,
+    loadSegments: () => [{ fromSeq: 1, toSeq: 2, travelSeconds: 300, dwellSeconds: 0 }],
+    credentials: () => ({ configured: true, bundleId: 'mo.mbka.bus', sandbox: false }),
+    setTimer: (fn, ms) => {
+      timers.push({ ms, fn });
+      return timers.length;
+    },
+    clearTimer: () => {},
+    sendPush: async (message) => {
+      pushes.push(message);
+      return { sent: true };
+    },
+  });
+  const body = {
+    route: '3A',
+    dir: 0,
+    targetSeq: 2,
+    stopName: 'Border Gate',
+    lat: north(0),
+    lng,
+    lang: 'en',
+    activityToken: 'phone-token',
+    stops: [stop(1, 0), stop(2, 500)],
+  };
+  await book.register({ ...body, reminderId: 'old' });
+  assert.equal(book.cancel('old').success, true);
+  clock += 20000;
+  await timers[0].fn();
+  assert.equal(pushes.length, 0);
+  assert.equal(book.reminders.has('old'), false);
+
+  await book.register({ ...body, reminderId: 'first' });
+  const firstTimer = timers[timers.length - 1];
+  await book.register({ ...body, reminderId: 'second', stopName: 'Ferry' });
+  assert.equal(book.reminders.has('first'), false);
+  assert.equal(book.reminders.has('second'), true);
+  clock += 20000;
+  await firstTimer.fn();
+  assert.equal(pushes.length, 0);
+  await timers[timers.length - 1].fn();
+  assert.equal(pushes.length, 1);
+  assert.equal(pushes[0].token, 'phone-token');
+  assert.equal(pushes[0].payload.aps['content-state'].text, 'About 5 minutes to Ferry');
 });

@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Boarding reminder: one bus, one estimate, one Apple Live Activity push.
+ * Boarding reminder: one bus, one estimate, then a Live Activity countdown.
  *
  * The phone chooses the nearest bus traveling toward the stop and sends that
  * bus's coordinates once. This module estimates the rest of the trip from
@@ -15,8 +15,8 @@
  * If neither source has the route, the reminder is refused with segment_times_missing.
  *
  * Drop-in for the Oracle host (~/macau-bus/server.js), same pattern as
- * route_shape.js. The app process must stay up: the five-minute and arrival
- * timers are in memory.
+ * route_shape.js. The app process must stay up: the 20-second countdown
+ * timer is in memory.
  *
  *   mountBoardingReminder(app, {
  *     shapeDir: __dirname,
@@ -39,7 +39,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const FIVE_MINUTES = 5 * 60;
+const UPDATE_INTERVAL_SECONDS = 20;
 const PASSED_METERS = 35;
 const LAT_METERS = 110540;
 const LNG_METERS = 111320 * Math.cos((22.2 * Math.PI) / 180);
@@ -180,41 +180,43 @@ function estimateArrivalSeconds({ lat, lng, targetSeq, stops, segments }) {
 function planReminder(remainingSeconds) {
   if (!(remainingSeconds > 0)) return { passed: true };
   const minutesNow = Math.max(1, Math.round(remainingSeconds / 60));
-  if (remainingSeconds <= FIVE_MINUTES) {
-    return {
-      passed: false,
-      pushDelaySeconds: 0,
-      pushMinutes: minutesNow,
-      endDelaySeconds: remainingSeconds,
-      minutesNow,
-    };
-  }
+  const nextDelaySeconds = Math.min(UPDATE_INTERVAL_SECONDS, remainingSeconds);
   return {
     passed: false,
-    pushDelaySeconds: remainingSeconds - FIVE_MINUTES,
-    pushMinutes: 5,
+    updateIntervalSeconds: UPDATE_INTERVAL_SECONDS,
+    nextDelaySeconds,
     endDelaySeconds: remainingSeconds,
     minutesNow,
   };
 }
 
-function minutesText(lang, minutes) {
-  const n = String(minutes);
-  if (lang === 'zhHans') return `约 ${n} 分钟后到达`;
-  if (lang === 'en') {
-    return minutes === 1 ? 'About 1 minute away' : `About ${n} minutes away`;
-  }
-  if (lang === 'pt') {
-    return minutes === 1 ? 'A cerca de 1 minuto' : `A cerca de ${n} minutos`;
-  }
-  return `約 ${n} 分鐘後到達`;
+function stopSuffix(stopName) {
+  return stopName ? String(stopName).trim() : '';
 }
 
-function arrivedText(lang) {
-  if (lang === 'zhHans') return '已到达';
-  if (lang === 'en') return 'Arrived';
-  if (lang === 'pt') return 'Chegou';
-  return '已到達';
+function minutesText(lang, minutes, stopName) {
+  const n = String(minutes);
+  const stop = stopSuffix(stopName);
+  if (lang === 'zhHans') {
+    return stop ? `约 ${n} 分钟后到达${stop}` : `约 ${n} 分钟后到达`;
+  }
+  if (lang === 'en') {
+    if (minutes === 1) return stop ? `About 1 minute to ${stop}` : 'About 1 minute away';
+    return stop ? `About ${n} minutes to ${stop}` : `About ${n} minutes away`;
+  }
+  if (lang === 'pt') {
+    if (minutes === 1) return stop ? `A cerca de 1 minuto até ${stop}` : 'A cerca de 1 minuto';
+    return stop ? `A cerca de ${n} minutos até ${stop}` : `A cerca de ${n} minutos`;
+  }
+  return stop ? `約 ${n} 分鐘後到達${stop}` : `約 ${n} 分鐘後到達`;
+}
+
+function arrivedText(lang, stopName) {
+  const stop = stopSuffix(stopName);
+  if (lang === 'zhHans') return stop ? `已到达${stop}` : '已到达';
+  if (lang === 'en') return stop ? `Arrived at ${stop}` : 'Arrived';
+  if (lang === 'pt') return stop ? `Chegou a ${stop}` : 'Chegou';
+  return stop ? `已到達${stop}` : '已到達';
 }
 
 /**
@@ -419,10 +421,14 @@ function createBoardingReminders(options = {}) {
   }
 
   function clearTimers(reminder) {
+    reminder.timerSerial = (reminder.timerSerial || 0) + 1;
     if (reminder.pushTimer) clearTimer(reminder.pushTimer);
-    if (reminder.endTimer) clearTimer(reminder.endTimer);
     reminder.pushTimer = null;
-    reminder.endTimer = null;
+  }
+
+  function remainingSeconds(reminder) {
+    const elapsed = Math.max(0, (now() - reminder.registeredAt) / 1000);
+    return reminder.initialRemainingSeconds - elapsed;
   }
 
   function publicResponse(reminder) {
@@ -433,9 +439,90 @@ function createBoardingReminders(options = {}) {
       text: reminder.text,
       startedAt: reminder.startedAt,
       pushConfigured: credentials().configured,
-      pushDelaySeconds: reminder.pushDelaySeconds,
-      endDelaySeconds: reminder.endDelaySeconds,
+      updateIntervalSeconds: UPDATE_INTERVAL_SECONDS,
+      pushDelaySeconds: Math.max(0, Math.round((reminder.nextDueAt - now()) / 1000)),
+      endDelaySeconds: reminder.initialRemainingSeconds,
     };
+  }
+
+  function cancelOne(reminder) {
+    if (!reminder || reminder.closed) return;
+    reminder.closed = true;
+    clearTimers(reminder);
+    reminders.delete(reminder.id);
+  }
+
+  function cancelConflicts(reminder) {
+    const activityToken = reminder.activityToken || '';
+    const pushToStartToken = reminder.pushToStartToken || '';
+    if (!activityToken && !pushToStartToken) return;
+    for (const other of [...reminders.values()]) {
+      if (other.id === reminder.id || other.closed) continue;
+      const sameActivity = activityToken && other.activityToken === activityToken;
+      const sameStart = pushToStartToken && other.pushToStartToken === pushToStartToken;
+      if (!sameActivity && !sameStart) continue;
+      cancelOne(other);
+    }
+  }
+
+  function scheduleTick(reminder) {
+    if (reminder.closed || !reminders.has(reminder.id)) return;
+    clearTimers(reminder);
+    const remaining = remainingSeconds(reminder);
+    if (!(remaining > 0)) {
+      reminder.nextDueAt = now();
+      const serial = reminder.timerSerial;
+      reminder.pushTimer = setTimer(() => {
+        if (reminder.timerSerial !== serial || reminder.closed) return;
+        return runTick(reminder);
+      }, 0);
+      return;
+    }
+    const delayMs = Math.round(Math.min(UPDATE_INTERVAL_SECONDS, remaining) * 1000);
+    reminder.nextDueAt = now() + delayMs;
+    const serial = reminder.timerSerial;
+    reminder.pushTimer = setTimer(() => {
+      if (reminder.timerSerial !== serial || reminder.closed) return;
+      return runTick(reminder);
+    }, delayMs);
+  }
+
+  async function finishReminder(reminder) {
+    if (reminder.closed) return;
+    const text = arrivedText(reminder.lang, reminder.stopName);
+    cancelOne(reminder);
+    await deliver(reminder, { event: 'end', minutes: 0, text });
+  }
+
+  async function runTick(reminder) {
+    if (reminder.closed || !reminders.has(reminder.id) || reminder.ticking) return;
+    reminder.ticking = true;
+    try {
+      const remaining = remainingSeconds(reminder);
+      if (!(remaining > 0)) {
+        await finishReminder(reminder);
+        return;
+      }
+      const minutes = Math.max(1, Math.round(remaining / 60));
+      reminder.minutesNow = minutes;
+      reminder.text = minutesText(reminder.lang, minutes, reminder.stopName);
+      if (!pushTarget(reminder)) {
+        reminder.pendingTokenPush = true;
+        scheduleTick(reminder);
+        return;
+      }
+      reminder.pendingTokenPush = false;
+      const result = await deliver(reminder, {
+        event: 'update',
+        minutes,
+        text: reminder.text,
+      });
+      if (result && result.sent) reminder.pushDelivered = true;
+      if (reminder.closed || !reminders.has(reminder.id)) return;
+      scheduleTick(reminder);
+    } finally {
+      reminder.ticking = false;
+    }
   }
 
   async function register(body) {
@@ -443,13 +530,14 @@ function createBoardingReminders(options = {}) {
     if (!reminderId) return { status: 400, body: { success: false, code: 'bad_request' } };
 
     const existing = reminders.get(reminderId);
-    if (existing) {
+    if (existing && !existing.closed) {
       if (body.activityToken) existing.activityToken = String(body.activityToken);
       if (body.pushToStartToken) existing.pushToStartToken = String(body.pushToStartToken);
-      // The first register can run before the phone has a push token. If the
-      // five-minute update is already due and was skipped, send it now.
-      if (!existing.pushDelivered && existing.sendUpdate && pushTarget(existing) && existing.pushDueAt <= now()) {
-        await existing.sendUpdate();
+      cancelConflicts(existing);
+      // A tick that already came due had no token. Send the current countdown
+      // now that the phone can receive it, instead of waiting out another 20s.
+      if ((existing.pendingTokenPush || existing.nextDueAt <= now()) && pushTarget(existing)) {
+        await runTick(existing);
       }
       return { status: 200, body: publicResponse(existing) };
     }
@@ -486,59 +574,39 @@ function createBoardingReminders(options = {}) {
     }
 
     const lang = body.lang || 'zh';
+    const stopName = body.stopName ? String(body.stopName) : '';
     const reminder = {
       id: reminderId,
       route: body.route ? String(body.route) : '',
-      stopName: body.stopName ? String(body.stopName) : '',
+      stopName,
       lang,
       activityToken: body.activityToken ? String(body.activityToken) : '',
       pushToStartToken: body.pushToStartToken ? String(body.pushToStartToken) : '',
       startedAt,
+      registeredAt: now(),
+      initialRemainingSeconds: remaining,
       minutesNow: plan.minutesNow,
-      text: minutesText(lang, plan.minutesNow),
-      pushDelaySeconds: plan.pushDelaySeconds,
-      endDelaySeconds: plan.endDelaySeconds,
-      pushMinutes: plan.pushMinutes,
-      pushDueAt: now() + Math.round(plan.pushDelaySeconds * 1000),
+      text: minutesText(lang, plan.minutesNow, stopName),
+      nextDueAt: now(),
+      pendingTokenPush: false,
       pushDelivered: false,
       startedRemotely: false,
+      closed: false,
+      ticking: false,
+      timerSerial: 0,
       pushTimer: null,
-      endTimer: null,
-      sendUpdate: null,
     };
-
-    const sendUpdate = async () => {
-      const result = await deliver(reminder, {
-        event: 'update',
-        minutes: reminder.pushMinutes,
-        text: minutesText(lang, reminder.pushMinutes),
-      });
-      if (result && result.sent) reminder.pushDelivered = true;
-      return result;
-    };
-    reminder.sendUpdate = sendUpdate;
-    if (plan.pushDelaySeconds <= 0) {
-      await sendUpdate();
-    } else {
-      reminder.pushTimer = setTimer(sendUpdate, Math.round(plan.pushDelaySeconds * 1000));
-    }
-    reminder.endTimer = setTimer(() => {
-      return deliver(reminder, { event: 'end', minutes: 0, text: arrivedText(lang) })
-        .finally(() => {
-          clearTimers(reminder);
-          reminders.delete(reminderId);
-        });
-    }, Math.round(plan.endDelaySeconds * 1000));
 
     reminders.set(reminderId, reminder);
+    cancelConflicts(reminder);
+    scheduleTick(reminder);
     return { status: 200, body: publicResponse(reminder) };
   }
 
   function cancel(reminderId) {
     const reminder = reminders.get(String(reminderId || ''));
     if (!reminder) return { success: true };
-    clearTimers(reminder);
-    reminders.delete(reminder.id);
+    cancelOne(reminder);
     return { success: true };
   }
 
@@ -566,7 +634,7 @@ function mountBoardingReminder(app, options = {}) {
 
 module.exports = {
   PASSED_METERS,
-  FIVE_MINUTES,
+  UPDATE_INTERVAL_SECONDS,
   estimateArrivalSeconds,
   planReminder,
   minutesText,

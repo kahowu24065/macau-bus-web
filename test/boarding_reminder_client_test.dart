@@ -371,4 +371,65 @@ void main() {
       bus.dispose();
     }
   });
+
+  testWidgets('a new stop ends the previous Live Activity and cancels that reminder', (tester) async {
+    final cancelled = <String>[];
+    var ends = 0;
+    final started = <String>[];
+    BoardingReminderClient.debugCancel = (id) async {
+      cancelled.add(id);
+    };
+    LiveActivityBridge.debugEnd = () async {
+      ends += 1;
+    };
+    LiveActivityBridge.debugStartActivity = ({
+      required String route,
+      required String stopName,
+      required int minutes,
+      required String text,
+    }) async {
+      started.add('$stopName|$text');
+      return const LiveActivityStart(started: true);
+    };
+    LiveActivityBridge.debugPushToStartToken = () async => null;
+    final bodies = <Map<String, dynamic>>[];
+    BoardingReminderClient.debugRegister = (body) async {
+      bodies.add(Map<String, dynamic>.from(body));
+      final stopName = body['stopName'] ?? '';
+      return BoardingReminderResponse(
+        ok: true,
+        minutes: 5,
+        text: '約 5 分鐘後到達$stopName',
+        startedAt: 1000,
+      );
+    };
+
+    final bus = BusController();
+    try {
+      await tester.pump();
+      await tester.pump();
+      bus.currentRoute = '3A';
+      bus.stopsList = [_stop(1, 0), _stop(2, 500), _stop(3, 1000)];
+      bus.allBusesList = [
+        Bus(busLicense: 'CLOSE', lat: _north(50), lng: _lng, speed: 20, currentStopSeq: 1),
+      ];
+
+      final first = await bus.setBoardingStop(2);
+      expect(first.started, isTrue);
+      expect(cancelled, isEmpty);
+      expect(ends, 0);
+      final firstId = bodies.single['reminderId'] as String;
+
+      final second = await bus.setBoardingStop(3);
+      expect(second.started, isTrue);
+      expect(bus.boardingStopSeq, 3);
+      expect(cancelled, [firstId]);
+      expect(ends, 1);
+      expect(bodies.last['reminderId'], isNot(firstId));
+      expect(bodies.last['targetSeq'], 3);
+      expect(started.last, 'Stop 3|約 5 分鐘後到達Stop 3');
+    } finally {
+      bus.dispose();
+    }
+  });
 }
