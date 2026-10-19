@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1438,7 +1439,7 @@ class BusController extends ChangeNotifier {
   static const double _mapIconStopKmh = 5;
 
   /// 跟最新 GPS。車速 0（或 5km/h 或以下）就停低；
-  /// 只有車郁緊先由嗰個 GPS 位再推前，大約 1 至 2 秒，然後停低等下一個定位。
+  /// 車郁緊就由嗰個 GPS 位沿路線推前，直到下一個定位。
   /// 超過 10 秒冇新資料就停，唔好再沿用舊車速。
   /// [now] 畀測試固定個鐘；平時用而家。
   bool advanceBusMotion([DateTime? now]) {
@@ -1521,7 +1522,7 @@ class BusController extends ChangeNotifier {
   }
 
   /// 新一次 GPS：投影到呢段路線，約 1 秒滑過去。
-  /// 之後車速 > 5km/h 先由嗰點再推，大約 2 秒；車停就停。
+  /// 之後車速 > 5km/h 就沿路線跟住車速行，直到下一個定位或 10 秒；車停就停。
   ({_BusLegMotion motion, bool moved}) _stepLeg({
     required Bus bus,
     required DateTime now,
@@ -1533,7 +1534,6 @@ class BusController extends ChangeNotifier {
   }) {
     const stopKmh = _mapIconStopKmh;
     const easeSeconds = 1.0;
-    const extrapolateSeconds = 2.0;
     const staleSeconds = 10.0;
 
     final fresh = prev == null || !prev.matchesFix(bus);
@@ -1601,12 +1601,7 @@ class BusController extends ChangeNotifier {
     final double renderLat;
     final double renderLng;
 
-    if (!fresh && !stopped && age > staleSeconds) {
-      final held = prev;
-      traveled = held.traveledMeters;
-      renderLat = held.renderLat;
-      renderLng = held.renderLng;
-    } else if (easedIn && age < easeSeconds) {
+    if (easedIn && age < easeSeconds) {
       final t = age / easeSeconds;
       renderLat = easeFromLat + (easeToLat - easeFromLat) * t;
       renderLng = easeFromLng + (easeToLng - easeFromLng) * t;
@@ -1617,10 +1612,13 @@ class BusController extends ChangeNotifier {
       renderLat = point.latitude;
       renderLng = point.longitude;
     } else {
+      // 由定位起計跟車速行。新定位滑入之後先計速度。
+      // 超過 staleSeconds 就停喺嗰一下嘅位置，等下一個唔同嘅 GPS。
       final delay = easedIn ? easeSeconds : 0.0;
-      final window = age > extrapolateSeconds ? extrapolateSeconds : age;
-      var predict = window - delay;
+      final maxPredict = staleSeconds - delay;
+      var predict = age - delay;
       if (predict < 0) predict = 0;
+      if (predict > maxPredict) predict = maxPredict;
       var meters = gpsMeters + fixSpeed * 1000 / 3600 * predict;
       if (meters > cap) meters = cap;
       if (meters < 0) meters = 0;
@@ -1729,6 +1727,8 @@ class BusController extends ChangeNotifier {
     return total > 0 ? total : null;
   }
 
+  /// 將 GPS 投到呢段路線上面最近嘅一點，而唔係最近嘅轉角。
+  /// 路線點疏嘅時候，貼轉角會將架車拉去站或者彎位。
   double _projectMeters(int iFrom, int iTo, double lat, double lng) {
     const distanceCalc = Distance();
     final point = LatLng(lat, lng);
@@ -1736,16 +1736,38 @@ class BusController extends ChangeNotifier {
     var bestAt = 0.0;
     var walked = 0.0;
     for (int i = iFrom; i < iTo; i++) {
-      final d = distanceCalc.as(LengthUnit.Meter, gpxRoutePoints[i], point);
+      final a = gpxRoutePoints[i];
+      final b = gpxRoutePoints[i + 1];
+      final segLen = distanceCalc.as(LengthUnit.Meter, a, b);
+      final t = _segmentFraction(a, b, point);
+      final proj = LatLng(
+        a.latitude + (b.latitude - a.latitude) * t,
+        a.longitude + (b.longitude - a.longitude) * t,
+      );
+      final d = distanceCalc.as(LengthUnit.Meter, proj, point);
       if (d < best) {
         best = d;
-        bestAt = walked;
+        bestAt = walked + segLen * t;
       }
-      walked += distanceCalc.as(LengthUnit.Meter, gpxRoutePoints[i], gpxRoutePoints[i + 1]);
+      walked += segLen;
     }
-    final endD = distanceCalc.as(LengthUnit.Meter, gpxRoutePoints[iTo], point);
-    if (endD < best) bestAt = walked;
     return bestAt;
+  }
+
+  double _segmentFraction(LatLng a, LatLng b, LatLng p) {
+    final lat0 = ((a.latitude + b.latitude) / 2) * math.pi / 180;
+    final cosLat = math.cos(lat0);
+    final ax = a.longitude * cosLat;
+    final bx = b.longitude * cosLat;
+    final px = p.longitude * cosLat;
+    final dx = bx - ax;
+    final dy = b.latitude - a.latitude;
+    final len2 = dx * dx + dy * dy;
+    if (len2 == 0) return 0;
+    var t = ((px - ax) * dx + (p.latitude - a.latitude) * dy) / len2;
+    if (t < 0) return 0;
+    if (t > 1) return 1;
+    return t;
   }
 
   double? _gpxMetersBetween(LatLng from, LatLng to) {
