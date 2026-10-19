@@ -569,6 +569,14 @@ class BusController extends ChangeNotifier {
     notifyListeners();
     final minutes = response.minutes ?? 0;
     final text = (response.text == null || response.text!.isEmpty) ? stopName : response.text!;
+    // endsAt drives Text(timerInterval:) on the Lock Screen so minutes keep
+    // ticking even when ActivityKit never hands us a push token (server then
+    // only ever logs tick_no_token).
+    final delaySeconds = response.endDelaySeconds ?? (minutes > 0 ? minutes * 60 : 0);
+    final endsAt = response.endsAt ??
+        (delaySeconds > 0
+            ? DateTime.now().millisecondsSinceEpoch / 1000.0 + delaySeconds
+            : null);
     // Activity.request itself is fast. The push token is not: it arrives later
     // on [LiveActivityBridge.onActivityToken] and is posted from there.
     final start = await LiveActivityBridge.startActivity(
@@ -576,6 +584,7 @@ class BusController extends ChangeNotifier {
       stopName: stopName,
       minutes: minutes,
       text: text,
+      endsAt: endsAt,
     );
     if (_boardingReminderId != reminderId) {
       await LiveActivityBridge.end();

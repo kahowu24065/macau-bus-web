@@ -1,4 +1,5 @@
 import ActivityKit
+import Foundation
 
 /// One attributes type for the boarding reminder.
 ///
@@ -7,8 +8,20 @@ import ActivityKit
 @available(iOS 16.1, *)
 struct BoardingActivityAttributes: ActivityAttributes {
   public struct ContentState: Codable, Hashable {
+    /// Predicted whole minutes at the last push/local update. Kept for older
+    /// payloads and as a fallback when [endsAt] is missing.
     var minutes: Int
     var text: String
+    /// Unix seconds when the bus is predicted to arrive. The widget counts
+    /// down from this with Text(timerInterval:) so the Lock Screen ticks
+    /// even when no Live Activity push token was ever posted to the server.
+    var endsAt: Double?
+
+    init(minutes: Int, text: String, endsAt: Double? = nil) {
+      self.minutes = minutes
+      self.text = text
+      self.endsAt = endsAt
+    }
   }
 
   var route: String

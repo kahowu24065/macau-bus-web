@@ -30,6 +30,10 @@ class BoardingReminderResponse {
   final String? text;
   final int? startedAt;
   final bool pushConfigured;
+  /// Seconds from registration until predicted arrival (server estimate).
+  final int? endDelaySeconds;
+  /// Unix seconds of predicted arrival when the server sent one.
+  final double? endsAt;
 
   const BoardingReminderResponse({
     required this.ok,
@@ -38,6 +42,8 @@ class BoardingReminderResponse {
     this.text,
     this.startedAt,
     this.pushConfigured = false,
+    this.endDelaySeconds,
+    this.endsAt,
   });
 }
 
@@ -85,6 +91,8 @@ class BoardingReminderClient {
           text: map['text']?.toString(),
           startedAt: _asInt(map['startedAt']),
           pushConfigured: map['pushConfigured'] == true,
+          endDelaySeconds: _asInt(map['endDelaySeconds']),
+          endsAt: _asDouble(map['endsAt']),
         );
       }
       return BoardingReminderResponse(
@@ -120,6 +128,13 @@ class BoardingReminderClient {
     if (value is int) return value;
     if (value is num) return value.round();
     if (value is String) return int.tryParse(value);
+    return null;
+  }
+
+  static double? _asDouble(dynamic value) {
+    if (value is double) return value;
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value);
     return null;
   }
 }

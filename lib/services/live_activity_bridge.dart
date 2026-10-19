@@ -73,10 +73,11 @@ class LiveActivityBridge {
     required String stopName,
     required int minutes,
     required String text,
+    double? endsAt,
   })? debugStartActivity;
 
   @visibleForTesting
-  static Future<void> Function({required int minutes, required String text})? debugUpdate;
+  static Future<void> Function({required int minutes, required String text, double? endsAt})? debugUpdate;
 
   @visibleForTesting
   static Future<void> Function()? debugEnd;
@@ -117,10 +118,17 @@ class LiveActivityBridge {
     required String stopName,
     required int minutes,
     required String text,
+    double? endsAt,
   }) async {
     final override = debugStartActivity;
     if (override != null) {
-      return override(route: route, stopName: stopName, minutes: minutes, text: text);
+      return override(
+        route: route,
+        stopName: stopName,
+        minutes: minutes,
+        text: text,
+        endsAt: endsAt,
+      );
     }
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) {
       return const LiveActivityStart.unavailable();
@@ -132,6 +140,7 @@ class LiveActivityBridge {
         'stopName': stopName,
         'minutes': minutes,
         'text': text,
+        if (endsAt != null) 'endsAt': endsAt,
       });
       final start = LiveActivityStart.fromChannel(raw);
       if (!start.started) {
@@ -144,10 +153,10 @@ class LiveActivityBridge {
     }
   }
 
-  static Future<void> update({required int minutes, required String text}) async {
+  static Future<void> update({required int minutes, required String text, double? endsAt}) async {
     final override = debugUpdate;
     if (override != null) {
-      await override(minutes: minutes, text: text);
+      await override(minutes: minutes, text: text, endsAt: endsAt);
       return;
     }
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
@@ -155,6 +164,7 @@ class LiveActivityBridge {
       await _channel.invokeMethod<void>('updateActivity', {
         'minutes': minutes,
         'text': text,
+        if (endsAt != null) 'endsAt': endsAt,
       });
     } catch (e) {
       debugPrint('updateActivity: $e');

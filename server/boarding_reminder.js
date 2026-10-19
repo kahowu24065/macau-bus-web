@@ -45,6 +45,13 @@ const LAT_METERS = 110540;
 const LNG_METERS = 111320 * Math.cos((22.2 * Math.PI) / 180);
 const BUNDLE_ID = 'mo.mbka.bus';
 
+function boardLog(msg, extra) {
+  try {
+    if (extra !== undefined) console.log(`[boarding] ${msg}`, extra);
+    else console.log(`[boarding] ${msg}`);
+  } catch (_) {}
+}
+
 function xy(lat, lng) {
   return { x: lng * LNG_METERS, y: lat * LAT_METERS };
 }
@@ -223,8 +230,9 @@ function arrivedText(lang, stopName) {
  * Live Activity payload. content-state is predicted minutes and that sentence.
  * It never includes a stop count.
  */
-function buildLiveActivityPayload({ event, minutes, text, route, stopName, nowSeconds }) {
+function buildLiveActivityPayload({ event, minutes, text, route, stopName, nowSeconds, endsAt }) {
   const contentState = { minutes, text };
+  if (Number.isFinite(endsAt) && endsAt > 0) contentState.endsAt = endsAt;
   const aps = {
     timestamp: nowSeconds,
     event,
@@ -408,6 +416,7 @@ function createBoardingReminders(options = {}) {
       route: reminder.route,
       stopName: reminder.stopName,
       nowSeconds: Math.floor(now() / 1000),
+      endsAt: Math.floor(now() / 1000) + Math.max(0, Math.round(remainingSeconds(reminder))),
     });
     if (target.event === 'start') reminder.startedRemotely = true;
     const message = {
@@ -432,6 +441,7 @@ function createBoardingReminders(options = {}) {
   }
 
   function publicResponse(reminder) {
+    const remaining = Math.max(0, Math.round(remainingSeconds(reminder)));
     return {
       success: true,
       reminderId: reminder.id,
@@ -441,7 +451,8 @@ function createBoardingReminders(options = {}) {
       pushConfigured: credentials().configured,
       updateIntervalSeconds: UPDATE_INTERVAL_SECONDS,
       pushDelaySeconds: Math.max(0, Math.round((reminder.nextDueAt - now()) / 1000)),
-      endDelaySeconds: reminder.initialRemainingSeconds,
+      endDelaySeconds: remaining,
+      endsAt: Math.floor(now() / 1000) + remaining,
     };
   }
 
@@ -508,6 +519,7 @@ function createBoardingReminders(options = {}) {
       reminder.text = minutesText(reminder.lang, minutes, reminder.stopName);
       if (!pushTarget(reminder)) {
         reminder.pendingTokenPush = true;
+        boardLog('tick_no_token', { id: reminder.id, minutes, remaining: Math.round(remaining) });
         scheduleTick(reminder);
         return;
       }
@@ -517,7 +529,12 @@ function createBoardingReminders(options = {}) {
         minutes,
         text: reminder.text,
       });
-      if (result && result.sent) reminder.pushDelivered = true;
+      if (result && result.sent) {
+        reminder.pushDelivered = true;
+        boardLog('tick_push_ok', { id: reminder.id, minutes });
+      } else {
+        boardLog('tick_push_fail', { id: reminder.id, minutes, reason: result && result.reason, status: result && result.status });
+      }
       if (reminder.closed || !reminders.has(reminder.id)) return;
       scheduleTick(reminder);
     } finally {
@@ -534,6 +551,13 @@ function createBoardingReminders(options = {}) {
       if (body.activityToken) existing.activityToken = String(body.activityToken);
       if (body.pushToStartToken) existing.pushToStartToken = String(body.pushToStartToken);
       cancelConflicts(existing);
+      if (body.activityToken || body.pushToStartToken) {
+        boardLog('token_attached', {
+          id: reminderId,
+          hasActivity: Boolean(existing.activityToken),
+          hasPushToStart: Boolean(existing.pushToStartToken),
+        });
+      }
       // A tick that already came due had no token. Send the current countdown
       // now that the phone can receive it, instead of waiting out another 20s.
       if ((existing.pendingTokenPush || existing.nextDueAt <= now()) && pushTarget(existing)) {
@@ -599,6 +623,14 @@ function createBoardingReminders(options = {}) {
 
     reminders.set(reminderId, reminder);
     cancelConflicts(reminder);
+    boardLog('registered', {
+      id: reminderId,
+      minutes: reminder.minutesNow,
+      remaining: Math.round(remaining),
+      hasActivity: Boolean(reminder.activityToken),
+      hasPushToStart: Boolean(reminder.pushToStartToken),
+      pushConfigured: credentials().configured,
+    });
     scheduleTick(reminder);
     return { status: 200, body: publicResponse(reminder) };
   }
