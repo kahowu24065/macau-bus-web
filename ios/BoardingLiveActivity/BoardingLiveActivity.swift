@@ -18,6 +18,10 @@ struct BoardingLiveActivityWidget: Widget {
       VStack(alignment: .leading, spacing: 6) {
         Text(context.attributes.route)
           .font(.headline)
+        if !context.attributes.stopName.isEmpty {
+          Text(context.attributes.stopName)
+            .font(.subheadline)
+        }
         Text(context.state.text)
           .font(.body)
       }
@@ -34,11 +38,19 @@ struct BoardingLiveActivityWidget: Widget {
             .font(.title2)
         }
         DynamicIslandExpandedRegion(.bottom) {
-          Text(context.state.text)
-            .font(.body)
+          VStack(alignment: .leading, spacing: 2) {
+            if !context.attributes.stopName.isEmpty {
+              Text(context.attributes.stopName)
+                .font(.headline)
+            }
+            Text(context.state.text)
+              .font(.body)
+          }
         }
       } compactLeading: {
-        Image(systemName: "bus")
+        Text(context.attributes.stopName.isEmpty ? context.attributes.route : context.attributes.stopName)
+          .font(.caption2)
+          .lineLimit(1)
       } compactTrailing: {
         Text(minuteLabel(context.state.minutes))
       } minimal: {

@@ -95,8 +95,8 @@ class LiveActivityBridge {
     });
   }
 
-  /// A push-to-start token lets the server show the Live Activity when the
-  /// estimate reaches about five minutes. Null when the phone cannot provide one.
+  /// A push-to-start token lets the server refresh the Live Activity while the
+  /// app is backgrounded. Null when the phone cannot provide one.
   static Future<String?> pushToStartToken() async {
     final override = debugPushToStartToken;
     if (override != null) return override();

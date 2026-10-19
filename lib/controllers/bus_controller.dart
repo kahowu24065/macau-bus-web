@@ -518,6 +518,12 @@ class BusController extends ChangeNotifier {
       );
     }
 
+    final previousId = _boardingReminderId ??
+        (await SharedPreferences.getInstance()).getString(_reminderIdKey);
+    if (previousId != null && previousId.isNotEmpty) {
+      await _clearBoardingReminder();
+    }
+
     final stopName = stop == null ? '' : stop.getLocalizedName(currentLang);
     final reminderId = 'br-${DateTime.now().microsecondsSinceEpoch}';
     final stopsPayload = [
