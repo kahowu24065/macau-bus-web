@@ -87,7 +87,8 @@ enum BoardingLiveActivityBridge {
     let state = BoardingActivityAttributes.ContentState(
       minutes: minutes,
       text: text,
-      endsAt: endsAt
+      endsAt: endsAt,
+      etaLabel: etaLabel
     )
     let attributes = BoardingActivityAttributes(route: route, stopName: stopName, etaLabel: etaLabel)
 
@@ -217,12 +218,14 @@ enum BoardingLiveActivityBridge {
     }
     let minutes = args["minutes"] as? Int ?? 0
     let text = args["text"] as? String ?? ""
+    let etaLabel = args["etaLabel"] as? String
     let endsAt = (args["endsAt"] as? Double)
       ?? (args["endsAt"] as? NSNumber)?.doubleValue
     let state = BoardingActivityAttributes.ContentState(
       minutes: minutes,
       text: text,
-      endsAt: endsAt
+      endsAt: endsAt,
+      etaLabel: etaLabel
     )
     Task {
       if #available(iOS 16.2, *) {

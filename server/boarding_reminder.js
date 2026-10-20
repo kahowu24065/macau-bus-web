@@ -234,11 +234,12 @@ function arrivedText(lang, stopName) {
 }
 
 /**
- * Live Activity payload. content-state is predicted minutes and a sentence
- * that labels them as the predicted arrival time. It never includes a stop count.
+ * Live Activity payload. content-state carries predicted minutes, the
+ * sentence, endsAt when known, and etaLabel for the widget. It never
+ * includes a stop count.
  */
 function buildLiveActivityPayload({ event, minutes, text, route, stopName, nowSeconds, endsAt, lang }) {
-  const contentState = { minutes, text };
+  const contentState = { minutes, text, etaLabel: arrivalLabel(lang) };
   if (Number.isFinite(endsAt) && endsAt > 0) contentState.endsAt = endsAt;
   const aps = {
     timestamp: nowSeconds,

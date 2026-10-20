@@ -78,7 +78,12 @@ class LiveActivityBridge {
   })? debugStartActivity;
 
   @visibleForTesting
-  static Future<void> Function({required int minutes, required String text, double? endsAt})? debugUpdate;
+  static Future<void> Function({
+    required int minutes,
+    required String text,
+    double? endsAt,
+    String? etaLabel,
+  })? debugUpdate;
 
   @visibleForTesting
   static Future<void> Function()? debugEnd;
@@ -157,10 +162,15 @@ class LiveActivityBridge {
     }
   }
 
-  static Future<void> update({required int minutes, required String text, double? endsAt}) async {
+  static Future<void> update({
+    required int minutes,
+    required String text,
+    double? endsAt,
+    String? etaLabel,
+  }) async {
     final override = debugUpdate;
     if (override != null) {
-      await override(minutes: minutes, text: text, endsAt: endsAt);
+      await override(minutes: minutes, text: text, endsAt: endsAt, etaLabel: etaLabel);
       return;
     }
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
@@ -169,6 +179,7 @@ class LiveActivityBridge {
         'minutes': minutes,
         'text': text,
         if (endsAt != null) 'endsAt': endsAt,
+        if (etaLabel != null && etaLabel.isNotEmpty) 'etaLabel': etaLabel,
       });
     } catch (e) {
       debugPrint('updateActivity: $e');
