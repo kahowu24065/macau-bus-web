@@ -84,10 +84,12 @@ test('push content is predicted minutes and does not include a stop count', () =
     text: minutesText('en', 5),
     route: '3A',
     stopName: 'Border Gate',
+    lang: 'en',
     nowSeconds: 1_700_000_000,
   });
   const state = payload.aps['content-state'];
-  assert.deepEqual(Object.keys(state).sort(), ['minutes', 'text']);
+  assert.deepEqual(Object.keys(state).sort(), ['etaLabel', 'minutes', 'text']);
+  assert.equal(state.etaLabel, 'Predicted arrival in');
   assert.equal(state.minutes, 5);
   assert.equal(state.text, 'Predicted arrival in 5 minutes');
   const encoded = JSON.stringify(payload);
@@ -116,6 +118,7 @@ test('a remote start puts the predicted-arrival label on the activity and the ba
     nowSeconds: 1_700_000_000,
   });
   assert.equal(payload.aps.attributes.etaLabel, '預測到站時間尚餘');
+  assert.equal(payload.aps['content-state'].etaLabel, '預測到站時間尚餘');
   assert.equal(payload.aps.alert.title, '3A');
   assert.equal(payload.aps.alert.body, '預測到站時間尚餘 3 分鐘 · 關閘');
   assert.equal(
@@ -180,6 +183,7 @@ test('updates every 20 seconds from the original estimate, then ends at the stop
   assert.equal(pushes[0].payload.aps.event, 'update');
   assert.equal(pushes[0].payload.aps['content-state'].minutes, 8);
   assert.ok(Number.isFinite(pushes[0].payload.aps['content-state'].endsAt));
+  assert.equal(pushes[0].payload.aps['content-state'].etaLabel, 'Predicted arrival in');
   assert.equal(pushes[0].payload.aps['content-state'].text, 'Predicted arrival in 8 minutes · Border Gate');
   assert.equal(pushes[0].topic, 'mo.mbka.bus.push-type.liveactivity');
   assert.doesNotMatch(JSON.stringify(pushes[0].payload), /stopsAway|stopCount|stopsLeft|paragens/);
@@ -244,6 +248,7 @@ test('a token that arrives after a missed tick sends the current countdown', asy
   assert.equal(pushes[0].token, 'abc123hex');
   assert.equal(pushes[0].payload.aps.event, 'update');
   assert.equal(pushes[0].payload.aps['content-state'].minutes, 3);
+  assert.equal(pushes[0].payload.aps['content-state'].etaLabel, '預測到站時間尚餘');
   assert.equal(pushes[0].payload.aps['content-state'].text, '預測到站時間尚餘 3 分鐘 · 關閘');
   assert.doesNotMatch(JSON.stringify(pushes[0].payload), /stopsAway|stopCount|stopsLeft/);
 });
