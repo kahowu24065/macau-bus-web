@@ -583,6 +583,8 @@ class BusController extends ChangeNotifier {
       text: text,
       endsAt: endsAt,
       etaLabel: _predictedArrivalLabel(currentLang),
+      arrivedText: boardingArrivedLabel(currentLang),
+      imminentText: boardingImminentLabel(currentLang),
     );
     if (_boardingReminderId != reminderId) {
       await LiveActivityBridge.end();

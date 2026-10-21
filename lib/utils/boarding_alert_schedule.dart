@@ -82,13 +82,18 @@ String boardingAlertTitle({required String lang, required String route}) {
   return _tr(lang, 'boarding_alarm');
 }
 
+String boardingArrivedLabel(String lang) => _tr(lang, 'boarding_arrived');
+
+String boardingImminentLabel(String lang) => _tr(lang, 'boarding_imminent');
+
 String boardingWarningBody(String lang, int minutes) {
+  if (minutes <= 1) return boardingImminentLabel(lang);
   return _tr(lang, 'boarding_alert_warning').replaceAll('@mins', '$minutes');
 }
 
 String boardingArrivalBody(String lang, String stopName) {
   final stop = stopName.trim();
-  if (stop.isEmpty) return _tr(lang, 'boarding_alert_arrived');
+  if (stop.isEmpty) return boardingArrivedLabel(lang);
   return _tr(lang, 'boarding_alert_arrived_stop').replaceAll('@stop', stop);
 }
 

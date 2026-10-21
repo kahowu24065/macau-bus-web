@@ -15,6 +15,7 @@ import Foundation
 enum BoardingLiveActivityBridge {
   static let channelName = "mbka/boarding_live_activity"
   private static var channel: FlutterMethodChannel?
+  private static var arrivalWatch: Task<Void, Never>?
 
   static func register(messenger: FlutterBinaryMessenger) {
     let channel = FlutterMethodChannel(name: channelName, binaryMessenger: messenger)
@@ -84,13 +85,23 @@ enum BoardingLiveActivityBridge {
     let etaLabel = args["etaLabel"] as? String
     let endsAt = (args["endsAt"] as? Double)
       ?? (args["endsAt"] as? NSNumber)?.doubleValue
+    let arrivedText = args["arrivedText"] as? String
+    let imminentText = args["imminentText"] as? String
     let state = BoardingActivityAttributes.ContentState(
       minutes: minutes,
       text: text,
       endsAt: endsAt,
-      etaLabel: etaLabel
+      etaLabel: etaLabel,
+      arrivedText: arrivedText,
+      imminentText: imminentText
     )
-    let attributes = BoardingActivityAttributes(route: route, stopName: stopName, etaLabel: etaLabel)
+    let attributes = BoardingActivityAttributes(
+      route: route,
+      stopName: stopName,
+      etaLabel: etaLabel,
+      arrivedText: arrivedText,
+      imminentText: imminentText
+    )
 
     let activity: Activity<BoardingActivityAttributes>
     let wantsPushToken: Bool
@@ -118,6 +129,7 @@ enum BoardingLiveActivityBridge {
       data.isEmpty ? nil : hex(data)
     }
     log("started id=\(activity.id) state=\(activity.activityState) push=\(wantsPushToken ? "token" : "none")")
+    watchArrival(activity, state: state)
     // The activity is already visible. Do not wait out the token stream before
     // telling Dart; a missing token must not look like a failed start.
     finishStart(result, started: true, token: immediate, error: nil)
@@ -140,6 +152,40 @@ enum BoardingLiveActivityBridge {
           log("no push token within 30s id=\(activity.id)")
         }
       }
+    }
+  }
+
+  /// Reloads the activity once, a minute before arrival, so the widget can
+  /// swap the countdown for 「快將到達」. The stale date is still the arrival
+  /// itself, which swaps that for 「已到達」 even if this task is suspended.
+  @available(iOS 16.1, *)
+  private static func watchArrival(
+    _ activity: Activity<BoardingActivityAttributes>,
+    state: BoardingActivityAttributes.ContentState
+  ) {
+    arrivalWatch?.cancel()
+    guard let arrival = state.predictedArrival() else { return }
+    let snapshot = state
+    arrivalWatch = Task {
+      let untilImminent = arrival.addingTimeInterval(-60).timeIntervalSinceNow
+      if untilImminent > 0 {
+        try? await Task.sleep(nanoseconds: UInt64(untilImminent * 1_000_000_000))
+        if Task.isCancelled { return }
+        await refreshActivity(activity, state: snapshot)
+      }
+    }
+  }
+
+  @available(iOS 16.1, *)
+  private static func refreshActivity(
+    _ activity: Activity<BoardingActivityAttributes>,
+    state: BoardingActivityAttributes.ContentState
+  ) async {
+    if activity.activityState != .active { return }
+    if #available(iOS 16.2, *) {
+      await activity.update(activityContent(state))
+    } else {
+      await activity.update(using: state)
     }
   }
 
@@ -231,11 +277,15 @@ enum BoardingLiveActivityBridge {
     let etaLabel = args["etaLabel"] as? String
     let endsAt = (args["endsAt"] as? Double)
       ?? (args["endsAt"] as? NSNumber)?.doubleValue
+    let arrivedText = args["arrivedText"] as? String
+    let imminentText = args["imminentText"] as? String
     let state = BoardingActivityAttributes.ContentState(
       minutes: minutes,
       text: text,
       endsAt: endsAt,
-      etaLabel: etaLabel
+      etaLabel: etaLabel,
+      arrivedText: arrivedText,
+      imminentText: imminentText
     )
     Task {
       if #available(iOS 16.2, *) {
@@ -248,6 +298,8 @@ enum BoardingLiveActivityBridge {
   }
 
   private static func endActivity(result: @escaping FlutterResult) {
+    arrivalWatch?.cancel()
+    arrivalWatch = nil
     guard #available(iOS 16.1, *),
           let activity = BoardingActivityTokenStore.shared.activity else {
       result(nil)

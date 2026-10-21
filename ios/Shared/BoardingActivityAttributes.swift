@@ -19,16 +19,30 @@ struct BoardingActivityAttributes: ActivityAttributes {
     /// Phrase in front of the remaining time, e.g. 「預測到站時間尚餘」.
     /// Content-state wins over the attribute copy so each push can refresh it.
     var etaLabel: String?
+    /// Selected-language 「已到達」. Nil on older payloads; the widget then
+    /// picks a phrase from the label language.
+    var arrivedText: String?
+    /// Selected-language 「快將到達」 for the last minute before arrival.
+    var imminentText: String?
 
-    init(minutes: Int, text: String, endsAt: Double? = nil, etaLabel: String? = nil) {
+    init(
+      minutes: Int,
+      text: String,
+      endsAt: Double? = nil,
+      etaLabel: String? = nil,
+      arrivedText: String? = nil,
+      imminentText: String? = nil
+    ) {
       self.minutes = minutes
       self.text = text
       self.endsAt = endsAt
       self.etaLabel = etaLabel
+      self.arrivedText = arrivedText
+      self.imminentText = imminentText
     }
 
     private enum CodingKeys: String, CodingKey {
-      case minutes, text, endsAt, etaLabel
+      case minutes, text, endsAt, etaLabel, arrivedText, imminentText
     }
 
     public init(from decoder: Decoder) throws {
@@ -43,6 +57,8 @@ struct BoardingActivityAttributes: ActivityAttributes {
         endsAt = nil
       }
       etaLabel = try container.decodeIfPresent(String.self, forKey: .etaLabel)
+      arrivedText = try container.decodeIfPresent(String.self, forKey: .arrivedText)
+      imminentText = try container.decodeIfPresent(String.self, forKey: .imminentText)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -51,6 +67,8 @@ struct BoardingActivityAttributes: ActivityAttributes {
       try container.encode(text, forKey: .text)
       try container.encodeIfPresent(endsAt, forKey: .endsAt)
       try container.encodeIfPresent(etaLabel, forKey: .etaLabel)
+      try container.encodeIfPresent(arrivedText, forKey: .arrivedText)
+      try container.encodeIfPresent(imminentText, forKey: .imminentText)
     }
 
     /// Predicted arrival instant. nil when endsAt is missing or not a timestamp.
@@ -66,4 +84,8 @@ struct BoardingActivityAttributes: ActivityAttributes {
   var stopName: String
   /// Same phrase, kept from activity start when a push omits content-state etaLabel.
   var etaLabel: String? = nil
+  /// 「已到達」 in the language selected when the reminder started.
+  var arrivedText: String? = nil
+  /// 「快將到達」 in that same language.
+  var imminentText: String? = nil
 }

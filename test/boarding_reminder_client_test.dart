@@ -203,6 +203,8 @@ void main() {
       required String text,
       double? endsAt,
       String? etaLabel,
+      String? arrivedText,
+      String? imminentText,
     }) async {
       return const LiveActivityStart(started: true);
     };
@@ -252,6 +254,8 @@ void main() {
       required String text,
       double? endsAt,
       String? etaLabel,
+      String? arrivedText,
+      String? imminentText,
     }) async {
       return const LiveActivityStart(started: true, token: 'abc123hex');
     };
@@ -298,6 +302,8 @@ void main() {
       required String text,
       double? endsAt,
       String? etaLabel,
+      String? arrivedText,
+      String? imminentText,
     }) async {
       return const LiveActivityStart(started: false, error: 'activities_disabled');
     };
@@ -345,6 +351,8 @@ void main() {
       required String text,
       double? endsAt,
       String? etaLabel,
+      String? arrivedText,
+      String? imminentText,
     }) async {
       return const LiveActivityStart(started: true);
     };
@@ -403,6 +411,8 @@ void main() {
       required String text,
       double? endsAt,
       String? etaLabel,
+      String? arrivedText,
+      String? imminentText,
     }) async {
       started.add('$stopName|$text|${etaLabel ?? ''}');
       return const LiveActivityStart(started: true);
@@ -467,6 +477,8 @@ void main() {
       required String text,
       double? endsAt,
       String? etaLabel,
+      String? arrivedText,
+      String? imminentText,
     }) async {
       return const LiveActivityStart(started: true);
     };
@@ -512,6 +524,7 @@ void main() {
       expect(scheduled[0].id, boardingWarningNotificationId);
       expect(scheduled[0].title, '102');
       expect(scheduled[0].body, '預測到站尚餘約 3 分鐘');
+      expect(boardingArrivedLabel('zh'), '已到達');
       final warningLead = scheduled[1].at.difference(scheduled[0].at);
       expect(warningLead.inMinutes, 3);
       expect(scheduled[1].id, boardingArrivalNotificationId);
@@ -535,6 +548,8 @@ void main() {
       required String text,
       double? endsAt,
       String? etaLabel,
+      String? arrivedText,
+      String? imminentText,
     }) async {
       return const LiveActivityStart(started: true);
     };
@@ -599,6 +614,64 @@ void main() {
     } finally {
       if (!busDisposed) bus.dispose();
       restored?.dispose();
+    }
+  });
+
+  testWidgets('boarding alerts and the Live Activity use the selected language', (tester) async {
+    LiveActivityBridge.debugPushToStartToken = () async => null;
+    String? arrived;
+    String? imminent;
+    String? eta;
+    LiveActivityBridge.debugStartActivity = ({
+      required String route,
+      required String stopName,
+      required int minutes,
+      required String text,
+      double? endsAt,
+      String? etaLabel,
+      String? arrivedText,
+      String? imminentText,
+    }) async {
+      eta = etaLabel;
+      arrived = arrivedText;
+      imminent = imminentText;
+      return const LiveActivityStart(started: true);
+    };
+    BoardingReminderClient.debugRegister = (body) async {
+      return BoardingReminderResponse(
+        ok: true,
+        minutes: 8,
+        text: 'in 8 min',
+        startedAt: 1000,
+        endsAt: DateTime.now().add(const Duration(minutes: 8)).millisecondsSinceEpoch / 1000.0,
+      );
+    };
+    final scheduled = <ScheduledBoardingAlert>[];
+    NotificationService.debugScheduleBoardingAlerts = (alerts) async {
+      scheduled
+        ..clear()
+        ..addAll(alerts);
+    };
+
+    final bus = BusController();
+    try {
+      await tester.pump();
+      await tester.pump();
+      bus.currentLang = 'en';
+      bus.currentRoute = '102';
+      bus.stopsList = [_stop(1, 0), _stop(2, 500), _stop(3, 1000)];
+      bus.allBusesList = [
+        Bus(busLicense: 'CLOSE', lat: _north(700), lng: _lng, speed: 20, currentStopSeq: 2),
+      ];
+
+      expect((await bus.setBoardingStop(3)).started, isTrue);
+      expect(eta, 'Predicted arrival in');
+      expect(arrived, 'Arrived');
+      expect(imminent, 'Arriving soon');
+      expect(scheduled[0].body, 'About 3 minutes until predicted arrival');
+      expect(scheduled[1].body, 'Arrived at Stop 3');
+    } finally {
+      bus.dispose();
     }
   });
 }
