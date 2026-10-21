@@ -14,12 +14,15 @@ import WidgetKit
 /// so the island cannot clip it away. The last minute and arrival replace it
 /// with 「快將到達」 and 「已到達」 in the selected language.
 ///
-/// The Dynamic Island does not set widgetURL and does not contain a Link.
-/// A URL there is a deep link, so the tap opens the app at that route.
-/// None is set: an island tap is not sent anywhere in the app. iOS expands
-/// the compact and minimal presentations on a touch and hold. A tap on the
-/// expanded presentation still opens the app; ActivityKit has no switch
-/// that turns that tap into the expand gesture.
+/// A compact or minimal tap launches MBKa. iOS owns that gesture: touch and
+/// hold the island, or swipe from its center toward either side, to expand
+/// it. No widgetURL, Link, or ActivityKit API turns the tap into the expand
+/// gesture, and the host app registers no Live Activity URL.
+///
+/// Expanded content is a plain button whose intent does not open the app, so
+/// a tap on that card stays on the island. The Lock Screen card has no URL
+/// either; tapping it still opens the app, which is the system behavior for
+/// that presentation.
 ///
 /// Those system timers keep running after endsAt. The activity's stale date
 /// is that instant, so the widget reloads into the arrived phrase. A stale
@@ -58,6 +61,8 @@ struct BoardingLiveActivityWidget: Widget {
         }
       }
       .frame(maxWidth: .infinity, alignment: .leading)
+      // 16pt already clears this card's corners. The expanded island's
+      // corner radius is larger, so that presentation has its own inset.
       .padding()
     } dynamicIsland: { context in
       let label = fullLabel(state: context.state, attributes: context.attributes)
@@ -68,50 +73,61 @@ struct BoardingLiveActivityWidget: Widget {
         label: label,
         phase: phase
       )
-      // Do not add widgetURL or Link. That deep-links the island into the app.
+      // Do not add widgetURL or Link on this island. Compact and minimal
+      // cannot host a button; iOS launches the app on that tap.
       return DynamicIsland {
         DynamicIslandExpandedRegion(.leading) {
-          ViewThatFits(in: .horizontal) {
-            HStack(spacing: 6) {
-              BoardingAppIcon(side: 18)
+          expandedStay(alignment: .topLeading, edges: .leading) {
+            ViewThatFits(in: .horizontal) {
+              HStack(spacing: 6) {
+                BoardingAppIcon(side: 18)
+                Text(context.attributes.route)
+                  .font(.headline)
+                  .lineLimit(1)
+                  .fixedSize(horizontal: true, vertical: false)
+              }
               Text(context.attributes.route)
                 .font(.headline)
                 .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
+                .minimumScaleFactor(0.6)
             }
-            Text(context.attributes.route)
-              .font(.headline)
-              .lineLimit(1)
-              .minimumScaleFactor(0.6)
           }
         }
         DynamicIslandExpandedRegion(.trailing) {
-          if phase == .counting {
-            liveClock(context.state, label: label, font: .title3, width: 72)
-          } else {
-            statusLine(phrase, font: .title3.weight(.bold))
-          }
-        }
-        DynamicIslandExpandedRegion(.bottom) {
-          VStack(alignment: .leading, spacing: 2) {
+          expandedStay(alignment: .topTrailing, edges: .trailing) {
             if phase == .counting {
-              Text(label)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-              timeRow(context.state, label: label, prominent: false)
+              liveClock(context.state, label: label, font: .title3, width: 72)
             } else {
               statusLine(phrase, font: .title3.weight(.bold))
             }
-            if !context.attributes.stopName.isEmpty {
-              Text(context.attributes.stopName)
-                .font(.caption)
-                .lineLimit(1)
+          }
+        }
+        DynamicIslandExpandedRegion(.bottom) {
+          expandedStay(alignment: .topLeading, edges: .horizontal) {
+            VStack(alignment: .leading, spacing: 2) {
+              if phase == .counting {
+                Text(label)
+                  .font(.subheadline.weight(.semibold))
+                  .lineLimit(2)
+                  .fixedSize(horizontal: false, vertical: true)
+                timeRow(context.state, label: label, prominent: false)
+              } else {
+                statusLine(phrase, font: .title3.weight(.bold))
+              }
+              if !context.attributes.stopName.isEmpty {
+                Text(context.attributes.stopName)
+                  .font(.caption)
+                  .lineLimit(1)
+              }
             }
           }
         }
       } compactLeading: {
+        // The compact cap is round. A few points keep the icon off it.
+        // The trailing countdown is not padded: its fixed width is what
+        // keeps the timer from being clipped.
         islandCompactLeading(label: label, phase: phase, phrase: phrase)
+          .padding(.leading, 4)
       } compactTrailing: {
         // Always a view. An empty trailing region lets the island drop the
         // countdown that used to sit here (「14分」 / the live timer).
@@ -145,6 +161,36 @@ private struct BoardingAppIcon: View {
       .frame(width: side, height: side)
       .clipShape(RoundedRectangle(cornerRadius: side * 0.22, style: .continuous))
       .accessibilityHidden(true)
+  }
+}
+
+/// How far expanded content sits inside the island's outer curve.
+/// The system margin is rectangular, and the frame is round, so the icon
+/// was drawing under the left corner.
+private let expandedOuterInset: CGFloat = 16
+
+/// Fills one expanded region with a button that does not open the app.
+/// Compact and minimal are left alone: a button there is not the island's
+/// tap target, and iOS still launches the app. `edges` is the outer side
+/// that needs the extra inset: leading, trailing, or both for the bottom.
+@ViewBuilder
+private func expandedStay<V: View>(
+  alignment: Alignment,
+  edges: Edge.Set,
+  @ViewBuilder content: () -> V
+) -> some View {
+  if #available(iOS 17.0, *) {
+    Button(intent: BoardingIslandStayIntent()) {
+      content()
+        .padding(edges, expandedOuterInset)
+    }
+    .buttonStyle(.plain)
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
+    .contentShape(Rectangle())
+    .accessibilityRemoveTraits(.isButton)
+  } else {
+    content()
+      .padding(edges, expandedOuterInset)
   }
 }
 
