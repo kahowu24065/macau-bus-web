@@ -32,7 +32,7 @@ struct BoardingLiveActivityWidget: Widget {
       .padding()
     } dynamicIsland: { context in
       let label = fullLabel(state: context.state, attributes: context.attributes)
-      DynamicIsland {
+      return DynamicIsland {
         DynamicIslandExpandedRegion(.leading) {
           Text(context.attributes.route)
             .font(.headline)
