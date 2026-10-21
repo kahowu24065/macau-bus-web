@@ -11,16 +11,22 @@ class BoardingReminderOutcome {
 
   /// [messageKey] is set when the reminder started but the Live Activity did not.
   /// [detail] is the short ActivityKit code, for the snackbar and device logs.
-  const BoardingReminderOutcome.started({this.messageKey, this.detail}) : started = true;
+  /// [minutes] is how long until the bus on the first card row arrives.
+  const BoardingReminderOutcome.started({this.messageKey, this.detail, this.minutes})
+      : started = true;
 
-  const BoardingReminderOutcome.failed(this.messageKey, {this.detail}) : started = false;
+  const BoardingReminderOutcome.failed(this.messageKey, {this.detail})
+      : started = false,
+        minutes = null;
 
   const BoardingReminderOutcome.cleared()
       : started = false,
         messageKey = null,
-        detail = null;
+        detail = null,
+        minutes = null;
 
   final String? detail;
+  final int? minutes;
 }
 
 class BoardingReminderResponse {

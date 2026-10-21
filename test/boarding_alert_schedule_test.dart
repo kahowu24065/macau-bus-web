@@ -125,4 +125,14 @@ void main() {
     expect(boardingArrivedLabel('en'), 'Arrived');
     expect(boardingImminentLabel('en'), 'Arriving soon');
   });
+
+  test('the tap message says how far the tracked bus is', () {
+    expect(boardingTrackedAwayBody('zh', 9), '追蹤中的巴士約 9 分鐘後到達');
+    expect(boardingTrackedAwayBody('zhHans', 9), '追踪中的巴士约 9 分钟后到达');
+    expect(boardingTrackedAwayBody('en', 9), 'The tracked bus is about 9 minutes away');
+    expect(boardingTrackedAwayBody('pt', 9), 'O autocarro seguido chega dentro de cerca de 9 minutos');
+    expect(boardingTrackedAwayBody('zh', 1), '快將到達');
+    expect(boardingTrackedAwayBody('en', 0), 'Arrived');
+    expect(boardingTrackedAwayBody('pt', 1), 'Quase a chegar');
+  });
 }

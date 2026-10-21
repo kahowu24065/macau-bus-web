@@ -1,7 +1,12 @@
 import 'dart:async';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:macau_bus_app/controllers/background_controller.dart';
 import 'package:macau_bus_app/controllers/bus_controller.dart';
+import 'package:macau_bus_app/controllers/language_controller.dart';
+import 'package:macau_bus_app/controllers/location_controller.dart';
+import 'package:macau_bus_app/controllers/navigation_controller.dart';
 import 'package:macau_bus_app/models/bus.dart';
 import 'package:macau_bus_app/models/bus_stop.dart';
 import 'package:macau_bus_app/services/boarding_reminder_client.dart';
@@ -10,6 +15,8 @@ import 'package:macau_bus_app/services/live_activity_bridge.dart';
 import 'package:macau_bus_app/services/notification_service.dart';
 import 'package:macau_bus_app/services/open_data_config.dart';
 import 'package:macau_bus_app/utils/boarding_alert_schedule.dart';
+import 'package:macau_bus_app/views/screens/bus_route_screen.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const double _lat0 = 22.19;
@@ -675,7 +682,7 @@ void main() {
     }
   });
 
-  testWidgets('the Live Activity follows the chosen bus realtime ETA', (tester) async {
+  testWidgets('the Live Activity follows the first stop-card bus', (tester) async {
     var etaCalls = 0;
     List<Bus> nextBuses = const [];
     BusApiService.debugFetchBusETA = (
@@ -762,7 +769,9 @@ void main() {
         placed('FAR', 1, eta: 20),
       ];
 
-      expect((await bus.setBoardingStop(3)).started, isTrue);
+      final started = await bus.setBoardingStop(3);
+      expect(started.started, isTrue);
+      expect(started.minutes, 9);
 
       expect(etaCalls, 0);
       expect(startedMinutes, 9);
@@ -790,17 +799,22 @@ void main() {
       ];
       await bus.fetchBusETA();
       expect(updates, hasLength(1));
-      expect(updates.single.minutes, 6);
+      expect(updates.single.minutes, 1);
       expect(updates.single.arrived, '已到達');
-      final sixMin = DateTime.now().millisecondsSinceEpoch / 1000.0 + 6 * 60;
-      expect((updates.single.endsAt! - sixMin).abs(), lessThan(5));
+      final oneMin = DateTime.now().millisecondsSinceEpoch / 1000.0 + 60;
+      expect((updates.single.endsAt! - oneMin).abs(), lessThan(5));
       expect(bodies, hasLength(2));
       expect(bodies.last.containsKey('busLicense'), isFalse);
       expect(bodies.last['reminderId'], bodies.first['reminderId']);
-      expect(((bodies.last['realtimeEndsAt'] as num) - sixMin).abs(), lessThan(5));
+      expect(((bodies.last['realtimeEndsAt'] as num) - oneMin).abs(), lessThan(5));
+      expect(scheduled[0].body, '快將到達');
       expect(
         scheduled[1].at.difference(DateTime.now()).inSeconds,
-        inInclusiveRange(5 * 60, 6 * 60 + 5),
+        inInclusiveRange(45, 70),
+      );
+      expect(
+        (await SharedPreferences.getInstance()).getString('boarding_reminder_license'),
+        'NEAR',
       );
 
       bus.selectedStopSeq = 2;
@@ -830,5 +844,177 @@ void main() {
       bus.stopAutoRefresh();
       bus.dispose();
     }
+  });
+
+  testWidgets('a new first bus is followed even when the minutes match', (tester) async {
+    List<Bus> nextBuses = const [];
+    BusApiService.debugFetchBusETA = (
+      String route,
+      int dir, {
+      int? targetStopSeq,
+      String lang = 'zh',
+    }) async {
+      return {'success': true, 'allBuses': nextBuses};
+    };
+    final updates = <String>[];
+    LiveActivityBridge.debugUpdate = ({
+      required int minutes,
+      required String text,
+      double? endsAt,
+      String? etaLabel,
+      String? arrivedText,
+      String? imminentText,
+    }) async {
+      updates.add('$minutes');
+    };
+    LiveActivityBridge.debugPushToStartToken = () async => null;
+    BoardingReminderClient.debugRegister = (body) async {
+      return const BoardingReminderResponse(ok: true, minutes: 9, startedAt: 1, endDelaySeconds: 540);
+    };
+
+    Bus placed(String license, int seq) {
+      return Bus(
+        busLicense: license,
+        lat: _north(seq == 2 ? 700 : 50),
+        lng: _lng,
+        speed: 20,
+        currentStopSeq: seq,
+        etaMinutes: 9,
+      );
+    }
+
+    final bus = BusController();
+    try {
+      await tester.pump();
+      await tester.pump();
+      bus.currentRoute = '102';
+      bus.selectedStopSeq = 3;
+      bus.stopsList = [_stop(1, 0), _stop(2, 500), _stop(3, 1000)];
+      bus.allBusesList = [placed('CLOSE', 2), placed('FAR', 1)];
+
+      expect((await bus.setBoardingStop(3)).minutes, 9);
+      nextBuses = [placed('OTHER', 2), placed('CLOSE', 1)];
+      await bus.fetchBusETA();
+
+      expect(updates, ['9']);
+      expect(
+        (await SharedPreferences.getInstance()).getString('boarding_reminder_license'),
+        'OTHER',
+      );
+    } finally {
+      bus.stopAutoRefresh();
+      bus.dispose();
+    }
+  });
+
+  testWidgets('a bus already at the stop still starts when the server says passed', (tester) async {
+    BoardingReminderClient.debugRegister = (body) async {
+      return const BoardingReminderResponse(ok: false, code: 'passed');
+    };
+    int? startedMinutes;
+    LiveActivityBridge.debugStartActivity = ({
+      required String route,
+      required String stopName,
+      required int minutes,
+      required String text,
+      double? endsAt,
+      String? etaLabel,
+      String? arrivedText,
+      String? imminentText,
+    }) async {
+      startedMinutes = minutes;
+      return const LiveActivityStart(started: true);
+    };
+    LiveActivityBridge.debugPushToStartToken = () async => null;
+
+    final bus = BusController();
+    try {
+      await tester.pump();
+      await tester.pump();
+      bus.currentRoute = '102';
+      bus.selectedStopSeq = 3;
+      bus.stopsList = [_stop(1, 0), _stop(2, 500), _stop(3, 1000)];
+      bus.allBusesList = [
+        Bus(
+          busLicense: 'HERE',
+          lat: _north(1000),
+          lng: _lng,
+          speed: 0,
+          currentStopSeq: 3,
+          atStop: true,
+          etaMinutes: 0,
+        ),
+      ];
+
+      final outcome = await bus.setBoardingStop(3);
+      expect(outcome.started, isTrue);
+      expect(outcome.minutes, 0);
+      expect(outcome.messageKey, isNull);
+      expect(startedMinutes, 0);
+      expect(bus.boardingStopSeq, 3);
+    } finally {
+      bus.dispose();
+    }
+  });
+
+  testWidgets('tapping boarding tells how many minutes the first bus is away', (tester) async {
+    BoardingReminderClient.debugRegister = (body) async {
+      return const BoardingReminderResponse(ok: true, minutes: 14, text: '約 14 分鐘', startedAt: 1);
+    };
+    final lang = LanguageController();
+    final bus = BusController();
+    final location = LocationController();
+    final background = BackgroundController();
+    final navigation = NavigationController();
+    bus.currentRoute = '3';
+    bus.currentLang = 'zh';
+    bus.stopsList = [for (var i = 1; i <= 5; i++) _stop(i, i * 200)];
+    bus.selectedStopSeq = 5;
+    bus.etaData = {'status': '約 4 分鐘'};
+    bus.allBusesList = [
+      Bus(busLicense: 'MB-1', lat: _north(600), lng: _lng, speed: 20, currentStopSeq: 3, etaMinutes: 4),
+      Bus(busLicense: 'MB-2', lat: _north(100), lng: _lng, speed: 20, currentStopSeq: 1, etaMinutes: 11),
+    ];
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<BusController>.value(value: bus),
+          ChangeNotifierProvider<LanguageController>.value(value: lang),
+          ChangeNotifierProvider<LocationController>.value(value: location),
+          ChangeNotifierProvider<BackgroundController>.value(value: background),
+          ChangeNotifierProvider<NavigationController>.value(value: navigation),
+        ],
+        child: MaterialApp(
+          theme: ThemeData.dark(),
+          home: const BusRouteScreen(),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final stopName = find.text('Stop 5 (S5)');
+    expect(stopName, findsOneWidget);
+    await tester.ensureVisible(stopName);
+    await tester.pump();
+    final row = find.ancestor(of: stopName, matching: find.byType(Row)).first;
+    await tester.tap(find.descendant(of: row, matching: find.byIcon(Icons.notifications_none)));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('上車提醒'), findsOneWidget);
+    await tester.tap(find.text('上車提醒'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(find.text('追蹤中的巴士約 4 分鐘後到達'), findsOneWidget);
+    expect(find.text('約 14 分鐘'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    bus.dispose();
+    lang.dispose();
+    location.dispose();
+    background.dispose();
+    navigation.dispose();
   });
 }
