@@ -204,6 +204,9 @@ enum BoardingLiveActivityBridge {
     state: BoardingActivityAttributes.ContentState,
     pushToken: Bool
   ) throws -> Activity<BoardingActivityAttributes> {
+    // No URL is passed. Activity.request has no deep-link parameter, and the
+    // widget does not set widgetURL. A compact tap still opens the app
+    // because iOS, not this request, owns that gesture.
     // Current ActivityKit exposes PushType on its own. Activity<T>.PushType
     // does not compile on the Xcode Codemagic uses.
     if #available(iOS 16.2, *) {

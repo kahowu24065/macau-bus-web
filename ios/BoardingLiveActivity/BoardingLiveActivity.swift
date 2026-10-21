@@ -14,12 +14,15 @@ import WidgetKit
 /// so the island cannot clip it away. The last minute and arrival replace it
 /// with 「快將到達」 and 「已到達」 in the selected language.
 ///
-/// The Dynamic Island does not set widgetURL and does not contain a Link.
-/// A URL there is a deep link, so the tap opens the app at that route.
-/// None is set: an island tap is not sent anywhere in the app. iOS expands
-/// the compact and minimal presentations on a touch and hold. A tap on the
-/// expanded presentation still opens the app; ActivityKit has no switch
-/// that turns that tap into the expand gesture.
+/// A compact or minimal tap launches MBKa. iOS owns that gesture: touch and
+/// hold the island, or swipe from its center toward either side, to expand
+/// it. No widgetURL, Link, or ActivityKit API turns the tap into the expand
+/// gesture, and the host app registers no Live Activity URL.
+///
+/// Expanded content is a plain button whose intent does not open the app, so
+/// a tap on that card stays on the island. The Lock Screen card has no URL
+/// either; tapping it still opens the app, which is the system behavior for
+/// that presentation.
 ///
 /// Those system timers keep running after endsAt. The activity's stale date
 /// is that instant, so the widget reloads into the arrived phrase. A stale
@@ -68,45 +71,52 @@ struct BoardingLiveActivityWidget: Widget {
         label: label,
         phase: phase
       )
-      // Do not add widgetURL or Link. That deep-links the island into the app.
+      // Do not add widgetURL or Link on this island. Compact and minimal
+      // cannot host a button; iOS launches the app on that tap.
       return DynamicIsland {
         DynamicIslandExpandedRegion(.leading) {
-          ViewThatFits(in: .horizontal) {
-            HStack(spacing: 6) {
-              BoardingAppIcon(side: 18)
+          expandedStay(alignment: .topLeading) {
+            ViewThatFits(in: .horizontal) {
+              HStack(spacing: 6) {
+                BoardingAppIcon(side: 18)
+                Text(context.attributes.route)
+                  .font(.headline)
+                  .lineLimit(1)
+                  .fixedSize(horizontal: true, vertical: false)
+              }
               Text(context.attributes.route)
                 .font(.headline)
                 .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
+                .minimumScaleFactor(0.6)
             }
-            Text(context.attributes.route)
-              .font(.headline)
-              .lineLimit(1)
-              .minimumScaleFactor(0.6)
           }
         }
         DynamicIslandExpandedRegion(.trailing) {
-          if phase == .counting {
-            liveClock(context.state, label: label, font: .title3, width: 72)
-          } else {
-            statusLine(phrase, font: .title3.weight(.bold))
-          }
-        }
-        DynamicIslandExpandedRegion(.bottom) {
-          VStack(alignment: .leading, spacing: 2) {
+          expandedStay(alignment: .topTrailing) {
             if phase == .counting {
-              Text(label)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-              timeRow(context.state, label: label, prominent: false)
+              liveClock(context.state, label: label, font: .title3, width: 72)
             } else {
               statusLine(phrase, font: .title3.weight(.bold))
             }
-            if !context.attributes.stopName.isEmpty {
-              Text(context.attributes.stopName)
-                .font(.caption)
-                .lineLimit(1)
+          }
+        }
+        DynamicIslandExpandedRegion(.bottom) {
+          expandedStay(alignment: .topLeading) {
+            VStack(alignment: .leading, spacing: 2) {
+              if phase == .counting {
+                Text(label)
+                  .font(.subheadline.weight(.semibold))
+                  .lineLimit(2)
+                  .fixedSize(horizontal: false, vertical: true)
+                timeRow(context.state, label: label, prominent: false)
+              } else {
+                statusLine(phrase, font: .title3.weight(.bold))
+              }
+              if !context.attributes.stopName.isEmpty {
+                Text(context.attributes.stopName)
+                  .font(.caption)
+                  .lineLimit(1)
+              }
             }
           }
         }
@@ -145,6 +155,27 @@ private struct BoardingAppIcon: View {
       .frame(width: side, height: side)
       .clipShape(RoundedRectangle(cornerRadius: side * 0.22, style: .continuous))
       .accessibilityHidden(true)
+  }
+}
+
+/// Fills one expanded region with a button that does not open the app.
+/// Compact and minimal are left alone: a button there is not the island's
+/// tap target, and iOS still launches the app.
+@ViewBuilder
+private func expandedStay<V: View>(
+  alignment: Alignment,
+  @ViewBuilder content: () -> V
+) -> some View {
+  if #available(iOS 17.0, *) {
+    Button(intent: BoardingIslandStayIntent()) {
+      content()
+    }
+    .buttonStyle(.plain)
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
+    .contentShape(Rectangle())
+    .accessibilityRemoveTraits(.isButton)
+  } else {
+    content()
   }
 }
 
