@@ -61,6 +61,8 @@ struct BoardingLiveActivityWidget: Widget {
         }
       }
       .frame(maxWidth: .infinity, alignment: .leading)
+      // 16pt already clears this card's corners. The expanded island's
+      // corner radius is larger, so that presentation has its own inset.
       .padding()
     } dynamicIsland: { context in
       let label = fullLabel(state: context.state, attributes: context.attributes)
@@ -75,7 +77,7 @@ struct BoardingLiveActivityWidget: Widget {
       // cannot host a button; iOS launches the app on that tap.
       return DynamicIsland {
         DynamicIslandExpandedRegion(.leading) {
-          expandedStay(alignment: .topLeading) {
+          expandedStay(alignment: .topLeading, edges: .leading) {
             ViewThatFits(in: .horizontal) {
               HStack(spacing: 6) {
                 BoardingAppIcon(side: 18)
@@ -92,7 +94,7 @@ struct BoardingLiveActivityWidget: Widget {
           }
         }
         DynamicIslandExpandedRegion(.trailing) {
-          expandedStay(alignment: .topTrailing) {
+          expandedStay(alignment: .topTrailing, edges: .trailing) {
             if phase == .counting {
               liveClock(context.state, label: label, font: .title3, width: 72)
             } else {
@@ -101,7 +103,7 @@ struct BoardingLiveActivityWidget: Widget {
           }
         }
         DynamicIslandExpandedRegion(.bottom) {
-          expandedStay(alignment: .topLeading) {
+          expandedStay(alignment: .topLeading, edges: .horizontal) {
             VStack(alignment: .leading, spacing: 2) {
               if phase == .counting {
                 Text(label)
@@ -121,7 +123,11 @@ struct BoardingLiveActivityWidget: Widget {
           }
         }
       } compactLeading: {
+        // The compact cap is round. A few points keep the icon off it.
+        // The trailing countdown is not padded: its fixed width is what
+        // keeps the timer from being clipped.
         islandCompactLeading(label: label, phase: phase, phrase: phrase)
+          .padding(.leading, 4)
       } compactTrailing: {
         // Always a view. An empty trailing region lets the island drop the
         // countdown that used to sit here (「14分」 / the live timer).
@@ -158,17 +164,25 @@ private struct BoardingAppIcon: View {
   }
 }
 
+/// How far expanded content sits inside the island's outer curve.
+/// The system margin is rectangular, and the frame is round, so the icon
+/// was drawing under the left corner.
+private let expandedOuterInset: CGFloat = 16
+
 /// Fills one expanded region with a button that does not open the app.
 /// Compact and minimal are left alone: a button there is not the island's
-/// tap target, and iOS still launches the app.
+/// tap target, and iOS still launches the app. `edges` is the outer side
+/// that needs the extra inset: leading, trailing, or both for the bottom.
 @ViewBuilder
 private func expandedStay<V: View>(
   alignment: Alignment,
+  edges: Edge.Set,
   @ViewBuilder content: () -> V
 ) -> some View {
   if #available(iOS 17.0, *) {
     Button(intent: BoardingIslandStayIntent()) {
       content()
+        .padding(edges, expandedOuterInset)
     }
     .buttonStyle(.plain)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
@@ -176,6 +190,7 @@ private func expandedStay<V: View>(
     .accessibilityRemoveTraits(.isButton)
   } else {
     content()
+      .padding(edges, expandedOuterInset)
   }
 }
 
