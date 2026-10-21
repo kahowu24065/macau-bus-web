@@ -15,6 +15,7 @@ import '../services/notification_service.dart';
 import '../services/background_tracker_service.dart';
 import '../services/boarding_reminder_client.dart';
 import '../services/live_activity_bridge.dart';
+import '../utils/boarding_alert_schedule.dart';
 import '../utils/boarding_bus_choice.dart';
 import '../data/local_route_catalog.dart';
 
@@ -570,14 +571,9 @@ class BusController extends ChangeNotifier {
     notifyListeners();
     final minutes = response.minutes ?? 0;
     final text = (response.text == null || response.text!.isEmpty) ? stopName : response.text!;
-    // endsAt drives Text(timerInterval:) on the Lock Screen so minutes keep
-    // ticking even when ActivityKit never hands us a push token (server then
-    // only ever logs tick_no_token).
-    final delaySeconds = response.endDelaySeconds ?? (minutes > 0 ? minutes * 60 : 0);
-    final endsAt = response.endsAt ??
-        (delaySeconds > 0
-            ? DateTime.now().millisecondsSinceEpoch / 1000.0 + delaySeconds
-            : null);
+    // endsAt drives the Lock Screen countdown and the local banners. Both are
+    // armed here, before any Live Activity push token exists.
+    final endsAt = _endsAtFromResponse(response);
     // Activity.request itself is fast. The push token is not: it arrives later
     // on [LiveActivityBridge.onActivityToken] and is posted from there.
     final start = await LiveActivityBridge.startActivity(
@@ -590,6 +586,16 @@ class BusController extends ChangeNotifier {
     );
     if (_boardingReminderId != reminderId) {
       await LiveActivityBridge.end();
+      return const BoardingReminderOutcome.started();
+    }
+    await _scheduleBoardingBanners(
+      lang: currentLang,
+      route: currentRoute,
+      stopName: stopName,
+      endsAt: endsAt,
+    );
+    if (_boardingReminderId != reminderId) {
+      await NotificationService.cancelBoardingAlerts();
       return const BoardingReminderOutcome.started();
     }
     final activityToken = start.token;
@@ -605,6 +611,35 @@ class BusController extends ChangeNotifier {
       );
     }
     return const BoardingReminderOutcome.started();
+  }
+
+  /// Same instant the Live Activity counts down to. Server endsAt wins;
+  /// otherwise the delay (or the minute count) is added to now.
+  double? _endsAtFromResponse(BoardingReminderResponse response) {
+    final minutes = response.minutes ?? 0;
+    final delaySeconds = response.endDelaySeconds ?? (minutes > 0 ? minutes * 60 : 0);
+    return response.endsAt ??
+        (delaySeconds > 0 ? DateTime.now().millisecondsSinceEpoch / 1000.0 + delaySeconds : null);
+  }
+
+  Future<void> _scheduleBoardingBanners({
+    required String lang,
+    required String route,
+    required String stopName,
+    required double? endsAt,
+  }) async {
+    final alerts = buildBoardingAlertNotifications(
+      lang: lang,
+      route: route,
+      stopName: stopName,
+      endsAt: endsAt,
+      now: DateTime.now(),
+    );
+    if (alerts.isEmpty) {
+      await NotificationService.cancelBoardingAlerts();
+      return;
+    }
+    await NotificationService.scheduleBoardingAlerts(alerts);
   }
 
   /// Lock Screen / Dynamic Island label in front of the countdown.
@@ -721,7 +756,15 @@ class BusController extends ChangeNotifier {
     final response = await BoardingReminderClient.register(body);
     if (response.code == 'passed' || response.code == 'segment_times_missing') {
       await _clearBoardingReminder();
+      return;
     }
+    if (!response.ok || _boardingReminderId != body['reminderId']) return;
+    await _scheduleBoardingBanners(
+      lang: body['lang'] is String ? body['lang'] as String : currentLang,
+      route: body['route'] is String ? body['route'] as String : currentRoute,
+      stopName: body['stopName'] is String ? body['stopName'] as String : '',
+      endsAt: _endsAtFromResponse(response),
+    );
   }
 
   Map<String, dynamic>? _reminderBodyFromPrefs(SharedPreferences prefs) {
@@ -763,6 +806,7 @@ class BusController extends ChangeNotifier {
     boardingStopSeq = null;
     _boardingReminderId = null;
     LiveActivityBridge.onActivityToken = null;
+    await NotificationService.cancelBoardingAlerts();
     await LiveActivityBridge.end();
     if (id != null && id.isNotEmpty) {
       await BoardingReminderClient.cancel(id);

@@ -7,7 +7,9 @@ import 'package:macau_bus_app/models/bus_stop.dart';
 import 'package:macau_bus_app/services/boarding_reminder_client.dart';
 import 'package:macau_bus_app/services/bus_api_service.dart';
 import 'package:macau_bus_app/services/live_activity_bridge.dart';
+import 'package:macau_bus_app/services/notification_service.dart';
 import 'package:macau_bus_app/services/open_data_config.dart';
+import 'package:macau_bus_app/utils/boarding_alert_schedule.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const double _lat0 = 22.19;
@@ -35,6 +37,8 @@ void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     OpenDataConfig.instance.debugApply(configRealtime: true, etaRealtime: true);
+    NotificationService.debugScheduleBoardingAlerts = (_) async {};
+    NotificationService.debugCancelBoardingAlerts = () async {};
   });
 
   tearDown(() {
@@ -46,6 +50,8 @@ void main() {
     LiveActivityBridge.debugUpdate = null;
     LiveActivityBridge.debugEnd = null;
     LiveActivityBridge.onActivityToken = null;
+    NotificationService.debugScheduleBoardingAlerts = null;
+    NotificationService.debugCancelBoardingAlerts = null;
     OpenDataConfig.instance.debugReset();
   });
 
@@ -440,6 +446,159 @@ void main() {
       expect(started.last, 'Stop 3|約 5 分鐘後到達Stop 3|預測到站時間尚餘');
     } finally {
       bus.dispose();
+    }
+  });
+
+  testWidgets('boarding banners are armed from endsAt without a Live Activity token', (tester) async {
+    var etaCalls = 0;
+    BusApiService.debugFetchBusETA = (
+      String route,
+      int dir, {
+      int? targetStopSeq,
+      String lang = 'zh',
+    }) async {
+      etaCalls += 1;
+      return {'success': true, 'allBuses': <Bus>[]};
+    };
+    LiveActivityBridge.debugStartActivity = ({
+      required String route,
+      required String stopName,
+      required int minutes,
+      required String text,
+      double? endsAt,
+      String? etaLabel,
+    }) async {
+      return const LiveActivityStart(started: true);
+    };
+    LiveActivityBridge.debugPushToStartToken = () async => null;
+    final endsAt = DateTime.now().add(const Duration(minutes: 8)).millisecondsSinceEpoch / 1000.0;
+    BoardingReminderClient.debugRegister = (body) async {
+      return BoardingReminderResponse(
+        ok: true,
+        minutes: 1,
+        text: '約 1 分鐘後到達',
+        startedAt: 1000,
+        endDelaySeconds: 30,
+        endsAt: endsAt,
+      );
+    };
+    final scheduled = <ScheduledBoardingAlert>[];
+    var cancels = 0;
+    NotificationService.debugScheduleBoardingAlerts = (alerts) async {
+      scheduled
+        ..clear()
+        ..addAll(alerts);
+    };
+    NotificationService.debugCancelBoardingAlerts = () async {
+      cancels += 1;
+      scheduled.clear();
+    };
+
+    final bus = BusController();
+    try {
+      await tester.pump();
+      await tester.pump();
+      bus.currentRoute = '102';
+      bus.stopsList = [_stop(1, 0), _stop(2, 500), _stop(3, 1000)];
+      bus.allBusesList = [
+        Bus(busLicense: 'CLOSE', lat: _north(700), lng: _lng, speed: 20, currentStopSeq: 2),
+      ];
+
+      final outcome = await bus.setBoardingStop(3);
+
+      expect(outcome.started, isTrue);
+      expect(etaCalls, 0);
+      expect(scheduled, hasLength(2));
+      expect(scheduled[0].id, boardingWarningNotificationId);
+      expect(scheduled[0].title, '102');
+      expect(scheduled[0].body, '預測到站尚餘約 3 分鐘');
+      final warningLead = scheduled[1].at.difference(scheduled[0].at);
+      expect(warningLead.inMinutes, 3);
+      expect(scheduled[1].id, boardingArrivalNotificationId);
+      expect(scheduled[1].body, '已到達Stop 3');
+      final arrival = DateTime.fromMillisecondsSinceEpoch((endsAt * 1000).round());
+      expect(scheduled[1].at.difference(arrival).inSeconds.abs(), lessThan(2));
+
+      await bus.setBoardingStop(null);
+      expect(cancels, greaterThan(0));
+      expect(scheduled, isEmpty);
+    } finally {
+      bus.dispose();
+    }
+  });
+
+  testWidgets('a passed restore drops the banners', (tester) async {
+    LiveActivityBridge.debugStartActivity = ({
+      required String route,
+      required String stopName,
+      required int minutes,
+      required String text,
+      double? endsAt,
+      String? etaLabel,
+    }) async {
+      return const LiveActivityStart(started: true);
+    };
+    LiveActivityBridge.debugPushToStartToken = () async => null;
+    var posts = 0;
+    BoardingReminderClient.debugRegister = (body) async {
+      posts += 1;
+      if (posts == 1) {
+        return BoardingReminderResponse(
+          ok: true,
+          minutes: 8,
+          text: '約 8 分鐘後到達',
+          startedAt: 1000,
+          endsAt: DateTime.now().add(const Duration(minutes: 8)).millisecondsSinceEpoch / 1000.0,
+        );
+      }
+      return const BoardingReminderResponse(ok: false, code: 'passed');
+    };
+    final scheduled = <ScheduledBoardingAlert>[];
+    var cancels = 0;
+    NotificationService.debugScheduleBoardingAlerts = (alerts) async {
+      scheduled
+        ..clear()
+        ..addAll(alerts);
+    };
+    NotificationService.debugCancelBoardingAlerts = () async {
+      cancels += 1;
+      scheduled.clear();
+    };
+
+    final bus = BusController();
+    BusController? restored;
+    var busDisposed = false;
+    try {
+      await tester.pump();
+      await tester.pump();
+      bus.currentRoute = '3A';
+      bus.stopsList = [_stop(1, 0), _stop(2, 500), _stop(3, 1000)];
+      bus.allBusesList = [
+        Bus(busLicense: 'CLOSE', lat: _north(700), lng: _lng, speed: 20, currentStopSeq: 2),
+      ];
+      expect((await bus.setBoardingStop(3)).started, isTrue);
+      expect(scheduled, hasLength(2));
+      bus.dispose();
+      busDisposed = true;
+
+      restored = BusController();
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+      });
+      expect(posts, 1);
+
+      restored.setRoute('3A');
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      });
+
+      expect(posts, 2);
+      expect(cancels, greaterThan(0));
+      expect(scheduled, isEmpty);
+      expect(restored.boardingStopSeq, isNull);
+    } finally {
+      if (!busDisposed) bus.dispose();
+      restored?.dispose();
     }
   });
 }
