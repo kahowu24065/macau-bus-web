@@ -194,7 +194,7 @@ enum BoardingLiveActivityBridge {
   @available(iOS 16.2, *)
   private static func activityContent(
     _ state: BoardingActivityAttributes.ContentState
-  ) -> ActivityContent<BoardingActivityAttributes> {
+  ) -> ActivityContent<BoardingActivityAttributes.ContentState> {
     ActivityContent(state: state, staleDate: state.predictedArrival())
   }
 
