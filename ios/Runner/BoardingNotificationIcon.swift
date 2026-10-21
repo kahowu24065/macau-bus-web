@@ -117,7 +117,7 @@ enum BoardingNotificationIcon {
       sender: sender,
       attachments: nil
     )
-    intent.setImage(avatar, forParameterNamed: "sender")
+    intent.setImage(avatar, forParameterNamed: \.sender)
     let interaction = INInteraction(intent: intent, response: nil)
     interaction.direction = .incoming
     interaction.donate(completion: nil)
