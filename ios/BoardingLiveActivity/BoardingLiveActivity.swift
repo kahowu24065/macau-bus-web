@@ -4,13 +4,22 @@ import WidgetKit
 
 /// One Live Activity for the boarding reminder.
 ///
-/// Lock Screen shows 「預測到站時間尚餘」 and a remaining time taken from
-/// endsAt. A plain 「9 分鐘」 string is drawn once and stays frozen, so the
-/// big line is Text's live relative date, which the system keeps moving.
-/// Compact Dynamic Island keeps a short label beside a ticking countdown.
-/// Minimal shows that countdown on its own. The timer's width is fixed so the
-/// island cannot clip it away. The last minute and arrival replace it with
-/// 「快將到達」 and 「已到達」 in the selected language.
+/// Lock Screen shows the MBKa icon, 「預測到站時間尚餘」, and a remaining
+/// time taken from endsAt. A plain 「9 分鐘」 string is drawn once and stays
+/// frozen, so the big line is Text's live relative date, which the system
+/// keeps moving. Compact Dynamic Island shows the icon beside a short label
+/// when both fit, and keeps the ticking countdown on the trailing side.
+/// Expanded shows the icon with the route. Minimal keeps that countdown on
+/// its own so the icon does not replace the time. The timer's width is fixed
+/// so the island cannot clip it away. The last minute and arrival replace it
+/// with 「快將到達」 and 「已到達」 in the selected language.
+///
+/// The Dynamic Island does not set widgetURL and does not contain a Link.
+/// A URL there is a deep link, so the tap opens the app at that route.
+/// None is set: an island tap is not sent anywhere in the app. iOS expands
+/// the compact and minimal presentations on a touch and hold. A tap on the
+/// expanded presentation still opens the app; ActivityKit has no switch
+/// that turns that tap into the expand gesture.
 ///
 /// Those system timers keep running after endsAt. The activity's stale date
 /// is that instant, so the widget reloads into the arrived phrase. A stale
@@ -21,26 +30,31 @@ struct BoardingLiveActivityWidget: Widget {
     ActivityConfiguration(for: BoardingActivityAttributes.self) { context in
       let label = fullLabel(state: context.state, attributes: context.attributes)
       let phase = arrivalPhase(state: context.state, isStale: context.isStale)
-      VStack(alignment: .leading, spacing: 4) {
-        Text(context.attributes.route)
-          .font(.headline)
-          .lineLimit(1)
-        if phase == .counting {
-          Text(label)
+      // No widgetURL on the Lock Screen view. A URL on this configuration
+      // is also a deep link for the Dynamic Island.
+      HStack(alignment: .top, spacing: 10) {
+        BoardingAppIcon(side: 36)
+        VStack(alignment: .leading, spacing: 4) {
+          Text(context.attributes.route)
             .font(.headline)
-            .lineLimit(2)
-            .fixedSize(horizontal: false, vertical: true)
-          timeRow(context.state, label: label)
-        } else {
-          statusLine(
-            statusPhrase(state: context.state, attributes: context.attributes, label: label, phase: phase),
-            font: .title.weight(.bold)
-          )
-        }
-        if !context.attributes.stopName.isEmpty {
-          Text(context.attributes.stopName)
-            .font(.subheadline)
             .lineLimit(1)
+          if phase == .counting {
+            Text(label)
+              .font(.headline)
+              .lineLimit(2)
+              .fixedSize(horizontal: false, vertical: true)
+            timeRow(context.state, label: label)
+          } else {
+            statusLine(
+              statusPhrase(state: context.state, attributes: context.attributes, label: label, phase: phase),
+              font: .title.weight(.bold)
+            )
+          }
+          if !context.attributes.stopName.isEmpty {
+            Text(context.attributes.stopName)
+              .font(.subheadline)
+              .lineLimit(1)
+          }
         }
       }
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -54,11 +68,22 @@ struct BoardingLiveActivityWidget: Widget {
         label: label,
         phase: phase
       )
+      // Do not add widgetURL or Link. That deep-links the island into the app.
       return DynamicIsland {
         DynamicIslandExpandedRegion(.leading) {
-          Text(context.attributes.route)
-            .font(.headline)
-            .lineLimit(1)
+          ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) {
+              BoardingAppIcon(side: 18)
+              Text(context.attributes.route)
+                .font(.headline)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+            }
+            Text(context.attributes.route)
+              .font(.headline)
+              .lineLimit(1)
+              .minimumScaleFactor(0.6)
+          }
         }
         DynamicIslandExpandedRegion(.trailing) {
           if phase == .counting {
@@ -86,10 +111,7 @@ struct BoardingLiveActivityWidget: Widget {
           }
         }
       } compactLeading: {
-        Text(phase == .counting ? shortLabel(label) : phrase)
-          .font(.caption.weight(.semibold))
-          .lineLimit(1)
-          .minimumScaleFactor(phase == .counting ? 1 : 0.4)
+        islandCompactLeading(label: label, phase: phase, phrase: phrase)
       } compactTrailing: {
         // Always a view. An empty trailing region lets the island drop the
         // countdown that used to sit here (「14分」 / the live timer).
@@ -106,6 +128,59 @@ struct BoardingLiveActivityWidget: Widget {
           phrase: phrase
         )
       }
+    }
+  }
+}
+
+/// MBKa mark drawn inside the Live Activity. The AppIcon set cannot be
+/// loaded with Image, so this is a normal imageset in the shared catalog.
+private struct BoardingAppIcon: View {
+  var side: CGFloat
+
+  var body: some View {
+    Image("MBKaIcon")
+      .resizable()
+      .renderingMode(.original)
+      .scaledToFit()
+      .frame(width: side, height: side)
+      .clipShape(RoundedRectangle(cornerRadius: side * 0.22, style: .continuous))
+      .accessibilityHidden(true)
+  }
+}
+
+/// Icon beside the short label when the leading slot has room. A narrow slot
+/// keeps the icon only, so the trailing countdown is not pushed off. The
+/// arrived phrase drops the icon rather than clipping the words.
+@ViewBuilder
+private func islandCompactLeading(
+  label: String,
+  phase: ArrivalPhase,
+  phrase: String
+) -> some View {
+  if phase == .counting {
+    ViewThatFits(in: .horizontal) {
+      HStack(spacing: 3) {
+        BoardingAppIcon(side: 15)
+        Text(shortLabel(label))
+          .font(.caption2.weight(.semibold))
+          .lineLimit(1)
+          .fixedSize(horizontal: true, vertical: false)
+      }
+      BoardingAppIcon(side: 16)
+    }
+  } else {
+    ViewThatFits(in: .horizontal) {
+      HStack(spacing: 3) {
+        BoardingAppIcon(side: 14)
+        Text(phrase)
+          .font(.caption.weight(.semibold))
+          .lineLimit(1)
+          .fixedSize(horizontal: true, vertical: false)
+      }
+      Text(phrase)
+        .font(.caption.weight(.semibold))
+        .lineLimit(1)
+        .minimumScaleFactor(0.4)
     }
   }
 }
