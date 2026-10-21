@@ -143,6 +143,15 @@ enum BoardingLiveActivityBridge {
     }
   }
 
+  /// Becomes stale at the predicted arrival so the widget reloads and can
+  /// replace the countdown. A push token is not required for that reload.
+  @available(iOS 16.2, *)
+  private static func activityContent(
+    _ state: BoardingActivityAttributes.ContentState
+  ) -> ActivityContent<BoardingActivityAttributes> {
+    ActivityContent(state: state, staleDate: state.predictedArrival())
+  }
+
   @available(iOS 16.1, *)
   private static func requestActivity(
     attributes: BoardingActivityAttributes,
@@ -152,16 +161,17 @@ enum BoardingLiveActivityBridge {
     // Current ActivityKit exposes PushType on its own. Activity<T>.PushType
     // does not compile on the Xcode Codemagic uses.
     if #available(iOS 16.2, *) {
+      let content = activityContent(state)
       if pushToken {
         return try Activity.request(
           attributes: attributes,
-          content: ActivityContent(state: state, staleDate: nil),
+          content: content,
           pushType: .token
         )
       }
       return try Activity.request(
         attributes: attributes,
-        content: ActivityContent(state: state, staleDate: nil),
+        content: content,
         pushType: nil
       )
     }
@@ -229,7 +239,7 @@ enum BoardingLiveActivityBridge {
     )
     Task {
       if #available(iOS 16.2, *) {
-        await activity.update(ActivityContent(state: state, staleDate: nil))
+        await activity.update(activityContent(state))
       } else {
         await activity.update(using: state)
       }

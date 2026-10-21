@@ -52,6 +52,14 @@ struct BoardingActivityAttributes: ActivityAttributes {
       try container.encodeIfPresent(endsAt, forKey: .endsAt)
       try container.encodeIfPresent(etaLabel, forKey: .etaLabel)
     }
+
+    /// Predicted arrival instant. nil when endsAt is missing or not a timestamp.
+    /// Values above 10_000_000_000 are milliseconds.
+    func predictedArrival() -> Date? {
+      guard let raw = endsAt, raw > 1_000_000_000 else { return nil }
+      let seconds = raw > 10_000_000_000 ? raw / 1000 : raw
+      return Date(timeIntervalSince1970: seconds)
+    }
   }
 
   var route: String

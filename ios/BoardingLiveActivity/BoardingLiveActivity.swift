@@ -8,20 +8,29 @@ import WidgetKit
 /// endsAt. A plain 「9 分鐘」 string is drawn once and stays frozen, so the
 /// big line is Text's live relative date, which the system keeps moving.
 /// Compact Dynamic Island uses 「預測」 plus a ticking countdown.
+///
+/// Those system timers keep running after endsAt. The activity's stale date
+/// is that instant, so the widget reloads and this view swaps in a static
+/// 「已到達」 / 0. It does not count past zero.
 
 struct BoardingLiveActivityWidget: Widget {
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: BoardingActivityAttributes.self) { context in
       let label = fullLabel(state: context.state, attributes: context.attributes)
+      let arrived = hasArrived(state: context.state, isStale: context.isStale)
       VStack(alignment: .leading, spacing: 4) {
         Text(context.attributes.route)
           .font(.headline)
           .lineLimit(1)
-        Text(label)
-          .font(.headline)
-          .lineLimit(2)
-          .fixedSize(horizontal: false, vertical: true)
-        timeRow(context.state, label: label)
+        if arrived {
+          arrivedLine(label, font: .title.weight(.bold))
+        } else {
+          Text(label)
+            .font(.headline)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+          timeRow(context.state, label: label)
+        }
         if !context.attributes.stopName.isEmpty {
           Text(context.attributes.stopName)
             .font(.subheadline)
@@ -32,6 +41,7 @@ struct BoardingLiveActivityWidget: Widget {
       .padding()
     } dynamicIsland: { context in
       let label = fullLabel(state: context.state, attributes: context.attributes)
+      let arrived = hasArrived(state: context.state, isStale: context.isStale)
       return DynamicIsland {
         DynamicIslandExpandedRegion(.leading) {
           Text(context.attributes.route)
@@ -39,15 +49,23 @@ struct BoardingLiveActivityWidget: Widget {
             .lineLimit(1)
         }
         DynamicIslandExpandedRegion(.trailing) {
-          liveClock(context.state, label: label, font: .title3)
+          if arrived {
+            arrivedLine(label, font: .title3.weight(.bold))
+          } else {
+            liveClock(context.state, label: label, font: .title3)
+          }
         }
         DynamicIslandExpandedRegion(.bottom) {
           VStack(alignment: .leading, spacing: 2) {
-            Text(label)
-              .font(.subheadline.weight(.semibold))
-              .lineLimit(2)
-              .fixedSize(horizontal: false, vertical: true)
-            timeRow(context.state, label: label, prominent: false)
+            if arrived {
+              arrivedLine(label, font: .title3.weight(.bold))
+            } else {
+              Text(label)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+              timeRow(context.state, label: label, prominent: false)
+            }
             if !context.attributes.stopName.isEmpty {
               Text(context.attributes.stopName)
                 .font(.caption)
@@ -56,13 +74,26 @@ struct BoardingLiveActivityWidget: Widget {
           }
         }
       } compactLeading: {
-        Text(shortLabel(label))
+        Text(arrived ? arrivedCompact(label) : shortLabel(label))
           .font(.caption.weight(.semibold))
           .lineLimit(1)
       } compactTrailing: {
-        liveClock(context.state, label: label, font: .caption)
+        if arrived {
+          Text(compactTime(0, label: label))
+            .font(.caption.weight(.bold).monospacedDigit())
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+        } else {
+          liveClock(context.state, label: label, font: .caption)
+        }
       } minimal: {
-        liveClock(context.state, label: label, font: .caption2)
+        if arrived {
+          Text(arrivedCompact(label))
+            .font(.caption2.weight(.bold))
+            .lineLimit(1)
+        } else {
+          liveClock(context.state, label: label, font: .caption2)
+        }
       }
     }
   }
@@ -93,10 +124,24 @@ private func shortLabel(_ label: String) -> String {
   return "預測"
 }
 
-private func endsDate(_ state: BoardingActivityAttributes.ContentState) -> Date? {
-  guard let raw = state.endsAt, raw > 1_000_000_000 else { return nil }
-  let seconds = raw > 10_000_000_000 ? raw / 1000 : raw
-  return Date(timeIntervalSince1970: seconds)
+/// True once the predicted arrival has passed. isStale flips at that same
+/// instant even when this body is not otherwise rebuilt, which is what stops
+/// Text(timerInterval:) and the relative date from counting past zero.
+private func hasArrived(
+  state: BoardingActivityAttributes.ContentState,
+  isStale: Bool
+) -> Bool {
+  if isStale { return true }
+  if let ends = state.predictedArrival() { return ends <= Date() }
+  return false
+}
+
+@ViewBuilder
+private func arrivedLine(_ label: String, font: Font) -> some View {
+  Text(arrivedHeadline(label))
+    .font(font)
+    .lineLimit(1)
+    .minimumScaleFactor(0.6)
 }
 
 private func usesSimplified(_ label: String) -> Bool {
@@ -120,6 +165,23 @@ private func compactTime(_ minutes: Int, label: String) -> String {
   return "\(minutes)分"
 }
 
+private func arrivedHeadline(_ label: String) -> String {
+  if usesSimplified(label) { return "已到达" }
+  if usesEnglish(label) { return "Arrived" }
+  if label.hasPrefix("Chegada") || label.localizedCaseInsensitiveContains("prevista") {
+    return "Chegou"
+  }
+  return "已到達"
+}
+
+/// Two characters on the compact island. The full 「已到達」 does not fit.
+private func arrivedCompact(_ label: String) -> String {
+  if usesEnglish(label) || label.hasPrefix("Chegada") || label.localizedCaseInsensitiveContains("prevista") {
+    return "0"
+  }
+  return "已到"
+}
+
 /// Remaining time under the phrase. endsAt uses a system-updated relative
 /// date so the minutes move as time passes. A computed 「N 分鐘」 is only the
 /// fallback when endsAt is missing.
@@ -130,7 +192,7 @@ private func timeRow(
   prominent: Bool = true
 ) -> some View {
   let font: Font = prominent ? .title.weight(.bold) : .title3.weight(.bold)
-  if let ends = endsDate(state), ends > Date() {
+  if let ends = state.predictedArrival(), ends > Date() {
     Text(ends, style: .relative)
       .font(font)
       .monospacedDigit()
@@ -158,7 +220,7 @@ private func liveClock(
   label: String,
   font: Font
 ) -> some View {
-  if let ends = endsDate(state), ends > Date() {
+  if let ends = state.predictedArrival(), ends > Date() {
     Text(timerInterval: Date()...ends, countsDown: true)
       .font(font.weight(.bold).monospacedDigit())
       .lineLimit(1)
