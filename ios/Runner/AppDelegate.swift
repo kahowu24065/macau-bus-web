@@ -19,6 +19,7 @@ import UserNotifications
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     let messenger = engineBridge.applicationRegistrar.messenger()
     BoardingLiveActivityBridge.register(messenger: messenger)
+    BoardingNotificationIcon.register(messenger: messenger)
     AlightingLocationBridge.register(messenger: messenger)
   }
 }

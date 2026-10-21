@@ -1,6 +1,6 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint, visibleForTesting;
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart' show MethodChannel, rootBundle;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,6 +13,11 @@ class NotificationService {
   static const int arrivalNotificationId = 889;
   static const String boardingAlarmSentKey = 'track_alarm_sent';
   static final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
+
+  /// iOS schedules boarding banners natively so the MBKa icon is the leading
+  /// picture. Android keeps flutter_local_notifications.
+  static const MethodChannel _iosBoardingIcon =
+      MethodChannel('mbka/boarding_notification');
 
   static Future<void> init() async {
     if (!kIsWeb && !Platform.isWindows) {
@@ -77,6 +82,16 @@ class NotificationService {
       largeIcon: _mbkaLargeIcon,
     );
     
+    if (!kIsWeb && Platform.isIOS) {
+      final shown = await _scheduleIosBoardingIcon(
+        id: arrivalNotificationId,
+        title: title,
+        body: body,
+        atMillis: null,
+      );
+      if (shown) return;
+    }
+
     final iosDetails = DarwinNotificationDetails(
       presentAlert: true,
       presentBadge: true,
@@ -138,6 +153,19 @@ class NotificationService {
     }
     if (kIsWeb || Platform.isWindows) return;
     try {
+      if (Platform.isIOS) {
+        try {
+          await _iosBoardingIcon.invokeMethod<void>('cancel', {
+            'ids': [
+              boardingWarningNotificationId,
+              boardingArrivalNotificationId,
+              arrivalNotificationId,
+            ],
+          });
+        } catch (e) {
+          debugPrint('ios boarding icon cancel: $e');
+        }
+      }
       await _cancelBoardingAlertIds();
     } catch (e) {
       debugPrint('cancel boarding alerts: $e');
@@ -153,6 +181,15 @@ class NotificationService {
     ScheduledBoardingAlert alert,
     NotificationDetails details,
   ) async {
+    if (!kIsWeb && Platform.isIOS) {
+      final shown = await _scheduleIosBoardingIcon(
+        id: alert.id,
+        title: alert.title,
+        body: alert.body,
+        atMillis: alert.at.millisecondsSinceEpoch,
+      );
+      if (shown) return;
+    }
     final when = tz.TZDateTime.from(alert.at.toUtc(), tz.UTC);
     try {
       await _plugin.zonedSchedule(
@@ -189,9 +226,9 @@ const DrawableResourceAndroidBitmap _mbkaLargeIcon =
 
 String? _mbkaIconPathCache;
 
-/// Copies the MBKa icon so iOS can attach it. The banner's leading glyph is
-/// the app icon (AppIcon); the attachment is the same artwork, which the
-/// system copies when the notification is scheduled.
+/// Fallback thumbnail for the plugin path. The identifier must end in `.png`.
+/// iOS boarding banners normally go through BoardingNotificationIcon instead,
+/// which puts this artwork in the leading icon slot.
 Future<String?> _mbkaIconPath() async {
   final cached = _mbkaIconPathCache;
   if (cached != null && File(cached).existsSync()) return cached;
@@ -214,9 +251,33 @@ Future<String?> _mbkaIconPath() async {
   }
 }
 
+/// iOS uses the identifier as the stored filename. It must include `.png`
+/// or Notification Center shows a generic icon instead of the image.
 List<DarwinNotificationAttachment>? _mbkaAttachment(String? iconPath) {
   if (iconPath == null || iconPath.isEmpty) return null;
-  return [DarwinNotificationAttachment(iconPath, identifier: 'mbka_app_icon')];
+  return [DarwinNotificationAttachment(iconPath, identifier: 'mbka_app_icon.png')];
+}
+
+/// Native schedule that embeds the bundled MBKa icon. False when the channel
+/// is missing so the caller can fall back to the plugin.
+Future<bool> _scheduleIosBoardingIcon({
+  required int id,
+  required String title,
+  required String body,
+  required int? atMillis,
+}) async {
+  try {
+    await NotificationService._iosBoardingIcon.invokeMethod<void>('schedule', {
+      'id': id,
+      'title': title,
+      'body': body,
+      'atMillis': ?atMillis,
+    });
+    return true;
+  } catch (e) {
+    debugPrint('ios boarding icon: $e');
+    return false;
+  }
 }
 
 /// Default sound is left unset so iOS uses UNNotificationSound.default, which
