@@ -1,7 +1,10 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint, visibleForTesting;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:timezone/timezone.dart' as tz;
 import 'dart:io' show Platform;
+
+import '../utils/boarding_alert_schedule.dart';
 
 class NotificationService {
   static const int arrivalNotificationId = 889;
@@ -91,4 +94,104 @@ class NotificationService {
       notificationDetails: details
     );
   }
+
+  /// Tests record the banners instead of calling the plugin, which is not
+  /// implemented on the Linux test VM.
+  @visibleForTesting
+  static Future<void> Function(List<ScheduledBoardingAlert> alerts)? debugScheduleBoardingAlerts;
+
+  @visibleForTesting
+  static Future<void> Function()? debugCancelBoardingAlerts;
+
+  /// Arms the 3-minute and arrival banners from the predicted arrival time.
+  /// Replaces any banners already armed for the previous stop. Does not need a
+  /// Live Activity push token: iOS keeps the request after the app is backgrounded.
+  static Future<void> scheduleBoardingAlerts(List<ScheduledBoardingAlert> alerts) async {
+    final override = debugScheduleBoardingAlerts;
+    if (override != null) {
+      await override(alerts);
+      return;
+    }
+    if (kIsWeb || Platform.isWindows || alerts.isEmpty) return;
+    try {
+      await _cancelBoardingAlertIds();
+      await requestPermission();
+      await requestIosPermission();
+      for (final alert in alerts) {
+        await _zonedBoardingAlert(alert);
+      }
+    } catch (e) {
+      debugPrint('schedule boarding alerts: $e');
+    }
+  }
+
+  static Future<void> cancelBoardingAlerts() async {
+    final override = debugCancelBoardingAlerts;
+    if (override != null) {
+      await override();
+      return;
+    }
+    if (kIsWeb || Platform.isWindows) return;
+    try {
+      await _cancelBoardingAlertIds();
+    } catch (e) {
+      debugPrint('cancel boarding alerts: $e');
+    }
+  }
+
+  static Future<void> _cancelBoardingAlertIds() async {
+    await _plugin.cancel(id: boardingWarningNotificationId);
+    await _plugin.cancel(id: boardingArrivalNotificationId);
+  }
+
+  static Future<void> _zonedBoardingAlert(ScheduledBoardingAlert alert) async {
+    final when = tz.TZDateTime.from(alert.at.toUtc(), tz.UTC);
+    try {
+      await _plugin.zonedSchedule(
+        id: alert.id,
+        title: alert.title,
+        body: alert.body,
+        scheduledDate: when,
+        notificationDetails: _boardingAlertDetails,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        // A payload marks this as a plugin notification, so the foreground
+        // delegate presents the banner and plays the default sound.
+        payload: 'boarding',
+      );
+    } catch (e) {
+      debugPrint('exact boarding alert ${alert.id}: $e');
+      await _plugin.zonedSchedule(
+        id: alert.id,
+        title: alert.title,
+        body: alert.body,
+        scheduledDate: when,
+        notificationDetails: _boardingAlertDetails,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        payload: 'boarding',
+      );
+    }
+  }
 }
+
+/// Default sound is left unset so iOS uses UNNotificationSound.default, which
+/// vibrates. Time Sensitive is not set: that needs an entitlement.
+const NotificationDetails _boardingAlertDetails = NotificationDetails(
+  android: AndroidNotificationDetails(
+    'macau_bus_alarm',
+    '巴士到站提醒',
+    channelDescription: '用於推送巴士即將到站及下車提醒',
+    importance: Importance.max,
+    priority: Priority.high,
+    enableVibration: true,
+    playSound: true,
+    onlyAlertOnce: false,
+  ),
+  iOS: DarwinNotificationDetails(
+    presentAlert: true,
+    presentBadge: false,
+    presentBanner: true,
+    presentList: true,
+    presentSound: true,
+    interruptionLevel: InterruptionLevel.active,
+  ),
+);
