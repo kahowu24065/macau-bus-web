@@ -17,6 +17,7 @@ import '../services/boarding_reminder_client.dart';
 import '../services/live_activity_bridge.dart';
 import '../utils/boarding_alert_schedule.dart';
 import '../utils/boarding_bus_choice.dart';
+import '../utils/bus_eta_estimate.dart';
 import '../data/local_route_catalog.dart';
 
 
@@ -90,7 +91,15 @@ class BusController extends ChangeNotifier {
 
   final Map<String, BoardingPoint> _lastBusFix = {};
   String? _boardingReminderId;
+  String? _boardingLicense;
+  String? _boardingStopName;
+  /// Unix seconds the Live Activity is currently counting toward.
+  double? _boardingLiveEndsAt;
   bool _boardingRestorePosted = false;
+
+  /// Skip a Live Activity write when the card's minutes are already this close.
+  /// Rewriting endsAt on every poll restarts the system countdown.
+  static const int _liveEtaSlackSeconds = 45;
 
   static const String _reminderIdKey = 'boarding_reminder_id';
   static const String _reminderRouteKey = 'boarding_reminder_route';
@@ -178,12 +187,17 @@ class BusController extends ChangeNotifier {
     if (savedRoute != null && savedRoute == currentRoute && savedDir == currentDirection && savedStopSeq != null) {
       boardingStopSeq = savedStopSeq;
       _boardingReminderId = prefs.getString(_reminderIdKey);
+      _boardingLicense = prefs.getString(_reminderLicenseKey);
+      _boardingStopName = prefs.getString(_reminderNameKey);
       if (!_boardingRestorePosted && _boardingReminderId != null) {
         _boardingRestorePosted = true;
         unawaited(_repostBoardingReminder());
       }
     } else {
       boardingStopSeq = null;
+      _boardingLicense = null;
+      _boardingStopName = null;
+      _boardingLiveEndsAt = null;
     }
     notifyListeners();
   }
@@ -480,10 +494,11 @@ class BusController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Arms one server-side estimate for the nearest bus, or clears it.
+  /// Arms a reminder for the nearest bus, or clears it.
   ///
-  /// The phone does not poll and does not estimate minutes. A failure leaves
-  /// the reminder off and returns a translation key for the screen to show.
+  /// The Live Activity counts the same realtime minutes as the route card for
+  /// that bus. The server's learned-segment estimate is only the fallback
+  /// before that ETA is known. Registering does not poll the transport bureau.
   Future<BoardingReminderOutcome> setBoardingStop(int? seq) async {
     if (seq == null) {
       await _clearBoardingReminder();
@@ -527,6 +542,10 @@ class BusController extends ChangeNotifier {
     }
 
     final stopName = stop == null ? '' : stop.getLocalizedName(currentLang);
+    _boardingLicense = choice.license;
+    _boardingStopName = stopName;
+    final liveMinutes = _liveMinutesForBoarding(seq);
+    final liveEndsAt = liveMinutes == null ? null : _unixEndsAt(liveMinutes);
     final reminderId = 'br-${DateTime.now().microsecondsSinceEpoch}';
     final stopsPayload = [
       for (final item in stopsList) {'seq': item.seq, 'lat': item.lat, 'lng': item.lng},
@@ -545,8 +564,11 @@ class BusController extends ChangeNotifier {
       'lng': choice.lng,
       'lang': currentLang,
       'stops': stopsPayload,
+      'realtimeEndsAt': ? liveEndsAt,
     });
     if (!response.ok) {
+      _boardingLicense = null;
+      _boardingStopName = null;
       return BoardingReminderOutcome.failed(boardingServerMessageKey(response.code));
     }
 
@@ -569,11 +591,15 @@ class BusController extends ChangeNotifier {
     );
     await _stopLegacyBoardingPoll();
     notifyListeners();
-    final minutes = response.minutes ?? 0;
-    final text = (response.text == null || response.text!.isEmpty) ? stopName : response.text!;
+    final minutes = liveMinutes ?? response.minutes ?? 0;
+    final text = liveMinutes == null
+        ? ((response.text == null || response.text!.isEmpty) ? stopName : response.text!)
+        : stopName;
     // endsAt drives the Lock Screen countdown and the local banners. Both are
-    // armed here, before any Live Activity push token exists.
-    final endsAt = _endsAtFromResponse(response);
+    // armed here, before any Live Activity push token exists. A realtime ETA
+    // for this stop replaces the learned-segment instant.
+    final endsAt = liveEndsAt ?? _endsAtFromResponse(response);
+    _boardingLiveEndsAt = endsAt;
     // Activity.request itself is fast. The push token is not: it arrives later
     // on [LiveActivityBridge.onActivityToken] and is posted from there.
     final start = await LiveActivityBridge.startActivity(
@@ -583,16 +609,21 @@ class BusController extends ChangeNotifier {
       text: text,
       endsAt: endsAt,
       etaLabel: _predictedArrivalLabel(currentLang),
+      arrivedText: boardingArrivedLabel(currentLang),
+      imminentText: boardingImminentLabel(currentLang),
     );
     if (_boardingReminderId != reminderId) {
       await LiveActivityBridge.end();
       return const BoardingReminderOutcome.started();
     }
+    final bannerEnds = liveMinutes != null && liveMinutes <= 0 && endsAt != null
+        ? endsAt + 1
+        : endsAt;
     await _scheduleBoardingBanners(
       lang: currentLang,
       route: currentRoute,
       stopName: stopName,
-      endsAt: endsAt,
+      endsAt: bannerEnds,
     );
     if (_boardingReminderId != reminderId) {
       await NotificationService.cancelBoardingAlerts();
@@ -611,6 +642,86 @@ class BusController extends ChangeNotifier {
       );
     }
     return const BoardingReminderOutcome.started();
+  }
+
+  /// Unix seconds, [minutes] from now. Zero minutes is "now", so the activity
+  /// can show 已到達 without counting past the arrival.
+  double _unixEndsAt(int minutes) {
+    final now = DateTime.now().millisecondsSinceEpoch / 1000.0;
+    if (minutes <= 0) return now;
+    return now + minutes * 60.0;
+  }
+
+  /// Card minutes for the chosen bus. Null unless [selectedStopSeq] is this stop,
+  /// because [etaData] and each bus's minutes belong to the stop last fetched.
+  int? _liveMinutesForBoarding(int seq) {
+    if (selectedStopSeq != seq) return null;
+    return _liveMinutesOnList(seq);
+  }
+
+  int? _liveMinutesOnList(int seq) {
+    final license = _boardingLicense;
+    if (license == null || license.isEmpty) return null;
+    return boardingBusLiveMinutes(
+      buses: allBusesList,
+      targetSeq: seq,
+      license: license,
+      etaStatus: etaData?['status']?.toString(),
+    );
+  }
+
+  String _boardingStopLabel(int seq) {
+    final saved = _boardingStopName?.trim() ?? '';
+    if (saved.isNotEmpty) return saved;
+    return _stopBySeq(seq)?.getLocalizedName(currentLang) ?? '';
+  }
+
+  bool _liveEtaDrifted(int minutes, double endsAt) {
+    final previous = _boardingLiveEndsAt;
+    if (previous == null) return true;
+    final now = DateTime.now().millisecondsSinceEpoch / 1000.0;
+    if (minutes <= 0) return previous > now + 1;
+    return (previous - endsAt).abs() >= _liveEtaSlackSeconds;
+  }
+
+  /// Points the Live Activity and the local banners at the route card's minutes
+  /// for the chosen bus. Does not fetch ETA and does not follow a different bus.
+  Future<void> _syncBoardingLiveEta({required int? fetchedStopSeq}) async {
+    final seq = boardingStopSeq;
+    final id = _boardingReminderId;
+    if (seq == null || id == null || id.isEmpty) return;
+    if (fetchedStopSeq != seq) return;
+    final live = _liveMinutesOnList(seq);
+    if (live == null) return;
+    final endsAt = _unixEndsAt(live);
+    if (!_liveEtaDrifted(live, endsAt)) return;
+    if (_boardingReminderId != id) return;
+
+    final stopName = _boardingStopLabel(seq);
+    // Tell the server before the local write. A push that only decays the
+    // learned estimate can still arrive from an older host; the local update
+    // then puts the card's minutes back.
+    await BoardingReminderClient.register({
+      'reminderId': id,
+      'realtimeEndsAt': endsAt,
+    });
+    if (_boardingReminderId != id) return;
+    await LiveActivityBridge.update(
+      minutes: live,
+      text: stopName,
+      endsAt: endsAt,
+      etaLabel: _predictedArrivalLabel(currentLang),
+      arrivedText: boardingArrivedLabel(currentLang),
+      imminentText: boardingImminentLabel(currentLang),
+    );
+    if (_boardingReminderId != id) return;
+    _boardingLiveEndsAt = endsAt;
+    await _scheduleBoardingBanners(
+      lang: currentLang,
+      route: currentRoute,
+      stopName: stopName,
+      endsAt: live <= 0 ? endsAt + 1 : endsAt,
+    );
   }
 
   /// Same instant the Live Activity counts down to. Server endsAt wins;
@@ -759,6 +870,7 @@ class BusController extends ChangeNotifier {
       return;
     }
     if (!response.ok || _boardingReminderId != body['reminderId']) return;
+    if (_boardingLiveEndsAt != null) return;
     await _scheduleBoardingBanners(
       lang: body['lang'] is String ? body['lang'] as String : currentLang,
       route: body['route'] is String ? body['route'] as String : currentRoute,
@@ -805,6 +917,9 @@ class BusController extends ChangeNotifier {
     final id = _boardingReminderId ?? prefs.getString(_reminderIdKey);
     boardingStopSeq = null;
     _boardingReminderId = null;
+    _boardingLicense = null;
+    _boardingStopName = null;
+    _boardingLiveEndsAt = null;
     LiveActivityBridge.onActivityToken = null;
     await NotificationService.cancelBoardingAlerts();
     await LiveActivityBridge.end();
@@ -1430,6 +1545,7 @@ class BusController extends ChangeNotifier {
           _legMotion.clear();
         }
 
+        await _syncBoardingLiveEta(fetchedStopSeq: seq);
         if (!isAutoRefresh || _autoRefreshTimer == null) startAutoRefresh();
         unawaited(OpenDataConfig.instance.ensureLoaded());
       } else {

@@ -77,3 +77,81 @@ String? _licenseOf(Map<dynamic, dynamic> item) {
 }
 
 String _licenseKey(String license) => license.trim().toUpperCase();
+
+/// Minutes in an official status line such as 「約 9 分鐘」 or "9 min".
+///
+/// Parenthetical notes are dropped first, matching the route stop card.
+int? parseStatusEtaMinutes(String? status) {
+  if (status == null || status.isEmpty) return null;
+  final clean = status.replaceAll(RegExp(r'[\(（].*?[\)）]'), '').trim();
+  final match = RegExp(
+    r'(?:約\s*|~\s*)?(\d+)\s*(?:分鐘|mins|min)',
+    caseSensitive: false,
+  ).firstMatch(clean);
+  if (match == null) return null;
+  return int.tryParse(match.group(1)!);
+}
+
+/// Realtime minutes for one chosen bus, using the route card's formula.
+///
+/// [etaStatus] is the official status for [targetSeq] only. Another bus's
+/// minutes are not returned. 0 means that bus is at the stop or has passed
+/// it. Null means this bus has no minute count yet, so the caller keeps the
+/// countdown it already showed.
+int? boardingBusLiveMinutes({
+  required List<Bus> buses,
+  required int targetSeq,
+  required String license,
+  String? etaStatus,
+}) {
+  final key = _licenseKey(license);
+  if (key.isEmpty || targetSeq <= 0) return null;
+
+  Bus? chosen;
+  for (final bus in buses) {
+    if (_licenseKey(bus.busLicense) == key) {
+      chosen = bus;
+      break;
+    }
+  }
+  if (chosen == null || chosen.currentStopSeq <= 0) return null;
+  if (chosen.currentStopSeq > targetSeq) return 0;
+  if (chosen.currentStopSeq == targetSeq) return 0;
+
+  final approaching = buses.where((bus) {
+    if (bus.currentStopSeq <= 0 || bus.currentStopSeq > targetSeq) return false;
+    if (bus.currentStopSeq == targetSeq && !bus.atStop) return false;
+    return true;
+  }).toList()
+    ..sort(
+      (a, b) => (targetSeq - a.currentStopSeq).compareTo(targetSeq - b.currentStopSeq),
+    );
+  if (approaching.isEmpty) return null;
+
+  final firstStatus = parseStatusEtaMinutes(etaStatus);
+  var firstStops = -1;
+  int? reference = firstStatus;
+  var seenPositive = false;
+  for (final bus in approaching) {
+    final stopsAway = targetSeq - bus.currentStopSeq;
+    if (firstStops == -1) firstStops = stopsAway;
+    if (stopsAway <= 0) {
+      if (_licenseKey(bus.busLicense) == key) return 0;
+      continue;
+    }
+    final isFirst = !seenPositive;
+    seenPositive = true;
+    final estimated = approachingEtaMinutes(
+      busEtaMinutes: bus.etaMinutes,
+      isFirst: isFirst,
+      stopsAway: stopsAway,
+      firstStopsAway: firstStops,
+      firstStatusMinutes: isFirst ? firstStatus : reference,
+    );
+    if (isFirst && estimated != null) reference = estimated;
+    if (_licenseKey(bus.busLicense) != key) continue;
+    if (estimated == null || estimated <= 0) return null;
+    return estimated;
+  }
+  return null;
+}

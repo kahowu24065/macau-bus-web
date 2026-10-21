@@ -93,4 +93,36 @@ void main() {
       '已到達',
     );
   });
+
+  test('the last minute and arrival use the selected language', () {
+    final soon = now.add(const Duration(seconds: 45));
+    final cases = {
+      'zh': ['快將到達', '已到達碼頭'],
+      'zhHans': ['即将到达', '已到达码头'],
+      'en': ['Arriving soon', 'Arrived at Pier'],
+      'pt': ['Quase a chegar', 'Chegou a Cais'],
+    };
+    cases.forEach((lang, expected) {
+      final stop = lang == 'zh'
+          ? '碼頭'
+          : lang == 'zhHans'
+              ? '码头'
+              : lang == 'en'
+                  ? 'Pier'
+                  : 'Cais';
+      final alerts = buildBoardingAlertNotifications(
+        lang: lang,
+        route: '3',
+        stopName: stop,
+        endsAt: soon.millisecondsSinceEpoch / 1000.0,
+        now: now,
+      );
+      expect(alerts[0].body, expected[0], reason: lang);
+      expect(alerts[1].body, expected[1], reason: lang);
+    });
+    expect(boardingArrivedLabel('zh'), '已到達');
+    expect(boardingImminentLabel('zh'), '快將到達');
+    expect(boardingArrivedLabel('en'), 'Arrived');
+    expect(boardingImminentLabel('en'), 'Arriving soon');
+  });
 }

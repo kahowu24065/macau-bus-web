@@ -75,6 +75,8 @@ class LiveActivityBridge {
     required String text,
     double? endsAt,
     String? etaLabel,
+    String? arrivedText,
+    String? imminentText,
   })? debugStartActivity;
 
   @visibleForTesting
@@ -83,6 +85,8 @@ class LiveActivityBridge {
     required String text,
     double? endsAt,
     String? etaLabel,
+    String? arrivedText,
+    String? imminentText,
   })? debugUpdate;
 
   @visibleForTesting
@@ -126,6 +130,8 @@ class LiveActivityBridge {
     required String text,
     double? endsAt,
     String? etaLabel,
+    String? arrivedText,
+    String? imminentText,
   }) async {
     final override = debugStartActivity;
     if (override != null) {
@@ -136,6 +142,8 @@ class LiveActivityBridge {
         text: text,
         endsAt: endsAt,
         etaLabel: etaLabel,
+        arrivedText: arrivedText,
+        imminentText: imminentText,
       );
     }
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) {
@@ -150,6 +158,8 @@ class LiveActivityBridge {
         'text': text,
         if (endsAt != null) 'endsAt': endsAt,
         if (etaLabel != null && etaLabel.isNotEmpty) 'etaLabel': etaLabel,
+        if (arrivedText != null && arrivedText.isNotEmpty) 'arrivedText': arrivedText,
+        if (imminentText != null && imminentText.isNotEmpty) 'imminentText': imminentText,
       });
       final start = LiveActivityStart.fromChannel(raw);
       if (!start.started) {
@@ -167,10 +177,19 @@ class LiveActivityBridge {
     required String text,
     double? endsAt,
     String? etaLabel,
+    String? arrivedText,
+    String? imminentText,
   }) async {
     final override = debugUpdate;
     if (override != null) {
-      await override(minutes: minutes, text: text, endsAt: endsAt, etaLabel: etaLabel);
+      await override(
+        minutes: minutes,
+        text: text,
+        endsAt: endsAt,
+        etaLabel: etaLabel,
+        arrivedText: arrivedText,
+        imminentText: imminentText,
+      );
       return;
     }
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
@@ -180,6 +199,8 @@ class LiveActivityBridge {
         'text': text,
         if (endsAt != null) 'endsAt': endsAt,
         if (etaLabel != null && etaLabel.isNotEmpty) 'etaLabel': etaLabel,
+        if (arrivedText != null && arrivedText.isNotEmpty) 'arrivedText': arrivedText,
+        if (imminentText != null && imminentText.isNotEmpty) 'imminentText': imminentText,
       });
     } catch (e) {
       debugPrint('updateActivity: $e');

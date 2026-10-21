@@ -8,20 +8,32 @@ import WidgetKit
 /// endsAt. A plain 「9 分鐘」 string is drawn once and stays frozen, so the
 /// big line is Text's live relative date, which the system keeps moving.
 /// Compact Dynamic Island uses 「預測」 plus a ticking countdown.
+///
+/// Those system timers keep running after endsAt. The activity's stale date
+/// is that instant, so the widget reloads into the selected language's
+/// 「已到達」. The last minute shows 「快將到達」 instead of a zero.
 
 struct BoardingLiveActivityWidget: Widget {
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: BoardingActivityAttributes.self) { context in
       let label = fullLabel(state: context.state, attributes: context.attributes)
+      let phase = arrivalPhase(state: context.state, isStale: context.isStale)
       VStack(alignment: .leading, spacing: 4) {
         Text(context.attributes.route)
           .font(.headline)
           .lineLimit(1)
-        Text(label)
-          .font(.headline)
-          .lineLimit(2)
-          .fixedSize(horizontal: false, vertical: true)
-        timeRow(context.state, label: label)
+        if phase == .counting {
+          Text(label)
+            .font(.headline)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+          timeRow(context.state, label: label)
+        } else {
+          statusLine(
+            statusPhrase(state: context.state, attributes: context.attributes, label: label, phase: phase),
+            font: .title.weight(.bold)
+          )
+        }
         if !context.attributes.stopName.isEmpty {
           Text(context.attributes.stopName)
             .font(.subheadline)
@@ -32,6 +44,13 @@ struct BoardingLiveActivityWidget: Widget {
       .padding()
     } dynamicIsland: { context in
       let label = fullLabel(state: context.state, attributes: context.attributes)
+      let phase = arrivalPhase(state: context.state, isStale: context.isStale)
+      let phrase = statusPhrase(
+        state: context.state,
+        attributes: context.attributes,
+        label: label,
+        phase: phase
+      )
       return DynamicIsland {
         DynamicIslandExpandedRegion(.leading) {
           Text(context.attributes.route)
@@ -39,15 +58,23 @@ struct BoardingLiveActivityWidget: Widget {
             .lineLimit(1)
         }
         DynamicIslandExpandedRegion(.trailing) {
-          liveClock(context.state, label: label, font: .title3)
+          if phase == .counting {
+            liveClock(context.state, label: label, font: .title3)
+          } else {
+            statusLine(phrase, font: .title3.weight(.bold))
+          }
         }
         DynamicIslandExpandedRegion(.bottom) {
           VStack(alignment: .leading, spacing: 2) {
-            Text(label)
-              .font(.subheadline.weight(.semibold))
-              .lineLimit(2)
-              .fixedSize(horizontal: false, vertical: true)
-            timeRow(context.state, label: label, prominent: false)
+            if phase == .counting {
+              Text(label)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+              timeRow(context.state, label: label, prominent: false)
+            } else {
+              statusLine(phrase, font: .title3.weight(.bold))
+            }
             if !context.attributes.stopName.isEmpty {
               Text(context.attributes.stopName)
                 .font(.caption)
@@ -56,13 +83,19 @@ struct BoardingLiveActivityWidget: Widget {
           }
         }
       } compactLeading: {
-        Text(shortLabel(label))
+        Text(phase == .counting ? shortLabel(label) : phrase)
           .font(.caption.weight(.semibold))
           .lineLimit(1)
+          .minimumScaleFactor(0.4)
       } compactTrailing: {
-        liveClock(context.state, label: label, font: .caption)
+        if phase == .counting {
+          liveClock(context.state, label: label, font: .caption)
+        }
       } minimal: {
-        liveClock(context.state, label: label, font: .caption2)
+        Text(phase == .counting ? shortLabel(label) : phrase)
+          .font(.caption2.weight(.bold))
+          .lineLimit(1)
+          .minimumScaleFactor(0.4)
       }
     }
   }
@@ -93,10 +126,44 @@ private func shortLabel(_ label: String) -> String {
   return "預測"
 }
 
-private func endsDate(_ state: BoardingActivityAttributes.ContentState) -> Date? {
-  guard let raw = state.endsAt, raw > 1_000_000_000 else { return nil }
-  let seconds = raw > 10_000_000_000 ? raw / 1000 : raw
-  return Date(timeIntervalSince1970: seconds)
+private let imminentWindow: TimeInterval = 60
+
+private enum ArrivalPhase { case counting, imminent, arrived }
+
+/// Arrived once endsAt or the stale date is reached, so the timers are taken
+/// out of the tree and cannot run past zero. The minute before that is
+/// 「快將到達」 instead of a zero.
+private func arrivalPhase(
+  state: BoardingActivityAttributes.ContentState,
+  isStale: Bool
+) -> ArrivalPhase {
+  guard let ends = state.predictedArrival() else { return .counting }
+  if isStale || ends <= Date() { return .arrived }
+  if ends.timeIntervalSinceNow <= imminentWindow { return .imminent }
+  return .counting
+}
+
+private func statusPhrase(
+  state: BoardingActivityAttributes.ContentState,
+  attributes: BoardingActivityAttributes,
+  label: String,
+  phase: ArrivalPhase
+) -> String {
+  let explicit = phase == .arrived
+    ? (state.arrivedText ?? attributes.arrivedText)
+    : (state.imminentText ?? attributes.imminentText)
+  let trimmed = explicit?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+  if !trimmed.isEmpty { return trimmed }
+  return phase == .arrived ? fallbackArrived(label) : fallbackImminent(label)
+}
+
+@ViewBuilder
+private func statusLine(_ phrase: String, font: Font) -> some View {
+  Text(phrase)
+    .font(font)
+    .lineLimit(2)
+    .minimumScaleFactor(0.5)
+    .fixedSize(horizontal: false, vertical: true)
 }
 
 private func usesSimplified(_ label: String) -> Bool {
@@ -120,6 +187,24 @@ private func compactTime(_ minutes: Int, label: String) -> String {
   return "\(minutes)分"
 }
 
+private func fallbackArrived(_ label: String) -> String {
+  if usesSimplified(label) { return "已到达" }
+  if usesEnglish(label) { return "Arrived" }
+  if label.hasPrefix("Chegada") || label.localizedCaseInsensitiveContains("prevista") {
+    return "Chegou"
+  }
+  return "已到達"
+}
+
+private func fallbackImminent(_ label: String) -> String {
+  if usesSimplified(label) { return "即将到达" }
+  if usesEnglish(label) { return "Arriving soon" }
+  if label.hasPrefix("Chegada") || label.localizedCaseInsensitiveContains("prevista") {
+    return "Quase a chegar"
+  }
+  return "快將到達"
+}
+
 /// Remaining time under the phrase. endsAt uses a system-updated relative
 /// date so the minutes move as time passes. A computed 「N 分鐘」 is only the
 /// fallback when endsAt is missing.
@@ -130,7 +215,7 @@ private func timeRow(
   prominent: Bool = true
 ) -> some View {
   let font: Font = prominent ? .title.weight(.bold) : .title3.weight(.bold)
-  if let ends = endsDate(state), ends > Date() {
+  if let ends = state.predictedArrival(), ends > Date() {
     Text(ends, style: .relative)
       .font(font)
       .monospacedDigit()
@@ -158,7 +243,7 @@ private func liveClock(
   label: String,
   font: Font
 ) -> some View {
-  if let ends = endsDate(state), ends > Date() {
+  if let ends = state.predictedArrival(), ends > Date() {
     Text(timerInterval: Date()...ends, countsDown: true)
       .font(font.weight(.bold).monospacedDigit())
       .lineLimit(1)
