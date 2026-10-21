@@ -4,10 +4,10 @@ import WidgetKit
 
 /// One Live Activity for the boarding reminder.
 ///
-/// The predicted-arrival phrase is its own line. A system timer on the same
-/// row claims the width and clips the label, which is what 1.0.46 did.
-/// Lock Screen shows 「預測到站時間尚餘」 and a large 「N 分鐘」. Compact
-/// Dynamic Island uses the short form 「預測」 so the time still fits.
+/// Lock Screen shows 「預測到站時間尚餘」 and a remaining time taken from
+/// endsAt. A plain 「9 分鐘」 string is drawn once and stays frozen, so the
+/// big line is Text's live relative date, which the system keeps moving.
+/// Compact Dynamic Island uses 「預測」 plus a ticking countdown.
 
 struct BoardingLiveActivityWidget: Widget {
   var body: some WidgetConfiguration {
@@ -39,11 +39,7 @@ struct BoardingLiveActivityWidget: Widget {
             .lineLimit(1)
         }
         DynamicIslandExpandedRegion(.trailing) {
-          Text(minuteWords(displayMinutes(context.state), label: label))
-            .font(.title2.weight(.bold))
-            .monospacedDigit()
-            .lineLimit(1)
-            .minimumScaleFactor(0.7)
+          liveClock(context.state, label: label, font: .title3)
         }
         DynamicIslandExpandedRegion(.bottom) {
           VStack(alignment: .leading, spacing: 2) {
@@ -51,14 +47,10 @@ struct BoardingLiveActivityWidget: Widget {
               .font(.subheadline.weight(.semibold))
               .lineLimit(2)
               .fixedSize(horizontal: false, vertical: true)
+            timeRow(context.state, label: label, prominent: false)
             if !context.attributes.stopName.isEmpty {
               Text(context.attributes.stopName)
                 .font(.caption)
-                .lineLimit(1)
-            }
-            if let ends = endsDate(context.state), ends > Date() {
-              Text(timerInterval: Date()...ends, countsDown: true)
-                .font(.body.monospacedDigit())
                 .lineLimit(1)
             }
           }
@@ -68,16 +60,9 @@ struct BoardingLiveActivityWidget: Widget {
           .font(.caption.weight(.semibold))
           .lineLimit(1)
       } compactTrailing: {
-        Text(compactTime(displayMinutes(context.state), label: label))
-          .font(.caption.weight(.bold))
-          .monospacedDigit()
-          .lineLimit(1)
+        liveClock(context.state, label: label, font: .caption)
       } minimal: {
-        Text(compactTime(displayMinutes(context.state), label: label))
-          .font(.caption2.weight(.bold))
-          .monospacedDigit()
-          .lineLimit(1)
-          .minimumScaleFactor(0.7)
+        liveClock(context.state, label: label, font: .caption2)
       }
     }
   }
@@ -114,16 +99,6 @@ private func endsDate(_ state: BoardingActivityAttributes.ContentState) -> Date?
   return Date(timeIntervalSince1970: seconds)
 }
 
-/// Whole minutes still to show. endsAt wins; otherwise the last pushed minutes.
-private func displayMinutes(_ state: BoardingActivityAttributes.ContentState) -> Int {
-  if let ends = endsDate(state) {
-    let seconds = ends.timeIntervalSinceNow
-    if seconds <= 0 { return 0 }
-    return max(1, Int((seconds / 60).rounded()))
-  }
-  return max(0, state.minutes)
-}
-
 private func usesSimplified(_ label: String) -> Bool {
   label.contains("预测") || label.contains("分钟")
 }
@@ -145,31 +120,54 @@ private func compactTime(_ minutes: Int, label: String) -> String {
   return "\(minutes)分"
 }
 
-/// Large 「N 分鐘」 plus a bounded timer. The timer never shares a row with the phrase.
+/// Remaining time under the phrase. endsAt uses a system-updated relative
+/// date so the minutes move as time passes. A computed 「N 分鐘」 is only the
+/// fallback when endsAt is missing.
 @ViewBuilder
 private func timeRow(
   _ state: BoardingActivityAttributes.ContentState,
-  label: String
+  label: String,
+  prominent: Bool = true
 ) -> some View {
-  let minutes = displayMinutes(state)
-  HStack(alignment: .firstTextBaseline, spacing: 8) {
-    Text(minuteWords(minutes, label: label))
-      .font(.title.weight(.bold))
+  let font: Font = prominent ? .title.weight(.bold) : .title3.weight(.bold)
+  if let ends = endsDate(state), ends > Date() {
+    Text(ends, style: .relative)
+      .font(font)
+      .monospacedDigit()
+      .lineLimit(2)
+      .minimumScaleFactor(0.6)
+      .frame(maxWidth: .infinity, alignment: .leading)
+  } else if state.minutes <= 0, !state.text.isEmpty {
+    Text(state.text)
+      .font(.subheadline)
+      .lineLimit(2)
+      .fixedSize(horizontal: false, vertical: true)
+  } else {
+    Text(minuteWords(max(0, state.minutes), label: label))
+      .font(font)
       .monospacedDigit()
       .lineLimit(1)
-      .layoutPriority(1)
-    if let ends = endsDate(state), ends > Date() {
-      Text(timerInterval: Date()...ends, countsDown: true)
-        .font(.title3.monospacedDigit())
-        .lineLimit(1)
-        .frame(maxWidth: 96, alignment: .leading)
-        .clipped()
-    } else if minutes == 0, !state.text.isEmpty {
-      Text(state.text)
-        .font(.subheadline)
-        .lineLimit(2)
-        .fixedSize(horizontal: false, vertical: true)
-    }
+      .minimumScaleFactor(0.6)
+  }
+}
+
+/// Short countdown for the island. timerInterval ticks without a new push.
+@ViewBuilder
+private func liveClock(
+  _ state: BoardingActivityAttributes.ContentState,
+  label: String,
+  font: Font
+) -> some View {
+  if let ends = endsDate(state), ends > Date() {
+    Text(timerInterval: Date()...ends, countsDown: true)
+      .font(font.weight(.bold).monospacedDigit())
+      .lineLimit(1)
+      .minimumScaleFactor(0.6)
+  } else {
+    Text(compactTime(max(0, state.minutes), label: label))
+      .font(font.weight(.bold).monospacedDigit())
+      .lineLimit(1)
+      .minimumScaleFactor(0.6)
   }
 }
 
