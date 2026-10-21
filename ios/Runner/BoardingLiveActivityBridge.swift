@@ -293,6 +293,9 @@ enum BoardingLiveActivityBridge {
       } else {
         await activity.update(using: state)
       }
+      // The minute-before reload has to follow the new arrival. The previous
+      // watch still held the endsAt from the last update.
+      watchArrival(activity, state: state)
       DispatchQueue.main.async { result(nil) }
     }
   }

@@ -233,4 +233,76 @@ void main() {
     expect(bus.etaMinutes, 7);
     expect(Bus.fromJson({'etaMinutes': null}).etaMinutes, isNull);
   });
+
+  Bus bus(String license, int seq, {int? eta, bool atStop = true}) {
+    return Bus(
+      busLicense: license,
+      lat: 22.2,
+      lng: 113.5,
+      speed: 20,
+      currentStopSeq: seq,
+      atStop: atStop,
+      etaMinutes: eta,
+    );
+  }
+
+  test('the chosen bus uses the route card minutes, not a nearer bus', () {
+    expect(parseStatusEtaMinutes('約 9 分鐘 (實時)'), 9);
+    expect(parseStatusEtaMinutes('~ 4 min'), 4);
+
+    final buses = [
+      bus('NEAR', 4, eta: 1),
+      bus('CHOSEN', 2, eta: 9),
+    ];
+    expect(
+      boardingBusLiveMinutes(
+        buses: buses,
+        targetSeq: 5,
+        license: 'chosen',
+        etaStatus: '約 1 分鐘',
+      ),
+      9,
+    );
+    expect(
+      boardingBusLiveMinutes(
+        buses: [bus('CHOSEN', 4)],
+        targetSeq: 5,
+        license: 'CHOSEN',
+        etaStatus: '約 9 分鐘',
+      ),
+      9,
+    );
+    expect(
+      boardingBusLiveMinutes(
+        buses: [bus('CHOSEN', 3, eta: 0), bus('OTHER', 1, eta: 4)],
+        targetSeq: 5,
+        license: 'CHOSEN',
+      ),
+      isNull,
+    );
+    expect(
+      boardingBusLiveMinutes(
+        buses: [bus('CHOSEN', 5, atStop: true), bus('OTHER', 2, eta: 4)],
+        targetSeq: 5,
+        license: 'CHOSEN',
+      ),
+      0,
+    );
+    expect(
+      boardingBusLiveMinutes(
+        buses: [bus('CHOSEN', 5, atStop: false)],
+        targetSeq: 5,
+        license: 'CHOSEN',
+      ),
+      0,
+    );
+    expect(
+      boardingBusLiveMinutes(
+        buses: [bus('OTHER', 2, eta: 4)],
+        targetSeq: 5,
+        license: 'CHOSEN',
+      ),
+      isNull,
+    );
+  });
 }

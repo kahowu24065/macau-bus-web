@@ -674,4 +674,161 @@ void main() {
       bus.dispose();
     }
   });
+
+  testWidgets('the Live Activity follows the chosen bus realtime ETA', (tester) async {
+    var etaCalls = 0;
+    List<Bus> nextBuses = const [];
+    BusApiService.debugFetchBusETA = (
+      String route,
+      int dir, {
+      int? targetStopSeq,
+      String lang = 'zh',
+    }) async {
+      etaCalls += 1;
+      return {
+        'success': true,
+        'etaData': {'status': '約 1 分鐘'},
+        'allBuses': nextBuses,
+      };
+    };
+    int? startedMinutes;
+    double? startedEnds;
+    LiveActivityBridge.debugStartActivity = ({
+      required String route,
+      required String stopName,
+      required int minutes,
+      required String text,
+      double? endsAt,
+      String? etaLabel,
+      String? arrivedText,
+      String? imminentText,
+    }) async {
+      startedMinutes = minutes;
+      startedEnds = endsAt;
+      return const LiveActivityStart(started: true);
+    };
+    LiveActivityBridge.debugPushToStartToken = () async => null;
+    final updates = <({int minutes, double? endsAt, String? arrived})>[];
+    LiveActivityBridge.debugUpdate = ({
+      required int minutes,
+      required String text,
+      double? endsAt,
+      String? etaLabel,
+      String? arrivedText,
+      String? imminentText,
+    }) async {
+      updates.add((minutes: minutes, endsAt: endsAt, arrived: arrivedText));
+    };
+    final bodies = <Map<String, dynamic>>[];
+    BoardingReminderClient.debugRegister = (body) async {
+      bodies.add(Map<String, dynamic>.from(body));
+      return const BoardingReminderResponse(
+        ok: true,
+        minutes: 14,
+        text: '約 14 分鐘後到達',
+        startedAt: 1000,
+        endDelaySeconds: 14 * 60,
+      );
+    };
+    final scheduled = <ScheduledBoardingAlert>[];
+    NotificationService.debugScheduleBoardingAlerts = (alerts) async {
+      scheduled
+        ..clear()
+        ..addAll(alerts);
+    };
+
+    Bus placed(String license, int seq, {int? eta, bool atStop = true}) {
+      return Bus(
+        busLicense: license,
+        lat: _north(seq == 2 ? 700 : 50),
+        lng: _lng,
+        speed: 20,
+        currentStopSeq: seq,
+        atStop: atStop,
+        etaMinutes: eta,
+      );
+    }
+
+    final bus = BusController();
+    try {
+      await tester.pump();
+      await tester.pump();
+      bus.currentRoute = '102';
+      bus.selectedStopSeq = 3;
+      bus.stopsList = [_stop(1, 0), _stop(2, 500), _stop(3, 1000)];
+      bus.etaData = {'status': '約 14 分鐘'};
+      bus.allBusesList = [
+        placed('CLOSE', 2, eta: 9),
+        placed('FAR', 1, eta: 20),
+      ];
+
+      expect((await bus.setBoardingStop(3)).started, isTrue);
+
+      expect(etaCalls, 0);
+      expect(startedMinutes, 9);
+      expect(startedEnds, isNotNull);
+      final nineMin = DateTime.now().millisecondsSinceEpoch / 1000.0 + 9 * 60;
+      expect((startedEnds! - nineMin).abs(), lessThan(5));
+      expect(bodies, hasLength(1));
+      expect(bodies.single['busLicense'], 'CLOSE');
+      expect(bodies.single['realtimeEndsAt'], startedEnds);
+      expect(scheduled, hasLength(2));
+      expect(scheduled[0].body, '預測到站尚餘約 3 分鐘');
+      expect(
+        scheduled[1].at.difference(DateTime.now()).inSeconds,
+        inInclusiveRange(8 * 60, 9 * 60 + 5),
+      );
+
+      nextBuses = [placed('CLOSE', 2, eta: 9), placed('FAR', 1, eta: 20)];
+      await bus.fetchBusETA();
+      expect(updates, isEmpty);
+      expect(bodies, hasLength(1));
+
+      nextBuses = [
+        placed('NEAR', 2, eta: 1),
+        placed('CLOSE', 1, eta: 6),
+      ];
+      await bus.fetchBusETA();
+      expect(updates, hasLength(1));
+      expect(updates.single.minutes, 6);
+      expect(updates.single.arrived, '已到達');
+      final sixMin = DateTime.now().millisecondsSinceEpoch / 1000.0 + 6 * 60;
+      expect((updates.single.endsAt! - sixMin).abs(), lessThan(5));
+      expect(bodies, hasLength(2));
+      expect(bodies.last.containsKey('busLicense'), isFalse);
+      expect(bodies.last['reminderId'], bodies.first['reminderId']);
+      expect(((bodies.last['realtimeEndsAt'] as num) - sixMin).abs(), lessThan(5));
+      expect(
+        scheduled[1].at.difference(DateTime.now()).inSeconds,
+        inInclusiveRange(5 * 60, 6 * 60 + 5),
+      );
+
+      bus.selectedStopSeq = 2;
+      nextBuses = [placed('CLOSE', 1, eta: 2)];
+      await bus.fetchBusETA();
+      expect(updates, hasLength(1));
+
+      bus.selectedStopSeq = 3;
+      nextBuses = [placed('NEAR', 2, eta: 1)];
+      await bus.fetchBusETA();
+      expect(updates, hasLength(1));
+
+      nextBuses = [placed('CLOSE', 3, eta: 0, atStop: true)];
+      await bus.fetchBusETA();
+      expect(updates, hasLength(2));
+      expect(updates.last.minutes, 0);
+      expect(
+        updates.last.endsAt!,
+        lessThanOrEqualTo(DateTime.now().millisecondsSinceEpoch / 1000.0 + 2),
+      );
+      expect(scheduled, hasLength(1));
+      expect(scheduled.single.id, boardingArrivalNotificationId);
+      expect(scheduled.single.body, '已到達Stop 3');
+      expect(scheduled.single.at.difference(DateTime.now()).inSeconds, inInclusiveRange(0, 3));
+      expect(etaCalls, 5);
+    } finally {
+      bus.stopAutoRefresh();
+      bus.dispose();
+    }
+  });
 }

@@ -494,3 +494,70 @@ test('cancel stops a later tick, and a new reminder replaces one with the same t
   assert.equal(pushes[0].token, 'phone-token');
   assert.equal(pushes[0].payload.aps['content-state'].text, 'Predicted arrival in 5 minutes · Ferry');
 });
+
+test('realtimeEndsAt replaces the learned countdown for pushes', async () => {
+  const pushes = [];
+  const timers = [];
+  let clock = 4_000_000;
+  const book = createBoardingReminders({
+    now: () => clock,
+    loadSegments: () => [{ fromSeq: 1, toSeq: 2, travelSeconds: 14 * 60, dwellSeconds: 0 }],
+    credentials: () => ({ configured: true, bundleId: 'mo.mbka.bus', sandbox: false }),
+    setTimer: (fn, ms) => {
+      timers.push({ ms, fn });
+      return timers.length;
+    },
+    clearTimer: () => {},
+    sendPush: async (message) => {
+      pushes.push(message);
+      return { sent: true };
+    },
+  });
+
+  const realtimeEndsAt = Math.floor(clock / 1000) + 9 * 60;
+  const registered = await book.register({
+    reminderId: 'live',
+    route: '102',
+    dir: 0,
+    targetSeq: 2,
+    stopName: '漁翁街',
+    lat: north(0),
+    lng,
+    lang: 'zh',
+    activityToken: 'activity-token',
+    realtimeEndsAt,
+    stops: [stop(1, 0), stop(2, 500)],
+  });
+  assert.equal(registered.body.success, true);
+  assert.equal(registered.body.minutes, 9);
+  assert.equal(Math.round(registered.body.endDelaySeconds), 9 * 60);
+  assert.equal(pushes.length, 0);
+
+  clock += 20000;
+  await timers[timers.length - 1].fn();
+  assert.equal(pushes.length, 1);
+  assert.equal(pushes[0].payload.aps.event, 'update');
+  assert.equal(pushes[0].payload.aps['content-state'].minutes, 9);
+  assert.equal(pushes[0].payload.aps['content-state'].endsAt, realtimeEndsAt);
+  assert.equal(pushes[0].payload.aps['content-state'].etaLabel, '預測到站時間尚餘');
+
+  const moved = Math.floor(clock / 1000) + 6 * 60;
+  const follow = await book.register({
+    reminderId: 'live',
+    realtimeEndsAt: moved,
+  });
+  assert.equal(follow.body.minutes, 6);
+  assert.equal(pushes.length, 2);
+  assert.equal(pushes[1].payload.aps.event, 'update');
+  assert.equal(pushes[1].payload.aps['content-state'].minutes, 6);
+  assert.equal(pushes[1].payload.aps['content-state'].endsAt, moved);
+
+  const arrived = await book.register({
+    reminderId: 'live',
+    realtimeEndsAt: Math.floor(clock / 1000),
+  });
+  assert.equal(arrived.body.success, true);
+  assert.equal(book.reminders.has('live'), true);
+  assert.equal(pushes.length, 2);
+  assert.notEqual(pushes[pushes.length - 1].payload.aps.event, 'end');
+});

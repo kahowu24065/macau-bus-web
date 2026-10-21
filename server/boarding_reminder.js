@@ -10,6 +10,9 @@
  * is separate and is not added at the target stop.
  *
  * It does not call motransportinfo or any other transport-bureau URL.
+ * The phone may send realtimeEndsAt (unix seconds), the same remaining time
+ * as the route card. Pushes then count down to that instant. Without it,
+ * pushes only decay the learned-segment estimate from registration.
  * The live host passes loadSegments from learned_eta (see segmentsFromLearnedEta).
  * segment_times.json is only the fallback when that callback is omitted.
  * If neither source has the route, the reminder is refused with segment_times_missing.
@@ -383,6 +386,12 @@ function resolveSegmentPath(options = {}) {
   return path.join(shapeDir, 'segment_times.json');
 }
 
+function realtimeEndsAtSeconds(body) {
+  const value = Number(body && body.realtimeEndsAt);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return value > 10000000000 ? value / 1000 : value;
+}
+
 function pushTarget(reminder) {
   if (reminder.activityToken) {
     return { token: reminder.activityToken, event: reminder.startedRemotely ? 'update' : 'update' };
@@ -451,6 +460,28 @@ function createBoardingReminders(options = {}) {
   function remainingSeconds(reminder) {
     const elapsed = Math.max(0, (now() - reminder.registeredAt) / 1000);
     return reminder.initialRemainingSeconds - elapsed;
+  }
+
+  /// Replaces the learned-segment countdown with the phone's realtime ETA.
+  /// A due or past instant does not end the activity: the phone already shows
+  /// 已到達 and keeps it on screen.
+  function adoptRealtimeEndsAt(reminder, endsAtSeconds) {
+    const remaining = endsAtSeconds - now() / 1000;
+    reminder.registeredAt = now();
+    if (!(remaining > 1)) {
+      reminder.initialRemainingSeconds = 0;
+      reminder.minutesNow = 0;
+      reminder.text = arrivedText(reminder.lang, reminder.stopName);
+      reminder.pendingTokenPush = false;
+      reminder.nextDueAt = now() + 24 * 60 * 60 * 1000;
+      clearTimers(reminder);
+      return;
+    }
+    reminder.initialRemainingSeconds = remaining;
+    const plan = planReminder(remaining);
+    reminder.minutesNow = plan.minutesNow;
+    reminder.text = minutesText(reminder.lang, plan.minutesNow, reminder.stopName);
+    scheduleTick(reminder);
   }
 
   function publicResponse(reminder) {
@@ -563,6 +594,8 @@ function createBoardingReminders(options = {}) {
     if (existing && !existing.closed) {
       if (body.activityToken) existing.activityToken = String(body.activityToken);
       if (body.pushToStartToken) existing.pushToStartToken = String(body.pushToStartToken);
+      const realtime = realtimeEndsAtSeconds(body);
+      if (realtime != null) adoptRealtimeEndsAt(existing, realtime);
       cancelConflicts(existing);
       if (body.activityToken || body.pushToStartToken) {
         boardLog('token_attached', {
@@ -571,9 +604,15 @@ function createBoardingReminders(options = {}) {
           hasPushToStart: Boolean(existing.pushToStartToken),
         });
       }
-      // A tick that already came due had no token. Send the current countdown
-      // now that the phone can receive it, instead of waiting out another 20s.
-      if ((existing.pendingTokenPush || existing.nextDueAt <= now()) && pushTarget(existing)) {
+      // A new realtime ETA is pushed now so the lock screen does not keep the
+      // learned estimate until the next 20s tick. A tick that already came due
+      // with no token is sent once the phone can receive it. An arrival the
+      // phone already marked is left on screen.
+      const due = existing.pendingTokenPush || existing.nextDueAt <= now();
+      const arrived = realtime != null && !(existing.initialRemainingSeconds > 1);
+      const shouldPush = !arrived && pushTarget(existing) && (realtime != null || due);
+      if (shouldPush) {
+        existing.pendingTokenPush = false;
         await runTick(existing);
       }
       return { status: 200, body: publicResponse(existing) };
@@ -636,15 +675,17 @@ function createBoardingReminders(options = {}) {
 
     reminders.set(reminderId, reminder);
     cancelConflicts(reminder);
+    const realtime = realtimeEndsAtSeconds(body);
+    if (realtime != null) adoptRealtimeEndsAt(reminder, realtime);
     boardLog('registered', {
       id: reminderId,
       minutes: reminder.minutesNow,
-      remaining: Math.round(remaining),
+      remaining: Math.round(remainingSeconds(reminder)),
       hasActivity: Boolean(reminder.activityToken),
       hasPushToStart: Boolean(reminder.pushToStartToken),
       pushConfigured: credentials().configured,
     });
-    scheduleTick(reminder);
+    if (realtime == null) scheduleTick(reminder);
     return { status: 200, body: publicResponse(reminder) };
   }
 
