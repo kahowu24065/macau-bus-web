@@ -7,11 +7,14 @@ import WidgetKit
 /// Lock Screen shows 「預測到站時間尚餘」 and a remaining time taken from
 /// endsAt. A plain 「9 分鐘」 string is drawn once and stays frozen, so the
 /// big line is Text's live relative date, which the system keeps moving.
-/// Compact Dynamic Island uses 「預測」 plus a ticking countdown.
+/// Compact Dynamic Island keeps a short label beside a ticking countdown.
+/// Minimal shows that countdown on its own. The timer's width is fixed so the
+/// island cannot clip it away. The last minute and arrival replace it with
+/// 「快將到達」 and 「已到達」 in the selected language.
 ///
 /// Those system timers keep running after endsAt. The activity's stale date
-/// is that instant, so the widget reloads into the selected language's
-/// 「已到達」. The last minute shows 「快將到達」 instead of a zero.
+/// is that instant, so the widget reloads into the arrived phrase. A stale
+/// flag while the arrival is still ahead does not hide the countdown.
 
 struct BoardingLiveActivityWidget: Widget {
   var body: some WidgetConfiguration {
@@ -59,7 +62,7 @@ struct BoardingLiveActivityWidget: Widget {
         }
         DynamicIslandExpandedRegion(.trailing) {
           if phase == .counting {
-            liveClock(context.state, label: label, font: .title3)
+            liveClock(context.state, label: label, font: .title3, width: 72)
           } else {
             statusLine(phrase, font: .title3.weight(.bold))
           }
@@ -86,16 +89,22 @@ struct BoardingLiveActivityWidget: Widget {
         Text(phase == .counting ? shortLabel(label) : phrase)
           .font(.caption.weight(.semibold))
           .lineLimit(1)
-          .minimumScaleFactor(0.4)
+          .minimumScaleFactor(phase == .counting ? 1 : 0.4)
       } compactTrailing: {
-        if phase == .counting {
-          liveClock(context.state, label: label, font: .caption)
-        }
+        // Always a view. An empty trailing region lets the island drop the
+        // countdown that used to sit here (「14分」 / the live timer).
+        islandCompactTrailing(
+          state: context.state,
+          label: label,
+          phase: phase
+        )
       } minimal: {
-        Text(phase == .counting ? shortLabel(label) : phrase)
-          .font(.caption2.weight(.bold))
-          .lineLimit(1)
-          .minimumScaleFactor(0.4)
+        islandMinimal(
+          state: context.state,
+          label: label,
+          phase: phase,
+          phrase: phrase
+        )
       }
     }
   }
@@ -130,17 +139,51 @@ private let imminentWindow: TimeInterval = 60
 
 private enum ArrivalPhase { case counting, imminent, arrived }
 
-/// Arrived once endsAt or the stale date is reached, so the timers are taken
-/// out of the tree and cannot run past zero. The minute before that is
-/// 「快將到達」 instead of a zero.
+/// Arrived once endsAt is reached, so the timers are taken out of the tree
+/// and cannot run past zero. The minute before that is 「快將到達」.
+/// `isStale` is the reload at that instant. It must not replace a countdown
+/// that still has minutes left.
 private func arrivalPhase(
   state: BoardingActivityAttributes.ContentState,
   isStale: Bool
 ) -> ArrivalPhase {
   guard let ends = state.predictedArrival() else { return .counting }
-  if isStale || ends <= Date() { return .arrived }
-  if ends.timeIntervalSinceNow <= imminentWindow { return .imminent }
+  let remaining = ends.timeIntervalSinceNow
+  if remaining <= 0 || (isStale && remaining <= 1) { return .arrived }
+  if remaining <= imminentWindow { return .imminent }
   return .counting
+}
+
+@ViewBuilder
+private func islandCompactTrailing(
+  state: BoardingActivityAttributes.ContentState,
+  label: String,
+  phase: ArrivalPhase
+) -> some View {
+  switch phase {
+  case .counting:
+    liveClock(state, label: label, font: .caption, width: 52)
+  case .imminent, .arrived:
+    EmptyView()
+  }
+}
+
+@ViewBuilder
+private func islandMinimal(
+  state: BoardingActivityAttributes.ContentState,
+  label: String,
+  phase: ArrivalPhase,
+  phrase: String
+) -> some View {
+  switch phase {
+  case .counting:
+    liveClock(state, label: label, font: .caption2, minScale: 0.4)
+  case .imminent, .arrived:
+    Text(phrase)
+      .font(.caption2.weight(.bold))
+      .lineLimit(1)
+      .minimumScaleFactor(0.35)
+  }
 }
 
 private func statusPhrase(
@@ -237,22 +280,30 @@ private func timeRow(
 }
 
 /// Short countdown for the island. timerInterval ticks without a new push.
+/// Hours are hidden so a 14-minute ride stays 「14:00」 wide, not 「0:14:00」,
+/// which the compact island was clipping to nothing. A fixed width keeps
+/// that trailing time on screen next to the short label.
 @ViewBuilder
 private func liveClock(
   _ state: BoardingActivityAttributes.ContentState,
   label: String,
-  font: Font
+  font: Font,
+  width: CGFloat? = nil,
+  minScale: CGFloat = 0.5
 ) -> some View {
   if let ends = state.predictedArrival(), ends > Date() {
-    Text(timerInterval: Date()...ends, countsDown: true)
+    Text(timerInterval: Date()...ends, countsDown: true, showsHours: false)
       .font(font.weight(.bold).monospacedDigit())
+      .multilineTextAlignment(.trailing)
       .lineLimit(1)
-      .minimumScaleFactor(0.6)
+      .minimumScaleFactor(minScale)
+      .frame(width: width, alignment: .trailing)
   } else {
     Text(compactTime(max(0, state.minutes), label: label))
       .font(font.weight(.bold).monospacedDigit())
       .lineLimit(1)
-      .minimumScaleFactor(0.6)
+      .minimumScaleFactor(minScale)
+      .frame(width: width, alignment: .trailing)
   }
 }
 
