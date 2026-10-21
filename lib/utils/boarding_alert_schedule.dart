@@ -86,6 +86,14 @@ String boardingArrivedLabel(String lang) => _tr(lang, 'boarding_arrived');
 
 String boardingImminentLabel(String lang) => _tr(lang, 'boarding_imminent');
 
+/// Shown the moment a reminder starts. 0 is arrived, 1 is imminent, otherwise
+/// about [minutes] until the bus on the first card row arrives.
+String boardingTrackedAwayBody(String lang, int minutes) {
+  if (minutes <= 0) return boardingArrivedLabel(lang);
+  if (minutes <= 1) return boardingImminentLabel(lang);
+  return _tr(lang, 'boarding_tracked_minutes').replaceAll('@mins', '$minutes');
+}
+
 String boardingWarningBody(String lang, int minutes) {
   if (minutes <= 1) return boardingImminentLabel(lang);
   return _tr(lang, 'boarding_alert_warning').replaceAll('@mins', '$minutes');

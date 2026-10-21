@@ -14,6 +14,7 @@ import '../../services/alighting_location_service.dart';
 import '../../utils/alighting_location.dart'; 
 import '../../services/bus_api_service.dart';
 import '../../services/open_data_config.dart';
+import '../../utils/boarding_alert_schedule.dart';
 import '../../utils/bus_eta_estimate.dart';
 import '../../models/bus.dart';
 import '../../controllers/background_controller.dart';
@@ -619,6 +620,19 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                             content: Text(label),
                             backgroundColor: Colors.redAccent,
                             duration: const Duration(seconds: 4),
+                          ),
+                        );
+                      } else if (outcome.started && outcome.minutes != null && hostContext.mounted) {
+                        ScaffoldMessenger.of(hostContext).showSnackBar(
+                          RouteLiquidGlassNavStyle.snackBar(
+                            context: hostContext,
+                            content: Text(
+                              boardingTrackedAwayBody(
+                                langCtrl.currentLanguage,
+                                outcome.minutes!,
+                              ),
+                            ),
+                            duration: const Duration(seconds: 3),
                           ),
                         );
                       }

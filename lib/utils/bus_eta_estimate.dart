@@ -92,6 +92,75 @@ int? parseStatusEtaMinutes(String? status) {
   return int.tryParse(match.group(1)!);
 }
 
+/// The first approaching bus on the stop card, in the same order as
+/// 「尚有 N 站 (約 M 分鐘)」.
+class StopCardEta {
+  final String license;
+  final int stopsAway;
+
+  /// Null when this row has no positive minute count yet. 0 means the bus is
+  /// at the stop. A later bus's minutes are never copied onto this row.
+  final int? minutes;
+  final double lat;
+  final double lng;
+
+  const StopCardEta({
+    required this.license,
+    required this.stopsAway,
+    required this.minutes,
+    required this.lat,
+    required this.lng,
+  });
+}
+
+/// First bus the route card lists for [targetSeq].
+///
+/// Same filter and sort as the stop card: still approaching, nearest by stops
+/// away first. [useMinutes] is false when the list was fetched for another
+/// stop, so the caller can still see which bus is first without adopting that
+/// other stop's minute count.
+StopCardEta? firstStopCardEta({
+  required List<Bus> buses,
+  required int targetSeq,
+  String? etaStatus,
+  bool useMinutes = true,
+}) {
+  if (targetSeq <= 0) return null;
+  final approaching = buses.where((bus) {
+    if (bus.currentStopSeq <= 0 || bus.currentStopSeq > targetSeq) return false;
+    if (bus.currentStopSeq == targetSeq && !bus.atStop) return false;
+    return true;
+  }).toList()
+    ..sort(
+      (a, b) => (targetSeq - a.currentStopSeq).compareTo(targetSeq - b.currentStopSeq),
+    );
+  if (approaching.isEmpty) return null;
+
+  final first = approaching.first;
+  final stopsAway = targetSeq - first.currentStopSeq;
+  int? minutes;
+  if (useMinutes && stopsAway <= 0) {
+    minutes = 0;
+  } else if (useMinutes) {
+    final estimated = approachingEtaMinutes(
+      busEtaMinutes: first.etaMinutes,
+      isFirst: true,
+      stopsAway: stopsAway,
+      firstStopsAway: stopsAway,
+      firstStatusMinutes: parseStatusEtaMinutes(etaStatus),
+    );
+    // 0 while the bus is still stops away is "no count", not arrived.
+    if (estimated != null && estimated > 0) minutes = estimated;
+  }
+  return StopCardEta(
+    license: first.busLicense,
+    stopsAway: stopsAway,
+    minutes: minutes,
+    lat: first.lat,
+    lng: first.lng,
+  );
+}
+
 /// Realtime minutes for one chosen bus, using the route card's formula.
 ///
 /// [etaStatus] is the official status for [targetSeq] only. Another bus's

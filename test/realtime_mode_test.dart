@@ -305,4 +305,65 @@ void main() {
       isNull,
     );
   });
+
+  test('the first stop-card row is the closest bus by stops', () {
+    final row = firstStopCardEta(
+      buses: [
+        bus('FARTHER', 2, eta: 9),
+        bus('FIRST', 4, eta: 1),
+      ],
+      targetSeq: 5,
+      etaStatus: '約 9 分鐘',
+    );
+    expect(row?.license, 'FIRST');
+    expect(row?.stopsAway, 1);
+    expect(row?.minutes, 1);
+
+    expect(
+      firstStopCardEta(
+        buses: [bus('OWN', 3, eta: 4)],
+        targetSeq: 5,
+        etaStatus: '約 9 分鐘',
+      )?.minutes,
+      4,
+    );
+    expect(
+      firstStopCardEta(
+        buses: [bus('STATUS', 3)],
+        targetSeq: 5,
+        etaStatus: '約 9 分鐘 (實時)',
+      )?.minutes,
+      9,
+    );
+    expect(
+      firstStopCardEta(
+        buses: [bus('ZERO', 3, eta: 0), bus('LATER', 1, eta: 8)],
+        targetSeq: 5,
+      )?.minutes,
+      isNull,
+    );
+    expect(
+      firstStopCardEta(
+        buses: [bus('HERE', 5, atStop: true), bus('BEHIND', 2, eta: 4)],
+        targetSeq: 5,
+      )?.minutes,
+      0,
+    );
+    expect(
+      firstStopCardEta(
+        buses: [bus('LEFT', 5, atStop: false), bus('BEHIND', 2, eta: 4)],
+        targetSeq: 5,
+      )?.license,
+      'BEHIND',
+    );
+    expect(
+      firstStopCardEta(
+        buses: [bus('FIRST', 4, eta: 2)],
+        targetSeq: 5,
+        useMinutes: false,
+      )?.minutes,
+      isNull,
+    );
+    expect(firstStopCardEta(buses: const [], targetSeq: 5), isNull);
+  });
 }

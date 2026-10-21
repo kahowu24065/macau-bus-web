@@ -26,8 +26,8 @@ abstract final class RouteLiquidGlassNavStyle {
   /// Taller bar while easy read mode is on. [barHeight] stays the normal size.
   static const double easyReadBarHeight = 88;
 
-  static double barHeightOf(BuildContext context) =>
-      EasyReadAccess.enabled(context) ? easyReadBarHeight : barHeight;
+  static double barHeightOf(BuildContext context, {bool listen = true}) =>
+      EasyReadAccess.enabled(context, listen: listen) ? easyReadBarHeight : barHeight;
   /// Rounder end caps now that the bar is taller.
   static const double kSharedCornerRadius = 32;
 
@@ -73,8 +73,9 @@ abstract final class RouteLiquidGlassNavStyle {
   static double bottomReserve(
     BuildContext context, {
     double bannerHeight = 0,
+    bool listen = true,
   }) =>
-      barHeightOf(context) +
+      barHeightOf(context, listen: listen) +
       barBottomOffset(
         MediaQuery.viewPaddingOf(context).bottom,
         ios: isIos(context),
@@ -89,6 +90,8 @@ abstract final class RouteLiquidGlassNavStyle {
         bottomReserve(
           context,
           bannerHeight: BannerSlotHeight.of(context),
+          // Snackbars are shown from taps, outside build. Listening here asserts.
+          listen: false,
         ),
       );
 
