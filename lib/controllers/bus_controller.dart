@@ -711,6 +711,12 @@ class BusController extends ChangeNotifier {
       'realtimeEndsAt': endsAt,
     });
     if (_boardingReminderId != id) return;
+    // Bus already at the stop: clear Live Activity + banners so the
+    // notification shade does not keep 「已到達」 forever.
+    if (live <= 0) {
+      await _clearBoardingReminder();
+      return;
+    }
     await LiveActivityBridge.update(
       minutes: live,
       text: stopName,
@@ -725,7 +731,7 @@ class BusController extends ChangeNotifier {
       lang: currentLang,
       route: currentRoute,
       stopName: stopName,
-      endsAt: live <= 0 ? endsAt + 1 : endsAt,
+      endsAt: endsAt,
     );
   }
 
