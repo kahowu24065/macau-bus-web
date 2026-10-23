@@ -463,8 +463,8 @@ function createBoardingReminders(options = {}) {
   }
 
   /// Replaces the learned-segment countdown with the phone's realtime ETA.
-  /// A due or past instant does not end the activity: the phone already shows
-  /// 已到達 and keeps it on screen.
+  /// A due or past instant marks arrival so the next register path can send
+  /// an end push and clear the Live Activity from the notification shade.
   function adoptRealtimeEndsAt(reminder, endsAtSeconds) {
     const remaining = endsAtSeconds - now() / 1000;
     reminder.registeredAt = now();
@@ -473,10 +473,12 @@ function createBoardingReminders(options = {}) {
       reminder.minutesNow = 0;
       reminder.text = arrivedText(reminder.lang, reminder.stopName);
       reminder.pendingTokenPush = false;
-      reminder.nextDueAt = now() + 24 * 60 * 60 * 1000;
+      reminder.arrivedPendingEnd = true;
+      reminder.nextDueAt = now();
       clearTimers(reminder);
       return;
     }
+    reminder.arrivedPendingEnd = false;
     reminder.initialRemainingSeconds = remaining;
     const plan = planReminder(remaining);
     reminder.minutesNow = plan.minutesNow;
@@ -606,11 +608,15 @@ function createBoardingReminders(options = {}) {
       }
       // A new realtime ETA is pushed now so the lock screen does not keep the
       // learned estimate until the next 20s tick. A tick that already came due
-      // with no token is sent once the phone can receive it. An arrival the
-      // phone already marked is left on screen.
+      // with no token is sent once the phone can receive it. Arrival ends the
+      // Live Activity (dismissal-date) so the notification shade clears.
       const due = existing.pendingTokenPush || existing.nextDueAt <= now();
-      const arrived = realtime != null && !(existing.initialRemainingSeconds > 1);
-      const shouldPush = !arrived && pushTarget(existing) && (realtime != null || due);
+      const arrived = existing.arrivedPendingEnd || (realtime != null && !(existing.initialRemainingSeconds > 1));
+      if (arrived) {
+        await finishReminder(existing);
+        return { status: 200, body: { success: true, reminderId: existing.id, minutes: 0, text: arrivedText(existing.lang, existing.stopName), ended: true } };
+      }
+      const shouldPush = pushTarget(existing) && (realtime != null || due);
       if (shouldPush) {
         existing.pendingTokenPush = false;
         await runTick(existing);
@@ -685,6 +691,10 @@ function createBoardingReminders(options = {}) {
       hasPushToStart: Boolean(reminder.pushToStartToken),
       pushConfigured: credentials().configured,
     });
+    if (reminder.arrivedPendingEnd) {
+      await finishReminder(reminder);
+      return { status: 200, body: { success: true, reminderId: reminder.id, minutes: 0, text: reminder.text, ended: true } };
+    }
     if (realtime == null) scheduleTick(reminder);
     return { status: 200, body: publicResponse(reminder) };
   }

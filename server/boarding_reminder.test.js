@@ -557,7 +557,9 @@ test('realtimeEndsAt replaces the learned countdown for pushes', async () => {
     realtimeEndsAt: Math.floor(clock / 1000),
   });
   assert.equal(arrived.body.success, true);
-  assert.equal(book.reminders.has('live'), true);
-  assert.equal(pushes.length, 2);
-  assert.notEqual(pushes[pushes.length - 1].payload.aps.event, 'end');
+  assert.equal(arrived.body.ended, true);
+  assert.equal(book.reminders.has('live'), false);
+  assert.equal(pushes.length, 3);
+  assert.equal(pushes[pushes.length - 1].payload.aps.event, 'end');
+  assert.ok(Number.isFinite(pushes[pushes.length - 1].payload.aps['dismissal-date']));
 });

@@ -156,8 +156,8 @@ enum BoardingLiveActivityBridge {
   }
 
   /// Reloads the activity once, a minute before arrival, so the widget can
-  /// swap the countdown for 「快將到達」. The stale date is still the arrival
-  /// itself, which swaps that for 「已到達」 even if this task is suspended.
+  /// swap the countdown for 「快將到達」. After the predicted arrival, dismiss
+  /// the Live Activity so the notification shade does not keep 「已到達」.
   @available(iOS 16.1, *)
   private static func watchArrival(
     _ activity: Activity<BoardingActivityAttributes>,
@@ -172,6 +172,31 @@ enum BoardingLiveActivityBridge {
         try? await Task.sleep(nanoseconds: UInt64(untilImminent * 1_000_000_000))
         if Task.isCancelled { return }
         await refreshActivity(activity, state: snapshot)
+      }
+      let untilArrival = arrival.timeIntervalSinceNow
+      if untilArrival > 0 {
+        try? await Task.sleep(nanoseconds: UInt64(untilArrival * 1_000_000_000))
+        if Task.isCancelled { return }
+      }
+      // Brief hold so the widget can paint 「已到達」, then clear the shade.
+      try? await Task.sleep(nanoseconds: 8_000_000_000)
+      if Task.isCancelled { return }
+      if activity.activityState != .active { return }
+      let ended = BoardingActivityAttributes.ContentState(
+        minutes: 0,
+        text: snapshot.arrivedText ?? snapshot.text,
+        endsAt: snapshot.endsAt,
+        etaLabel: snapshot.etaLabel,
+        arrivedText: snapshot.arrivedText,
+        imminentText: snapshot.imminentText
+      )
+      if #available(iOS 16.2, *) {
+        await activity.end(ActivityContent(state: ended, staleDate: nil), dismissalPolicy: .immediate)
+      } else {
+        await activity.end(using: ended, dismissalPolicy: .immediate)
+      }
+      if BoardingActivityTokenStore.shared.activity?.id == activity.id {
+        BoardingActivityTokenStore.shared.activity = nil
       }
     }
   }
