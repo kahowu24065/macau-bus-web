@@ -1,0 +1,137 @@
+# MBKa (macau-bus-web) — signed archive + TestFlight via GitHub Actions.
+# Restored after Codemagic hit BILLING_NOT_ENABLED (free mac_mini_m2 minutes exhausted).
+# macOS minutes bill 10x: this NEVER runs on ordinary pushes. Manual dispatch only
+# (upload_testflight=true) or an ios-v* tag.
+#
+# Required repository secrets:
+#   APP_STORE_CONNECT_KEY_ID
+#   APP_STORE_CONNECT_ISSUER_ID
+#   APP_STORE_CONNECT_PRIVATE_KEY  (raw .p8 PEM or base64)
+#   APPLE_TEAM_ID
+name: iOS TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_testflight:
+        description: "Build, sign and upload to TestFlight (needs App Store Connect secrets)"
+        type: boolean
+        default: true
+  push:
+    tags: ['ios-v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-testflight-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.44.8'
+
+jobs:
+  testflight:
+    name: Signed build + TestFlight upload
+    if: ${{ startsWith(github.ref, 'refs/tags/ios-v') || inputs.upload_testflight }}
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Check secrets
+        run: |
+          for v in KEY_ID ISSUER_ID TEAM_ID; do
+            if [ -z "${!v}" ]; then echo "::error::missing secret for $v"; exit 1; fi
+          done
+      - name: Install App Store Connect API key
+        env:
+          P8: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8"
+          RAW="$P8"
+          if printf '%s' "$RAW" | grep -q 'BEGIN PRIVATE KEY'; then
+            BODY=$(printf '%s' "$RAW" | sed -e 's/-----BEGIN PRIVATE KEY-----//' -e 's/-----END PRIVATE KEY-----//' | tr -d ' \r\n\t')
+            { echo '-----BEGIN PRIVATE KEY-----'; printf '%s' "$BODY" | fold -w 64; echo; echo '-----END PRIVATE KEY-----'; } > "$KEY_PATH"
+          else
+            printf '%s' "$RAW" | base64 --decode > "$KEY_PATH"
+          fi
+          chmod 600 "$KEY_PATH"
+          grep -q 'BEGIN PRIVATE KEY' "$KEY_PATH" || { echo "::error::APP_STORE_CONNECT_PRIVATE_KEY is not a valid .p8"; exit 1; }
+          echo "KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          flutter --version
+      - run: flutter pub get
+      - name: Flutter build (unsigned)
+        run: flutter build ios --release --no-codesign --dart-define=USE_TEST_ADS=false
+      - name: Archive (unsigned; signing at export)
+        run: |
+          set -o pipefail
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Runner.xcarchive" archive \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            2>&1 | tee /tmp/archive.log | grep -E "error:|ARCHIVE" || true
+          grep -q "ARCHIVE SUCCEEDED" /tmp/archive.log || { tail -n 100 /tmp/archive.log; exit 1; }
+          APPEX="$RUNNER_TEMP/Runner.xcarchive/Products/Applications/Runner.app/PlugIns/BoardingLiveActivity.appex"
+          if [ ! -d "$APPEX" ]; then
+            echo "::error::BoardingLiveActivity.appex missing from archive"
+            find "$RUNNER_TEMP/Runner.xcarchive" -name '*.appex' -print || true
+            exit 1
+          fi
+          echo "Embedded $APPEX"
+      - name: Strip vendor signatures from embedded frameworks
+        run: |
+          APP="$RUNNER_TEMP/Runner.xcarchive/Products/Applications/Runner.app"
+          shopt -s nullglob
+          for f in "$APP"/Frameworks/*.framework "$APP"/Frameworks/*.dylib; do
+            echo "== $(basename "$f")"
+            codesign --remove-signature "$f" 2>/dev/null || true
+            rm -rf "$f/_CodeSignature"
+          done
+      - name: Export + upload to App Store Connect / TestFlight
+        run: |
+          set -o pipefail
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>${TEAM_ID}</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$KEY_PATH" \
+            -authenticationKeyID "$KEY_ID" \
+            -authenticationKeyIssuerID "$ISSUER_ID" \
+            2>&1 | tee /tmp/export.log | tail -n 80
+          grep -qE "EXPORT SUCCEEDED|Upload succeeded|Uploaded" /tmp/export.log || {
+            echo "::error::export/upload failed"
+            tail -n 120 /tmp/export.log
+            exit 1
+          }
+          echo "TestFlight upload step finished OK"
+      - name: Remove API key
+        if: always()
+        run: rm -rf ~/.appstoreconnect
