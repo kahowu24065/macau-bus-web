@@ -378,10 +378,16 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
         notStartedFromEta ||
         endedFromEta;
 
+    // Minutes in etaData / bus.etaMinutes are for one target stop. After a
+    // switch they are cleared until that stop's fetch returns, so 「尚有 N 站」
+    // stays and the previous stop's 「約 N 分鐘」 does not.
+    final minutesReady = busCtrl.etaMinutesForSelectedStop;
     int? firstBusMins;
-    final minMatch = RegExp(r'(?:約\s*|~\s*)?(\d+)\s*(?:分鐘|mins|min)', caseSensitive: false).firstMatch(cleanEta);
-    if (minMatch != null) {
-      firstBusMins = int.tryParse(minMatch.group(1)!);
+    if (minutesReady) {
+      final minMatch = RegExp(r'(?:約\s*|~\s*)?(\d+)\s*(?:分鐘|mins|min)', caseSensitive: false).firstMatch(cleanEta);
+      if (minMatch != null) {
+        firstBusMins = int.tryParse(minMatch.group(1)!);
+      }
     }
 
     String officialPlate = busCtrl.etaData?['busLicense']?.toString() ?? 
@@ -415,7 +421,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
         if (diff > 0) {
            final bool isFirst = upcoming.isEmpty;
            final int? estimated = approachingEtaMinutes(
-             busEtaMinutes: bus.etaMinutes,
+             busEtaMinutes: minutesReady ? bus.etaMinutes : null,
              isFirst: isFirst,
              stopsAway: diff,
              firstStopsAway: firstBusDiff,
@@ -469,6 +475,9 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
               : langCtrl.tr('service_not_started'),
           'plate': '',
         });
+      } else if (busCtrl.etaData != null && !minutesReady) {
+        // Stop switched; wait for this stop's ETA rather than flash the previous status.
+        upcoming.add({'status': langCtrl.tr('click_to_update'), 'plate': ''});
       } else if (busCtrl.etaData != null) {
         upcoming.add({
           'status': cleanEta.isEmpty
@@ -501,6 +510,62 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
     }
     
     return upcoming;
+  }
+
+  /// Select [stop], then speak the arrival the card is showing for that stop.
+  ///
+  /// If the minutes already belong to [stop], speak immediately. Otherwise
+  /// wait until /bus-eta for this seq is applied — speaking at tap time read
+  /// the previous stop's 「約 N 分鐘」 while the card later showed the new one.
+  void _selectStopAndMaybeSpeak(
+    BusController busCtrl,
+    LanguageController langCtrl, {
+    required bool easyRead,
+    required bool speakArrivals,
+    required dynamic stop,
+  }) {
+    final seq = stop.seq as int;
+    busCtrl.selectStop(seq);
+    if (busCtrl.etaMinutesForSelectedStop) {
+      busCtrl.fetchBusETA();
+      _readEasyReadArrival(
+        busCtrl,
+        langCtrl,
+        easyRead: easyRead,
+        speakArrivals: speakArrivals,
+        stop: stop,
+      );
+      return;
+    }
+    unawaited(_speakWhenStopEtaArrives(
+      busCtrl,
+      langCtrl,
+      seq: seq,
+      easyRead: easyRead,
+      speakArrivals: speakArrivals,
+      stop: stop,
+    ));
+  }
+
+  Future<void> _speakWhenStopEtaArrives(
+    BusController busCtrl,
+    LanguageController langCtrl, {
+    required int seq,
+    required bool easyRead,
+    required bool speakArrivals,
+    required dynamic stop,
+  }) async {
+    await busCtrl.fetchBusETA();
+    if (!mounted) return;
+    if (busCtrl.selectedStopSeq != seq) return;
+    if (!busCtrl.etaMinutesForSelectedStop) return;
+    _readEasyReadArrival(
+      busCtrl,
+      langCtrl,
+      easyRead: easyRead,
+      speakArrivals: speakArrivals,
+      stop: stop,
+    );
   }
 
   /// Read the first arrival for this stop. Row taps still select the stop;
@@ -1117,9 +1182,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                                           color: Colors.transparent,
                                           child: InkWell(
                                             onTap: () {
-                                              busCtrl.selectStop(stop.seq);
-                                              busCtrl.fetchBusETA();
-                                              _readEasyReadArrival(
+                                              _selectStopAndMaybeSpeak(
                                                 busCtrl,
                                                 langCtrl,
                                                 easyRead: easyRead,
@@ -1323,9 +1386,7 @@ class _BusRouteScreenState extends State<BusRouteScreen> {
                             children: [
                               InkWell(
                                 onTap: () {
-                                  busCtrl.selectStop(stop.seq);
-                                  busCtrl.fetchBusETA();
-                                  _readEasyReadArrival(
+                                  _selectStopAndMaybeSpeak(
                                     busCtrl,
                                     langCtrl,
                                     easyRead: easyRead,

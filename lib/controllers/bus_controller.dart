@@ -55,6 +55,12 @@ class BusController extends ChangeNotifier {
   int _etaRequestId = 0;
   String _etaShownRoute = '';
   int _etaShownDir = -1;
+  /// Stop seq that [etaData] and each bus's etaMinutes were fetched for.
+  /// Null after a stop switch, until the matching /bus-eta is applied.
+  int? _etaShownStopSeq;
+  /// Set on a stop switch so unbound data is not treated as the new stop's
+  /// minutes. Cleared only when that stop's fetch is applied.
+  bool _etaMinutesStale = false;
 
   List<String> allRoutesWithDir = [];
   /// Festival / special-service routes (節日特別班次), from the server's
@@ -489,9 +495,55 @@ class BusController extends ChangeNotifier {
     }
   }
   
+  /// True when the on-screen minute counts belong to [selectedStopSeq].
+  ///
+  /// False right after a stop switch until /bus-eta for that stop returns.
+  /// A null [_etaShownStopSeq] with no pending switch means the payload was
+  /// supplied for the current selection (including data set before the first fetch).
+  bool get etaMinutesForSelectedStop {
+    if (_etaMinutesStale || selectedStopSeq == null) return false;
+    if (_etaShownStopSeq == null) return true;
+    return _etaShownStopSeq == selectedStopSeq;
+  }
+
   void selectStop(int seq) {
+    final previous = selectedStopSeq;
     selectedStopSeq = seq;
+    // Drop the previous stop's 「約 N 分鐘」 before the next frame so the card
+    // cannot show it, and speech cannot read it, while /bus-eta is in flight.
+    if (previous != null && previous != seq && _etaShownStopSeq != seq) {
+      _invalidateStopScopedEta();
+    }
     notifyListeners();
+  }
+
+  /// Clears per-stop status and minutes. Bus positions stay for 「尚有 N 站」.
+  void _invalidateStopScopedEta() {
+    _etaShownStopSeq = null;
+    _etaMinutesStale = true;
+    if (etaData != null) {
+      final copy = Map<String, dynamic>.from(etaData!);
+      copy.remove('status');
+      copy.remove('etaMinutes');
+      etaData = copy;
+    }
+    if (allBusesList.any((bus) => bus.etaMinutes != null)) {
+      allBusesList = [
+        for (final bus in allBusesList)
+          if (bus.etaMinutes == null)
+            bus
+          else
+            Bus(
+              busLicense: bus.busLicense,
+              lat: bus.lat,
+              lng: bus.lng,
+              speed: bus.speed,
+              currentStopSeq: bus.currentStopSeq,
+              atStop: bus.atStop,
+              etaMinutes: null,
+            ),
+      ];
+    }
   }
 
   /// Arms a reminder for the first bus on the stop card, or clears it.
@@ -509,11 +561,13 @@ class BusController extends ChangeNotifier {
 
     final stop = _stopBySeq(seq);
     final onThisStop = selectedStopSeq == seq;
+    // Minutes are stop-scoped. Do not arm a Live Activity from another stop's ETA.
+    final minutesReady = onThisStop && etaMinutesForSelectedStop;
     final row = firstStopCardEta(
       buses: allBusesList,
       targetSeq: seq,
-      etaStatus: onThisStop ? (etaData?['status']?.toString()) : null,
-      useMinutes: onThisStop,
+      etaStatus: minutesReady ? (etaData?['status']?.toString()) : null,
+      useMinutes: minutesReady,
     );
     if (row == null || row.license.trim().isEmpty) {
       return const BoardingReminderOutcome.failed('boarding_no_bus');
@@ -532,7 +586,7 @@ class BusController extends ChangeNotifier {
     final stopName = stop == null ? '' : stop.getLocalizedName(currentLang);
     _boardingLicense = row.license;
     _boardingStopName = stopName;
-    final liveMinutes = onThisStop ? row.minutes : null;
+    final liveMinutes = minutesReady ? row.minutes : null;
     final liveEndsAt = liveMinutes == null ? null : _unixEndsAt(liveMinutes);
     final reminderId = 'br-${DateTime.now().microsecondsSinceEpoch}';
     final stopsPayload = [
@@ -1368,6 +1422,8 @@ class BusController extends ChangeNotifier {
       allBusesList = [];
       _legMotion.clear();
       _segmentMetersCache.clear();
+      _etaShownStopSeq = null;
+      _etaMinutesStale = false;
     }
     unawaited(fetchBusETA());
     final keepSeq = selectedStopSeq;
@@ -1537,6 +1593,10 @@ class BusController extends ChangeNotifier {
       if (requestId != _etaRequestId || currentRoute != route) return;
 
       isLoadingETA = false;
+      // A stop change invalidates this payload even when no newer fetch has
+      // bumped [_etaRequestId] yet. Applying it would paint the old minutes
+      // onto the stop the rider just selected.
+      if (seq != null && selectedStopSeq != seq) return;
       if (result['success'] == true) {
         if (result['realtimeFlagKnown'] == true) {
           OpenDataConfig.instance.applyEtaFlag(result['realtimeAvailable'] == true);
@@ -1545,6 +1605,8 @@ class BusController extends ChangeNotifier {
         timetableDetails = result['timetableDetails'];
         _etaShownRoute = route;
         _etaShownDir = dir;
+        _etaShownStopSeq = seq ?? selectedStopSeq;
+        _etaMinutesStale = false;
         errorMessage = null;
 
         if (showLiveArrivals) {

@@ -12,6 +12,7 @@ import 'package:macau_bus_app/controllers/navigation_controller.dart';
 import 'package:macau_bus_app/models/bus.dart';
 import 'package:macau_bus_app/models/bus_stop.dart';
 import 'package:macau_bus_app/services/arrival_speaker.dart';
+import 'package:macau_bus_app/services/bus_api_service.dart';
 import 'package:macau_bus_app/services/open_data_config.dart';
 import 'package:macau_bus_app/views/screens/bus_route_screen.dart';
 import 'package:macau_bus_app/views/screens/easy_read_more_screen.dart';
@@ -82,6 +83,7 @@ void main() {
   });
 
   tearDown(() {
+    BusApiService.debugFetchBusETA = null;
     OpenDataConfig.instance.debugReset();
     ArrivalSpeaker.shared = ArrivalSpeaker();
   });
@@ -477,11 +479,28 @@ void main() {
     expect(fake.speakCount, 1);
 
     fake.reset();
+    // Switching stops speaks only after this stop's fetch, using the same
+    // minutes the card will show — not the previous stop's count.
+    final busesAtStop = List<Bus>.from(bus.allBusesList);
+    BusApiService.debugFetchBusETA = (
+      String route,
+      int dir, {
+      int? targetStopSeq,
+      String lang = 'zh',
+    }) async {
+      return {
+        'success': true,
+        'etaData': {'status': '即將到站'},
+        'allBuses': busesAtStop,
+      };
+    };
     final otherName = find.text('站1 (M1/2)');
     await tester.ensureVisible(otherName);
     await tester.pump();
     await tester.tap(otherName);
-    await tester.pump();
+    for (var i = 0; i < 8 && fake.speakCount == 0; i++) {
+      await tester.pump();
+    }
     expect(bus.selectedStopSeq, 1);
     expect(fake.spoken, '站1，即將到站');
     expect(fake.speakCount, 1);
