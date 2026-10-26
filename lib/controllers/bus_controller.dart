@@ -1699,9 +1699,39 @@ class BusController extends ChangeNotifier {
   /// 所以格數密就會沿路線滑，而唔係半秒跳一格。
   static const Duration mapMotionFrame = Duration(milliseconds: 32);
 
-  /// 跟最新 GPS。車速 0（或 5km/h 或以下）就停低；
-  /// 車郁緊就由嗰個 GPS 位沿路線推前，直到下一個定位。
-  /// 超過 10 秒冇新資料就停，唔好再沿用舊車速。
+  /// 兩次 `/bus-eta` 之間唔好用足報稱車速。全速推一個輪詢週期會衝過
+  /// 下一個粗定位（站或者半路），圖示再跳返轉頭就好似倒車。
+  static const double mapPredictSpeedFactor = 0.6;
+
+  /// 用 [mapPredictSpeedFactor] 推前幾多秒。輪詢大約 [etaAutoRefreshSeconds] 秒一次，
+  /// 所以呢個窗短過個輪詢，唔好喺下一包資料到之前衝到落站。
+  static const double mapPredictHorizonSeconds = 6;
+
+  /// 預測窗過咗、下一包又未到，就改為慢速沿路線滑，唔好企定定。
+  static const double mapCoastSpeedFactor = 0.25;
+
+  /// 慢速滑最長幾多秒。再長就停，避免一份舊車速行成段路。
+  static const double mapCoastSeconds = 14;
+
+  /// 由呢個定位再推前，最遠幾多米。快車都唔好衝離報稱位置太遠。
+  /// 另外 [_legCap] 仍然唔會衝過下一站。
+  static const double mapPredictMaxMeters = 90;
+
+  /// 站序退後幾多站，先當可能係新一轉（而唔係同一轉入面嘅雜訊）。
+  static const int mapTripResetStopDrop = 1;
+
+  /// 站序退後要維持約兩個輪詢，或者再收到一個唔同嘅樣本，先至放低
+  /// 「唔准退」嘅下限。單一次雜訊唔會將架車拉返轉頭。
+  static const Duration mapTripResetHold = Duration(
+    seconds: etaAutoRefreshSeconds * 2,
+  );
+
+  /// 跟最新定位沿路線行。車速 0（或 5km/h 或以下）就停低。
+  /// 郁緊就用 [mapPredictSpeedFactor] 推 [mapPredictHorizonSeconds]，
+  /// 之後用 [mapCoastSpeedFactor] 慢滑。
+  /// 同一轉嘅路線進度只會向前：新位置如果喺而家顯示位置後面，就保持而家嘅位置。
+  /// 車由清單消失再出現、轉線或者轉方向（[fetchStops] 會清走進度），
+  /// 又或者站序退後並且維持 [mapTripResetHold]，先至重新擺位。
   /// [now] 畀測試固定個鐘；平時用而家。
   bool advanceBusMotion([DateTime? now]) {
     final clock = now ?? DateTime.now();
@@ -1709,32 +1739,47 @@ class BusController extends ChangeNotifier {
     var changed = false;
     for (final bus in allBusesList) {
       final key = bus.busLicense;
+      final prev = _legMotion[key];
       if (bus.currentStopSeq <= 0) {
-        if (_legMotion.remove(key) != null) changed = true;
+        if (prev != null) live.add(key);
         continue;
       }
       if (bus.atStop) {
         final terminal = _advanceTerminalArrival(bus, clock, live);
-        if (terminal == null) {
-          if (_legMotion.remove(key) != null) changed = true;
-        } else if (terminal) {
-          changed = true;
+        if (terminal != null) {
+          if (terminal) changed = true;
+          continue;
         }
+        final parked = _placeAtStop(bus, clock, prev);
+        if (parked == null) {
+          if (prev != null) live.add(key);
+          continue;
+        }
+        live.add(key);
+        _legMotion[key] = parked.motion;
+        if (parked.moved) changed = true;
         continue;
       }
       final index = stopsList.indexWhere((s) => s.seq == bus.currentStopSeq);
       if (index == -1 || index + 1 >= stopsList.length) {
-        if (_legMotion.remove(key) != null) changed = true;
+        if (prev != null) live.add(key);
         continue;
       }
       final here = stopsList[index];
       final next = stopsList[index + 1];
-      if (here.lat == 0.0 || here.lng == 0.0 || next.lat == 0.0 || next.lng == 0.0) {
+      if (here.lat == 0.0 ||
+          here.lng == 0.0 ||
+          next.lat == 0.0 ||
+          next.lng == 0.0) {
+        if (prev != null) live.add(key);
         continue;
       }
       live.add(key);
       final length = _segmentMeters(here, next);
-      final cap = _legCap(length, nextIsTerminal: index + 1 == stopsList.length - 1);
+      final cap = _legCap(
+        length,
+        nextIsTerminal: index + 1 == stopsList.length - 1,
+      );
       final stepped = _stepLeg(
         bus: bus,
         now: clock,
@@ -1742,7 +1787,7 @@ class BusController extends ChangeNotifier {
         to: next,
         motionStopSeq: bus.currentStopSeq,
         cap: cap,
-        prev: _legMotion[key],
+        prev: prev,
       );
       _legMotion[key] = stepped.motion;
       if (stepped.moved) changed = true;
@@ -1760,7 +1805,11 @@ class BusController extends ChangeNotifier {
     if (index != stopsList.length - 1 || index <= 0) return null;
     final here = stopsList[index - 1];
     final next = stopsList[index];
-    if (here.lat == 0.0 || here.lng == 0.0 || next.lat == 0.0 || next.lng == 0.0) return null;
+    if (here.lat == 0.0 ||
+        here.lng == 0.0 ||
+        next.lat == 0.0 ||
+        next.lng == 0.0)
+      return null;
     live.add(bus.busLicense);
     final length = _segmentMeters(here, next);
     final stepped = _stepLeg(
@@ -1782,8 +1831,11 @@ class BusController extends ChangeNotifier {
     return length > 40 ? length - 25 : length * 0.85;
   }
 
-  /// 新一次 GPS：投影到呢段路線，約 1 秒滑過去。
-  /// 之後車速 > 5km/h 就沿路線跟住車速行，直到下一個定位或 10 秒；車停就停。
+  /// 新一次定位：投影到呢段路線。如果喺而家顯示位置前面，約 1 秒滑過去；
+  /// 如果喺後面，就保持而家嘅位置，唔好滑返轉頭。
+  /// 之後車速 > 5km/h 就按 [mapPredictSpeedFactor] 推前，
+  /// 窗過咗就按 [mapCoastSpeedFactor] 慢滑。車停就停。
+  /// [acceptBehind] 只用於確認咗係新一轉，要即刻擺去新位置，唔沿路線倒車。
   ({_BusLegMotion motion, bool moved}) _stepLeg({
     required Bus bus,
     required DateTime now,
@@ -1792,25 +1844,43 @@ class BusController extends ChangeNotifier {
     required int motionStopSeq,
     required double cap,
     required _BusLegMotion? prev,
+    bool acceptBehind = false,
   }) {
     const stopKmh = _mapIconStopKmh;
     const easeSeconds = 1.0;
-    const staleSeconds = 10.0;
 
+    final legIndex = _indexOfSeq(motionStopSeq);
     final fresh = prev == null || !prev.matchesFix(bus);
-    final double gpsMeters;
+
+    if (!acceptBehind && prev != null && !fresh && prev.holdingBack) {
+      final decision = _judgeRetreat(
+        prev: prev,
+        reportedIndex: prev.reportedStopIndex,
+        now: now,
+        sampleChanged: false,
+      );
+      if (decision.reset) {
+        return _stepLeg(
+          bus: bus,
+          now: now,
+          from: from,
+          to: to,
+          motionStopSeq: motionStopSeq,
+          cap: cap,
+          prev: null,
+          acceptBehind: true,
+        );
+      }
+      return (motion: prev, moved: false);
+    }
+
     final double fixLat;
     final double fixLng;
     final double fixSpeed;
     final int fixStopSeq;
     final bool fixAtStop;
     final DateTime fixAt;
-    final bool easedIn;
-    final double easeFromLat;
-    final double easeFromLng;
-    final double easeToLat;
-    final double easeToLng;
-    final double easeFromMeters;
+    var gpsMeters = 0.0;
 
     if (!fresh) {
       final held = prev;
@@ -1821,12 +1891,6 @@ class BusController extends ChangeNotifier {
       fixStopSeq = held.fixStopSeq;
       fixAtStop = held.fixAtStop;
       fixAt = held.fixAt;
-      easedIn = held.easedIn;
-      easeFromLat = held.easeFromLat;
-      easeFromLng = held.easeFromLng;
-      easeToLat = held.easeToLat;
-      easeToLng = held.easeToLng;
-      easeFromMeters = held.easeFromMeters;
     } else {
       final raw = _metersAlong(from, to, bus.lat, bus.lng);
       gpsMeters = raw > cap ? cap : (raw < 0 ? 0.0 : raw);
@@ -1836,22 +1900,75 @@ class BusController extends ChangeNotifier {
       fixStopSeq = bus.currentStopSeq;
       fixAtStop = bus.atStop;
       fixAt = now;
-      final target = _pointAtMeters(from, to, gpsMeters);
-      if (prev == null) {
-        easedIn = false;
-        easeFromLat = target.latitude;
-        easeFromLng = target.longitude;
-        easeToLat = target.latitude;
-        easeToLng = target.longitude;
-        easeFromMeters = gpsMeters;
-      } else {
-        easedIn = true;
-        easeFromLat = prev.renderLat;
-        easeFromLng = prev.renderLng;
-        easeToLat = target.latitude;
-        easeToLng = target.longitude;
-        easeFromMeters = prev.stopSeq == motionStopSeq ? prev.traveledMeters : gpsMeters;
+      if (!acceptBehind && prev != null) {
+        final projected = legIndex < 0
+            ? gpsMeters
+            : _routeMeters(legIndex, gpsMeters);
+        final behind = prev.floorRouteMeters - projected;
+        if (behind > 0.5) {
+          final reportedIndex = _indexOfSeq(bus.currentStopSeq);
+          final decision = _judgeRetreat(
+            prev: prev,
+            reportedIndex: reportedIndex,
+            now: now,
+            sampleChanged: true,
+          );
+          if (decision.reset) {
+            return _stepLeg(
+              bus: bus,
+              now: now,
+              from: from,
+              to: to,
+              motionStopSeq: motionStopSeq,
+              cap: cap,
+              prev: null,
+              acceptBehind: true,
+            );
+          }
+          final held = _heldBack(
+            prev: prev,
+            bus: bus,
+            now: now,
+            reportedIndex: reportedIndex,
+            streak: decision.streak,
+            since: decision.since,
+          );
+          return (motion: held, moved: _motionMoved(prev, held));
+        }
       }
+    }
+
+    final target = _pointAtMeters(from, to, gpsMeters);
+    final bool easedIn;
+    final double easeFromLat;
+    final double easeFromLng;
+    final double easeToLat;
+    final double easeToLng;
+    final double easeFromMeters;
+    if (!fresh) {
+      final held = prev;
+      easedIn = held.easedIn;
+      easeFromLat = held.easeFromLat;
+      easeFromLng = held.easeFromLng;
+      easeToLat = held.easeToLat;
+      easeToLng = held.easeToLng;
+      easeFromMeters = held.easeFromMeters;
+    } else if (prev == null || _renderNear(prev, target)) {
+      easedIn = false;
+      easeFromLat = target.latitude;
+      easeFromLng = target.longitude;
+      easeToLat = target.latitude;
+      easeToLng = target.longitude;
+      easeFromMeters = gpsMeters;
+    } else {
+      easedIn = true;
+      easeFromLat = prev.renderLat;
+      easeFromLng = prev.renderLng;
+      easeToLat = target.latitude;
+      easeToLng = target.longitude;
+      easeFromMeters = prev.stopSeq == motionStopSeq
+          ? prev.traveledMeters
+          : gpsMeters;
     }
 
     final ageMs = now.difference(fixAt).inMilliseconds;
@@ -1861,15 +1978,17 @@ class BusController extends ChangeNotifier {
     final double traveled;
     final double renderLat;
     final double renderLng;
+    final bool alongRoute = (easeFromMeters - gpsMeters).abs() >= 0.5;
 
     if (easedIn && age < easeSeconds) {
       // 同一段路線就沿紫色線滑過去，唔好拉直線切彎。
       // smoothstep 令補正開頭同收尾慢少少，中間仍然貼住新定位。
       final t = age / easeSeconds;
       final s = _smoothStep(t);
-      final alongRoute = (easeFromMeters - gpsMeters).abs() >= 0.5;
       if (alongRoute) {
         var meters = easeFromMeters + (gpsMeters - easeFromMeters) * s;
+        // 補正只可以向前滑。目標如果喺起點後面，就留喺起點。
+        if (meters < easeFromMeters) meters = easeFromMeters;
         if (meters > cap) meters = cap;
         if (meters < 0) meters = 0;
         traveled = meters;
@@ -1887,14 +2006,22 @@ class BusController extends ChangeNotifier {
       renderLat = point.latitude;
       renderLng = point.longitude;
     } else {
-      // 由定位起計跟車速行。新定位滑入之後先計速度。
-      // 超過 staleSeconds 就停喺嗰一下嘅位置，等下一個唔同嘅 GPS。
+      // 由定位起計，先用折扣車速推一段，之後慢滑。
+      // 新定位滑入之後先計速度。慢滑窗過咗就停，等下一個定位。
       final delay = easedIn ? easeSeconds : 0.0;
-      final maxPredict = staleSeconds - delay;
       var predict = age - delay;
       if (predict < 0) predict = 0;
-      if (predict > maxPredict) predict = maxPredict;
-      var meters = gpsMeters + fixSpeed * 1000 / 3600 * predict;
+      final full = predict > mapPredictHorizonSeconds
+          ? mapPredictHorizonSeconds
+          : predict;
+      var coast = predict - mapPredictHorizonSeconds;
+      if (coast < 0) coast = 0;
+      if (coast > mapCoastSeconds) coast = mapCoastSeconds;
+      final mps = fixSpeed * 1000 / 3600;
+      var extra =
+          mps * (full * mapPredictSpeedFactor + coast * mapCoastSpeedFactor);
+      if (extra > mapPredictMaxMeters) extra = mapPredictMaxMeters;
+      var meters = gpsMeters + extra;
       if (meters > cap) meters = cap;
       if (meters < 0) meters = 0;
       traveled = meters;
@@ -1904,6 +2031,41 @@ class BusController extends ChangeNotifier {
     }
 
     final clamped = traveled > cap ? cap : (traveled < 0 ? 0.0 : traveled);
+    final previous = prev;
+    final targetRoute = legIndex < 0
+        ? gpsMeters
+        : _routeMeters(legIndex, gpsMeters);
+    final chordEase =
+        easedIn && age < easeSeconds && !alongRoute && previous != null;
+    final double displayedRoute;
+    if (previous != null &&
+        chordEase &&
+        targetRoute >= previous.floorRouteMeters) {
+      final s = _smoothStep(age / easeSeconds);
+      displayedRoute =
+          previous.floorRouteMeters +
+          (targetRoute - previous.floorRouteMeters) * s;
+    } else if (legIndex < 0) {
+      displayedRoute = clamped;
+    } else {
+      displayedRoute = _routeMeters(legIndex, clamped);
+    }
+    final floor = previous == null
+        ? displayedRoute
+        : math.max(previous.floorRouteMeters, displayedRoute);
+    var floorStop = legIndex < 0 ? 0 : legIndex;
+    if (prev != null &&
+        legIndex >= 0 &&
+        displayedRoute + 1 < _routeMeters(legIndex, 0)) {
+      floorStop = prev.floorStopIndex;
+    }
+    if (legIndex >= 0 &&
+        legIndex + 1 < stopsList.length &&
+        bus.atStop &&
+        bus.currentStopSeq == to.seq &&
+        clamped >= _segmentMeters(from, to) - 12) {
+      floorStop = legIndex + 1;
+    }
     final motion = _BusLegMotion(
       stopSeq: motionStopSeq,
       traveledMeters: clamped,
@@ -1924,15 +2086,193 @@ class BusController extends ChangeNotifier {
       easeToLng: easeToLng,
       easeFromMeters: easeFromMeters,
       easedIn: easedIn,
+      floorRouteMeters: floor,
+      floorStopIndex: floorStop,
+      retreatStreak: 0,
+      retreatSince: null,
+      holdingBack: false,
+      reportedStopIndex: _indexOfSeq(bus.currentStopSeq),
     );
     return (motion: motion, moved: _motionMoved(prev, motion));
   }
 
+  /// 唔係總站、但資料話到站。如果個站喺而家顯示位置後面，就保持位置；
+  /// 確認係新一轉先至擺去個站。
+  ({_BusLegMotion motion, bool moved})? _placeAtStop(
+    Bus bus,
+    DateTime now,
+    _BusLegMotion? prev,
+  ) {
+    final index = _indexOfSeq(bus.currentStopSeq);
+    if (index < 0) return null;
+    final stop = stopsList[index];
+    if (stop.lat == 0.0 || stop.lng == 0.0) return null;
+    final stopRoute = _routeMeters(index, 0);
+    if (prev != null && stopRoute + 0.5 < prev.floorRouteMeters) {
+      final decision = _judgeRetreat(
+        prev: prev,
+        reportedIndex: index,
+        now: now,
+        sampleChanged: !prev.matchesFix(bus),
+      );
+      if (decision.reset) {
+        final parked = _parkedAtStop(bus: bus, now: now, index: index);
+        return (motion: parked, moved: _motionMoved(prev, parked));
+      }
+      if (prev.holdingBack &&
+          prev.matchesFix(bus) &&
+          decision.streak == prev.retreatStreak) {
+        return (motion: prev, moved: false);
+      }
+      final held = _heldBack(
+        prev: prev,
+        bus: bus,
+        now: now,
+        reportedIndex: index,
+        streak: decision.streak,
+        since: decision.since,
+      );
+      return (motion: held, moved: _motionMoved(prev, held));
+    }
+    final parked = _parkedAtStop(bus: bus, now: now, index: index);
+    return (motion: parked, moved: _motionMoved(prev, parked));
+  }
+
+  /// 站序退後先唔算新一轉。第二個唔同樣本，或者維持 [mapTripResetHold]，先至重置。
+  ({bool reset, int streak, DateTime? since}) _judgeRetreat({
+    required _BusLegMotion prev,
+    required int reportedIndex,
+    required DateTime now,
+    required bool sampleChanged,
+  }) {
+    if (reportedIndex < 0 ||
+        reportedIndex > prev.floorStopIndex - mapTripResetStopDrop) {
+      return (reset: false, streak: 0, since: null);
+    }
+    final since = prev.retreatSince ?? now;
+    final streak = sampleChanged
+        ? prev.retreatStreak + 1
+        : (prev.retreatStreak < 1 ? 1 : prev.retreatStreak);
+    if (streak >= 2 || now.difference(since) >= mapTripResetHold) {
+      return (reset: true, streak: 0, since: null);
+    }
+    return (reset: false, streak: streak, since: since);
+  }
+
+  _BusLegMotion _heldBack({
+    required _BusLegMotion prev,
+    required Bus bus,
+    required DateTime now,
+    required int reportedIndex,
+    required int streak,
+    required DateTime? since,
+  }) {
+    return _BusLegMotion(
+      stopSeq: prev.stopSeq,
+      traveledMeters: prev.traveledMeters,
+      at: now,
+      speedKmh: bus.speed,
+      fixLat: bus.lat,
+      fixLng: bus.lng,
+      fixSpeed: bus.speed,
+      fixStopSeq: bus.currentStopSeq,
+      fixAtStop: bus.atStop,
+      fixAt: now,
+      gpsMeters: prev.gpsMeters,
+      renderLat: prev.renderLat,
+      renderLng: prev.renderLng,
+      easeFromLat: prev.renderLat,
+      easeFromLng: prev.renderLng,
+      easeToLat: prev.renderLat,
+      easeToLng: prev.renderLng,
+      easeFromMeters: prev.traveledMeters,
+      easedIn: false,
+      floorRouteMeters: prev.floorRouteMeters,
+      floorStopIndex: prev.floorStopIndex,
+      retreatStreak: streak,
+      retreatSince: since,
+      holdingBack: true,
+      reportedStopIndex: reportedIndex,
+    );
+  }
+
+  _BusLegMotion _parkedAtStop({
+    required Bus bus,
+    required DateTime now,
+    required int index,
+  }) {
+    final stop = stopsList[index];
+    final route = _routeMeters(index, 0);
+    return _BusLegMotion(
+      stopSeq: stop.seq,
+      traveledMeters: 0,
+      at: now,
+      speedKmh: bus.speed,
+      fixLat: bus.lat,
+      fixLng: bus.lng,
+      fixSpeed: bus.speed,
+      fixStopSeq: bus.currentStopSeq,
+      fixAtStop: bus.atStop,
+      fixAt: now,
+      gpsMeters: 0,
+      renderLat: stop.lat,
+      renderLng: stop.lng,
+      easeFromLat: stop.lat,
+      easeFromLng: stop.lng,
+      easeToLat: stop.lat,
+      easeToLng: stop.lng,
+      easeFromMeters: 0,
+      easedIn: false,
+      floorRouteMeters: route,
+      floorStopIndex: index,
+      retreatStreak: 0,
+      retreatSince: null,
+      holdingBack: false,
+      reportedStopIndex: index,
+    );
+  }
+
+  int _indexOfSeq(int seq) => stopsList.indexWhere((s) => s.seq == seq);
+
+  /// 由路線起點計到呢一站，再加呢段入面行咗幾多米。
+  double _routeMeters(int stopIndex, double alongLeg) {
+    final along = alongLeg < 0 ? 0.0 : alongLeg;
+    if (stopIndex <= 0 || stopsList.length < 2) return along;
+    final last = stopIndex < stopsList.length
+        ? stopIndex
+        : stopsList.length - 1;
+    var total = 0.0;
+    for (var i = 0; i < last; i++) {
+      final a = stopsList[i];
+      final b = stopsList[i + 1];
+      if (a.lat == 0.0 || a.lng == 0.0 || b.lat == 0.0 || b.lng == 0.0)
+        continue;
+      total += _segmentMeters(a, b);
+    }
+    return total + along;
+  }
+
+  bool _renderNear(_BusLegMotion prev, LatLng target) {
+    return const Distance().as(
+          LengthUnit.Meter,
+          LatLng(prev.renderLat, prev.renderLng),
+          target,
+        ) <
+        2;
+  }
+
   bool _motionMoved(_BusLegMotion? prev, _BusLegMotion next) {
     if (prev == null) return true;
+    if (prev.fixSpeed != next.fixSpeed ||
+        prev.fixAtStop != next.fixAtStop ||
+        prev.fixStopSeq != next.fixStopSeq ||
+        prev.holdingBack != next.holdingBack) {
+      return true;
+    }
     // 細過一格車速嘅步進都要畫。門檻太高，密取樣會當成冇郁。
     const minMeters = 0.02;
-    if ((prev.traveledMeters - next.traveledMeters).abs() >= minMeters) return true;
+    if ((prev.traveledMeters - next.traveledMeters).abs() >= minMeters)
+      return true;
     final meters = const Distance().as(
       LengthUnit.Meter,
       LatLng(prev.renderLat, prev.renderLng),
@@ -1959,7 +2299,11 @@ class BusController extends ChangeNotifier {
     if (lat == 0.0 || lng == 0.0) return 0;
     final span = _orderedSpan(from, to);
     final meters = span == null
-        ? const Distance().as(LengthUnit.Meter, LatLng(from.lat, from.lng), LatLng(lat, lng))
+        ? const Distance().as(
+            LengthUnit.Meter,
+            LatLng(from.lat, from.lng),
+            LatLng(lat, lng),
+          )
         : _projectMeters(span[0], span[1], lat, lng);
     if (meters < 0) return 0;
     if (meters > length) return length;
@@ -1969,7 +2313,16 @@ class BusController extends ChangeNotifier {
   bool hasVisuallyArrived(Bus bus) {
     if (!bus.atStop) return false;
     final index = stopsList.indexWhere((s) => s.seq == bus.currentStopSeq);
-    if (index != stopsList.length - 1 || stopsList.length < 2) return true;
+    if (index != stopsList.length - 1 || stopsList.length < 2) {
+      final motion = _legMotion[bus.busLicense];
+      // 圖示仲喺呢個站前面，就唔好當已經退返去個站。
+      if (index >= 0 &&
+          motion != null &&
+          motion.floorRouteMeters > _routeMeters(index, 0) + 12) {
+        return false;
+      }
+      return true;
+    }
     final here = stopsList[index - 1];
     final motion = _legMotion[bus.busLicense];
     if (motion == null || motion.stopSeq != here.seq) return false;
@@ -1980,7 +2333,8 @@ class BusController extends ChangeNotifier {
   /// 圖示實際用緊嘅車速。有路線動畫就用嗰個定位嘅速度，同埋推進公式一致。
   double displaySpeedKmh(Bus bus) {
     final motion = _legMotion[bus.busLicense];
-    final speed = motion != null &&
+    final speed =
+        motion != null &&
             motion.fixStopSeq == bus.currentStopSeq &&
             motion.fixAtStop == bus.atStop
         ? motion.fixSpeed
@@ -1990,7 +2344,8 @@ class BusController extends ChangeNotifier {
   }
 
   double _segmentMeters(BusStop a, BusStop b) {
-    final key = '$currentRoute|$currentDirection|${gpxRoutePoints.length}|${a.seq}|${b.seq}|${a.lat}|${a.lng}|${b.lat}|${b.lng}';
+    final key =
+        '$currentRoute|$currentDirection|${gpxRoutePoints.length}|${a.seq}|${b.seq}|${a.lat}|${a.lng}|${b.lat}|${b.lng}';
     final cached = _segmentMetersCache[key];
     if (cached != null) return cached;
     final from = LatLng(a.lat, a.lng);
@@ -2011,7 +2366,11 @@ class BusController extends ChangeNotifier {
     const distanceCalc = Distance();
     double total = 0;
     for (int i = iFrom; i < iTo; i++) {
-      total += distanceCalc.as(LengthUnit.Meter, gpxRoutePoints[i], gpxRoutePoints[i + 1]);
+      total += distanceCalc.as(
+        LengthUnit.Meter,
+        gpxRoutePoints[i],
+        gpxRoutePoints[i + 1],
+      );
     }
     return total > 0 ? total : null;
   }
@@ -2065,19 +2424,33 @@ class BusController extends ChangeNotifier {
     const distanceCalc = Distance();
     double total = 0;
     for (int i = span[0]; i < span[1]; i++) {
-      total += distanceCalc.as(LengthUnit.Meter, gpxRoutePoints[i], gpxRoutePoints[i + 1]);
+      total += distanceCalc.as(
+        LengthUnit.Meter,
+        gpxRoutePoints[i],
+        gpxRoutePoints[i + 1],
+      );
     }
     return total > 0 ? total : null;
   }
 
   LatLng? snapBusToStop(Bus bus) {
+    final motion = _legMotion[bus.busLicense];
+    if (motion != null && motion.renderLat != 0.0 && motion.renderLng != 0.0) {
+      return LatLng(motion.renderLat, motion.renderLng);
+    }
     final index = bus.currentStopSeq > 0
         ? stopsList.indexWhere((s) => s.seq == bus.currentStopSeq)
         : -1;
-    if (bus.atStop && index == stopsList.length - 1 && index > 0 && !hasVisuallyArrived(bus)) {
+    if (bus.atStop &&
+        index == stopsList.length - 1 &&
+        index > 0 &&
+        !hasVisuallyArrived(bus)) {
       final here = stopsList[index - 1];
       final next = stopsList[index];
-      if (here.lat != 0.0 && here.lng != 0.0 && next.lat != 0.0 && next.lng != 0.0) {
+      if (here.lat != 0.0 &&
+          here.lng != 0.0 &&
+          next.lat != 0.0 &&
+          next.lng != 0.0) {
         final length = _segmentMeters(here, next);
         final motion = _legMotion[bus.busLicense];
         if (motion != null && motion.stopSeq == here.seq) {
@@ -2091,13 +2464,19 @@ class BusController extends ChangeNotifier {
     if (!bus.atStop && index != -1 && index + 1 < stopsList.length) {
       final here = stopsList[index];
       final next = stopsList[index + 1];
-      if (here.lat != 0.0 && here.lng != 0.0 && next.lat != 0.0 && next.lng != 0.0) {
+      if (here.lat != 0.0 &&
+          here.lng != 0.0 &&
+          next.lat != 0.0 &&
+          next.lng != 0.0) {
         final length = _segmentMeters(here, next);
         final motion = _legMotion[bus.busLicense];
         if (motion != null && motion.stopSeq == bus.currentStopSeq) {
           return LatLng(motion.renderLat, motion.renderLng);
         }
-        final cap = _legCap(length, nextIsTerminal: index + 1 == stopsList.length - 1);
+        final cap = _legCap(
+          length,
+          nextIsTerminal: index + 1 == stopsList.length - 1,
+        );
         var traveled = _metersAlong(here, next, bus.lat, bus.lng);
         if (traveled > cap) traveled = cap;
         if (traveled < 0) traveled = 0;
@@ -2118,7 +2497,8 @@ class BusController extends ChangeNotifier {
       }
       if (index < cachedEstimatedCoords.length) {
         final estimated = cachedEstimatedCoords[index];
-        if (estimated.latitude != 0.0 && estimated.longitude != 0.0) return estimated;
+        if (estimated.latitude != 0.0 && estimated.longitude != 0.0)
+          return estimated;
       }
     }
     return _nearestDrawnPoint(index);
@@ -2128,7 +2508,9 @@ class BusController extends ChangeNotifier {
     if (stopsList.isNotEmpty) {
       final start = preferIndex >= 0 ? preferIndex : 0;
       for (int distance = 0; distance < stopsList.length; distance++) {
-        final candidates = distance == 0 ? [start] : [start - distance, start + distance];
+        final candidates = distance == 0
+            ? [start]
+            : [start - distance, start + distance];
         for (final j in candidates) {
           if (j < 0 || j >= stopsList.length) continue;
           final stop = stopsList[j];
@@ -2164,6 +2546,22 @@ class _BusLegMotion {
   final double easeFromMeters;
   final bool easedIn;
 
+  /// 呢轉顯示過最前嘅路線距離（由起點計，米）。唔會因為新定位退後而降低。
+  final double floorRouteMeters;
+
+  /// [floorRouteMeters] 所在嘅站序（stopsList 下標，唔係站 seq）。
+  final int floorStopIndex;
+
+  /// 連續幾多個唔同嘅樣本話架車退咗站。
+  final int retreatStreak;
+
+  /// 第一個退站樣本嘅時間。維持到 [BusController.mapTripResetHold] 先當新一轉。
+  final DateTime? retreatSince;
+
+  /// 最新定位喺顯示位置後面，所以唔再跟住佢推前。
+  final bool holdingBack;
+  final int reportedStopIndex;
+
   const _BusLegMotion({
     required this.stopSeq,
     required this.traveledMeters,
@@ -2184,6 +2582,12 @@ class _BusLegMotion {
     required this.easeToLng,
     required this.easeFromMeters,
     required this.easedIn,
+    required this.floorRouteMeters,
+    required this.floorStopIndex,
+    required this.retreatStreak,
+    required this.retreatSince,
+    required this.holdingBack,
+    required this.reportedStopIndex,
   });
 
   bool matchesFix(Bus bus) {
