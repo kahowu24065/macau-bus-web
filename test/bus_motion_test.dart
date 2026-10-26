@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -6,6 +8,7 @@ import 'package:macau_bus_app/controllers/bus_controller.dart';
 import 'package:macau_bus_app/models/bus.dart';
 import 'package:macau_bus_app/models/bus_stop.dart';
 import 'package:macau_bus_app/services/open_data_config.dart';
+import 'package:macau_bus_app/utils/map_segment_reference.dart';
 
 BusStop _stop(int seq, double lat, {double lng = 113.54}) {
   return BusStop(
@@ -28,6 +31,7 @@ Bus _bus({
   double lng = 113.54,
   bool atStop = false,
   String plate = 'MB-1',
+  int? etaMinutes,
 }) {
   return Bus(
     busLicense: plate,
@@ -36,6 +40,7 @@ Bus _bus({
     speed: speed,
     currentStopSeq: seq,
     atStop: atStop,
+    etaMinutes: etaMinutes,
   );
 }
 
@@ -63,6 +68,29 @@ void main() {
   }
 
   double apart(LatLng a, LatLng b) => distance.as(LengthUnit.Meter, a, b);
+
+  /// Metres added by damped dead-reckoning, ignoring the 1s ease onto a new fix.
+  double predictedExtra(double speedKmh, double ageSeconds) {
+    final predict = ageSeconds < 0 ? 0.0 : ageSeconds;
+    final horizon = BusController.mapPredictHorizonSeconds;
+    final full = predict > horizon ? horizon : predict;
+    var coast = predict - horizon;
+    if (coast < 0) coast = 0;
+    if (coast > BusController.mapCoastSeconds) coast = BusController.mapCoastSeconds;
+    final extra = speedKmh /
+        3.6 *
+        (full * BusController.mapPredictSpeedFactor + coast * BusController.mapCoastSpeedFactor);
+    return math.min(extra, BusController.mapPredictMaxMeters);
+  }
+
+  void expectMoved(double actual, double expected) {
+    final slack = math.max(1.5, expected * 0.12);
+    expect(
+      actual,
+      inInclusiveRange(expected - slack, expected + slack),
+      reason: 'moved ${actual.toStringAsFixed(1)}m, expected about ${expected.toStringAsFixed(1)}m',
+    );
+  }
 
   test('fresh GPS is placed on the route, and a stopped bus stays there', () {
     final bus = route();
@@ -95,7 +123,7 @@ void main() {
     expect(bus.displaySpeedKmh(bus.allBusesList.single), 0);
   });
 
-  test('speed just above 5 km/h keeps moving until the fix is stale', () {
+  test('speed just above 5 km/h creeps, coasts, then holds short of full speed', () {
     final bus = route();
     addTearDown(bus.dispose);
     final t0 = DateTime.utc(2026, 10, 8, 8);
@@ -106,19 +134,23 @@ void main() {
 
     bus.advanceBusMotion(t0.add(const Duration(seconds: 2)));
     final early = bus.snapBusToStop(bus.allBusesList.single)!;
-    expect(apart(early, atFix), greaterThan(2));
-    expect(apart(early, atFix), lessThan(6));
+    expectMoved(apart(early, atFix), predictedExtra(6, 2));
 
     bus.advanceBusMotion(t0.add(const Duration(seconds: 8)));
-    final later = bus.snapBusToStop(bus.allBusesList.single)!;
-    expect(apart(later, early), greaterThan(8));
+    final coasting = bus.snapBusToStop(bus.allBusesList.single)!;
+    expect(apart(coasting, early), greaterThan(0.4));
 
+    final fullTen = 6 / 3.6 * 10;
     bus.advanceBusMotion(t0.add(const Duration(seconds: 10)));
-    final atStale = bus.snapBusToStop(bus.allBusesList.single)!;
-    expect(apart(atStale, atFix), greaterThan(14));
-    expect(apart(atStale, atFix), lessThan(20));
-    bus.advanceBusMotion(t0.add(const Duration(seconds: 14)));
-    expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, atStale), lessThan(1));
+    final atPoll = bus.snapBusToStop(bus.allBusesList.single)!;
+    expectMoved(apart(atPoll, atFix), predictedExtra(6, 10));
+    expect(apart(atPoll, atFix), lessThan(fullTen * 0.7));
+
+    final holdAt = BusController.mapPredictHorizonSeconds + BusController.mapCoastSeconds;
+    bus.advanceBusMotion(t0.add(Duration(milliseconds: (holdAt * 1000).round())));
+    final held = bus.snapBusToStop(bus.allBusesList.single)!;
+    bus.advanceBusMotion(t0.add(Duration(milliseconds: (holdAt * 1000).round() + 4000)));
+    expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, held), lessThan(1));
   });
 
   test('a later speed of 0 does not keep sliding at the previous speed', () {
@@ -130,11 +162,10 @@ void main() {
     final atFix = bus.snapBusToStop(bus.allBusesList.single)!;
     bus.advanceBusMotion(t0.add(const Duration(seconds: 2)));
     final ahead = bus.snapBusToStop(bus.allBusesList.single)!;
-    expect(apart(ahead, atFix), greaterThan(15));
-    expect(apart(ahead, atFix), lessThan(25));
+    expectMoved(apart(ahead, atFix), predictedExtra(36, 2));
     bus.advanceBusMotion(t0.add(const Duration(seconds: 4)));
     final later = bus.snapBusToStop(bus.allBusesList.single)!;
-    expect(apart(later, ahead), greaterThan(15));
+    expectMoved(apart(later, ahead), predictedExtra(36, 4) - predictedExtra(36, 2));
 
     bus.allBusesList = [_bus(lat: 22.196, speed: 0, seq: 1)];
     final stoppedAt = t0.add(const Duration(seconds: 4));
@@ -149,7 +180,7 @@ void main() {
     expect(bus.displaySpeedKmh(bus.allBusesList.single), 0);
   });
 
-  test('moving buses keep dead-reckoning until the fix is stale', () {
+  test('moving buses dead-reckon slower than reported speed, then coast', () {
     final bus = route();
     addTearDown(bus.dispose);
     final t0 = DateTime.utc(2026, 10, 8, 8);
@@ -159,21 +190,28 @@ void main() {
 
     bus.advanceBusMotion(t0.add(const Duration(seconds: 1)));
     final early = bus.snapBusToStop(bus.allBusesList.single)!;
-    expect(apart(early, atFix), greaterThan(5));
-    expect(apart(early, atFix), lessThan(15));
+    expectMoved(apart(early, atFix), predictedExtra(30, 1));
 
     bus.advanceBusMotion(t0.add(const Duration(seconds: 4)));
     final mid = bus.snapBusToStop(bus.allBusesList.single)!;
-    expect(apart(mid, atFix), greaterThan(28));
-    expect(apart(mid, early), greaterThan(15));
+    expectMoved(apart(mid, atFix), predictedExtra(30, 4));
+    expect(apart(mid, early), greaterThan(8));
 
     bus.advanceBusMotion(t0.add(const Duration(seconds: 10)));
-    final atStale = bus.snapBusToStop(bus.allBusesList.single)!;
-    expect(apart(atStale, atFix), greaterThan(75));
-    expect(apart(atStale, atFix), lessThan(95));
+    final atPoll = bus.snapBusToStop(bus.allBusesList.single)!;
+    expectMoved(apart(atPoll, atFix), predictedExtra(30, 10));
+    expect(apart(atPoll, atFix), lessThan(30 / 3.6 * 10 * 0.6));
+
     bus.advanceBusMotion(t0.add(const Duration(seconds: 14)));
-    expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, atStale), lessThan(1));
+    final stillCoasting = bus.snapBusToStop(bus.allBusesList.single)!;
+    expect(apart(stillCoasting, atPoll), greaterThan(4));
     expect(bus.displaySpeedKmh(bus.allBusesList.single), 30);
+
+    final holdAt = BusController.mapPredictHorizonSeconds + BusController.mapCoastSeconds;
+    bus.advanceBusMotion(t0.add(Duration(milliseconds: (holdAt * 1000).round())));
+    final held = bus.snapBusToStop(bus.allBusesList.single)!;
+    bus.advanceBusMotion(t0.add(Duration(milliseconds: (holdAt * 1000).round() + 4000)));
+    expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, held), lessThan(1));
   });
 
   test('a new fix eases onto the GPS point over a second before using speed', () {
@@ -203,11 +241,10 @@ void main() {
 
     bus.advanceBusMotion(fixAt.add(const Duration(seconds: 2)));
     final after = bus.snapBusToStop(bus.allBusesList.single)!;
-    expect(apart(after, eased), greaterThan(5));
-    expect(apart(after, eased), lessThan(15));
+    expectMoved(apart(after, eased), predictedExtra(30, 1));
     bus.advanceBusMotion(fixAt.add(const Duration(seconds: 4)));
     final later = bus.snapBusToStop(bus.allBusesList.single)!;
-    expect(apart(later, after), greaterThan(10));
+    expectMoved(apart(later, after), predictedExtra(30, 3) - predictedExtra(30, 1));
     bus.advanceBusMotion(fixAt.add(const Duration(seconds: 12)));
     expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, later), greaterThan(10));
   });
@@ -313,9 +350,11 @@ void main() {
     bus.advanceBusMotion(t0);
     bus.advanceBusMotion(t0.add(const Duration(seconds: 10)));
     final icon = bus.snapBusToStop(bus.allBusesList.single)!;
-    expect(icon.longitude, greaterThan(113.5403));
+    // Damped 10s of 30 km/h stays on the first leg of the bend, east of the
+    // stop-to-stop chord (which keeps longitude 113.54).
+    expect(icon.longitude, greaterThan(113.54012));
     expect(icon.longitude, lessThan(113.545));
-    expect(apart(icon, const LatLng(22.19, 113.54)), greaterThan(40));
+    expect(apart(icon, const LatLng(22.19, 113.54)), greaterThan(25));
   });
 
   test('short samples keep the reported speed instead of hopping', () {
@@ -330,13 +369,16 @@ void main() {
     for (var step = 1; step <= 10; step++) {
       bus.advanceBusMotion(t0.add(Duration(milliseconds: 100 * step)));
       final here = bus.snapBusToStop(bus.allBusesList.single)!;
-      final moved = apart(here, previous);
-      expect(moved, greaterThan(0.6));
-      expect(moved, lessThan(1.6));
+      final moved = const Distance(roundResult: false).as(LengthUnit.Meter, here, previous);
+      final stepMeters = predictedExtra(36, 0.1);
+      expect(moved, greaterThan(stepMeters * 0.75));
+      expect(moved, lessThan(stepMeters * 1.25));
       previous = here;
     }
-    expect(apart(previous, origin), greaterThan(9));
-    expect(apart(previous, origin), lessThan(12));
+    expectMoved(
+      const Distance(roundResult: false).as(LengthUnit.Meter, previous, origin),
+      predictedExtra(36, 1),
+    );
     expect(bus.displaySpeedKmh(bus.allBusesList.single), 36);
     expect(BusController.mapMotionFrame.inMilliseconds, inInclusiveRange(16, 40));
   });
@@ -383,5 +425,323 @@ void main() {
     final icon = bus.snapBusToStop(bus.allBusesList.single)!;
     expect(apart(icon, const LatLng(22.195, 113.54)), lessThan(25));
     expect(apart(icon, const LatLng(22.19, 113.54)), greaterThan(400));
+  });
+
+  test('a fix behind the icon does not pull it backward', () {
+    final bus = route();
+    addTearDown(bus.dispose);
+    final t0 = DateTime.utc(2026, 10, 8, 8);
+    bus.allBusesList = [_bus(lat: 22.195, speed: 36, seq: 1)];
+    bus.advanceBusMotion(t0);
+    bus.advanceBusMotion(t0.add(const Duration(seconds: 4)));
+    final ahead = bus.snapBusToStop(bus.allBusesList.single)!;
+
+    final backAt = t0.add(const Duration(seconds: 4));
+    bus.allBusesList = [_bus(lat: 22.192, speed: 36, seq: 1)];
+    bus.advanceBusMotion(backAt);
+    expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, ahead), lessThan(5));
+
+    bus.advanceBusMotion(backAt.add(const Duration(seconds: 3)));
+    final held = bus.snapBusToStop(bus.allBusesList.single)!;
+    expect(apart(held, ahead), lessThan(5));
+    expect(held.latitude, greaterThan(22.192));
+  });
+
+  test('atStop on the current stop does not snap the icon backward', () {
+    final bus = route();
+    addTearDown(bus.dispose);
+    final t0 = DateTime.utc(2026, 10, 8, 8);
+    bus.allBusesList = [_bus(lat: 22.195, speed: 36, seq: 1)];
+    bus.advanceBusMotion(t0);
+    bus.advanceBusMotion(t0.add(const Duration(seconds: 4)));
+    final ahead = bus.snapBusToStop(bus.allBusesList.single)!;
+
+    bus.allBusesList = [_bus(lat: 22.19, speed: 0, seq: 1, atStop: true)];
+    bus.advanceBusMotion(t0.add(const Duration(seconds: 4)));
+    final held = bus.snapBusToStop(bus.allBusesList.single)!;
+    expect(apart(held, ahead), lessThan(5));
+    expect(apart(held, const LatLng(22.19, 113.54)), greaterThan(20));
+    expect(bus.hasVisuallyArrived(bus.allBusesList.single), isFalse);
+  });
+
+  test('one stop-sequence retreat does not jump the icon backward', () {
+    final bus = route();
+    addTearDown(bus.dispose);
+    final t0 = DateTime.utc(2026, 10, 8, 8);
+    bus.allBusesList = [_bus(lat: 22.201, speed: 0, seq: 2)];
+    bus.advanceBusMotion(t0);
+    final placed = bus.snapBusToStop(bus.allBusesList.single)!;
+
+    bus.allBusesList = [_bus(lat: 22.192, speed: 20, seq: 1)];
+    bus.advanceBusMotion(t0);
+    expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, placed), lessThan(8));
+    bus.advanceBusMotion(t0.add(const Duration(seconds: 5)));
+    expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, placed), lessThan(8));
+  });
+
+  test('a second distinct stop retreat places the new trip', () {
+    final bus = route();
+    addTearDown(bus.dispose);
+    final t0 = DateTime.utc(2026, 10, 8, 8);
+    bus.allBusesList = [_bus(lat: 22.201, speed: 0, seq: 2)];
+    bus.advanceBusMotion(t0);
+    final placed = bus.snapBusToStop(bus.allBusesList.single)!;
+
+    bus.allBusesList = [_bus(lat: 22.192, speed: 0, seq: 1)];
+    bus.advanceBusMotion(t0);
+    expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, placed), lessThan(8));
+
+    bus.allBusesList = [_bus(lat: 22.193, speed: 0, seq: 1)];
+    bus.advanceBusMotion(t0.add(const Duration(seconds: 1)));
+    final reset = bus.snapBusToStop(bus.allBusesList.single)!;
+    expect(apart(reset, const LatLng(22.193, 113.54)), lessThan(25));
+    expect(apart(reset, placed), greaterThan(100));
+  });
+
+  test('a stop retreat that stays for two polls resets the floor', () {
+    final bus = route();
+    addTearDown(bus.dispose);
+    final t0 = DateTime.utc(2026, 10, 8, 8);
+    bus.allBusesList = [_bus(lat: 22.201, speed: 0, seq: 2)];
+    bus.advanceBusMotion(t0);
+    final placed = bus.snapBusToStop(bus.allBusesList.single)!;
+
+    final seen = t0.add(const Duration(seconds: 1));
+    bus.allBusesList = [_bus(lat: 22.191, speed: 0, seq: 1)];
+    bus.advanceBusMotion(seen);
+    expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, placed), lessThan(8));
+
+    bus.advanceBusMotion(seen.add(BusController.mapTripResetHold - const Duration(seconds: 1)));
+    expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, placed), lessThan(8));
+
+    bus.advanceBusMotion(seen.add(BusController.mapTripResetHold));
+    final reset = bus.snapBusToStop(bus.allBusesList.single)!;
+    expect(apart(reset, const LatLng(22.191, 113.54)), lessThan(25));
+    expect(apart(reset, placed), greaterThan(100));
+  });
+
+  test('a bus that leaves the list can be placed behind on the way back', () {
+    final bus = route();
+    addTearDown(bus.dispose);
+    final t0 = DateTime.utc(2026, 10, 8, 8);
+    bus.allBusesList = [_bus(lat: 22.195, speed: 36, seq: 1)];
+    bus.advanceBusMotion(t0);
+    bus.advanceBusMotion(t0.add(const Duration(seconds: 4)));
+    final ahead = bus.snapBusToStop(bus.allBusesList.single)!;
+
+    bus.allBusesList = [];
+    bus.advanceBusMotion(t0.add(const Duration(seconds: 5)));
+    bus.allBusesList = [_bus(lat: 22.191, speed: 0, seq: 1)];
+    bus.advanceBusMotion(t0.add(const Duration(seconds: 6)));
+    final again = bus.snapBusToStop(bus.allBusesList.single)!;
+    expect(apart(again, const LatLng(22.191, 113.54)), lessThan(25));
+    expect(apart(again, ahead), greaterThan(100));
+  });
+
+  test('a fix ahead of the icon still eases forward after a rejected one', () {
+    final bus = route();
+    addTearDown(bus.dispose);
+    final t0 = DateTime.utc(2026, 10, 8, 8);
+    bus.allBusesList = [_bus(lat: 22.195, speed: 30, seq: 1)];
+    bus.advanceBusMotion(t0);
+    bus.advanceBusMotion(t0.add(const Duration(seconds: 3)));
+    final ahead = bus.snapBusToStop(bus.allBusesList.single)!;
+
+    final rejectedAt = t0.add(const Duration(seconds: 3));
+    bus.allBusesList = [_bus(lat: 22.194, speed: 30, seq: 1)];
+    bus.advanceBusMotion(rejectedAt);
+    expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, ahead), lessThan(5));
+
+    const nextFix = LatLng(22.198, 113.54);
+    final fixAt = rejectedAt.add(const Duration(seconds: 2));
+    bus.allBusesList = [_bus(lat: nextFix.latitude, speed: 30, seq: 1)];
+    bus.advanceBusMotion(fixAt);
+    expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, ahead), lessThan(8));
+    bus.advanceBusMotion(fixAt.add(const Duration(seconds: 1)));
+    final eased = bus.snapBusToStop(bus.allBusesList.single)!;
+    expect(apart(eased, nextFix), lessThan(30));
+    expect(eased.latitude, greaterThan(ahead.latitude));
+  });
+
+  test('ETA to the next stop slows a fast snapshot', () {
+    final bus = route();
+    addTearDown(bus.dispose);
+    bus.selectStop(2);
+    final t0 = DateTime.utc(2026, 10, 8, 8);
+    const fix = LatLng(22.195, 113.54);
+    const from = LatLng(22.19, 113.54);
+    const to = LatLng(22.20, 113.54);
+    final length = distance.as(LengthUnit.Meter, from, to);
+    final gps = distance.as(LengthUnit.Meter, from, fix);
+    final gap = length - gps;
+    bus.allBusesList = [_bus(lat: fix.latitude, speed: 36, seq: 1, etaMinutes: 8)];
+    bus.advanceBusMotion(t0);
+    final atFix = bus.snapBusToStop(bus.allBusesList.single)!;
+    bus.advanceBusMotion(t0.add(const Duration(seconds: 10)));
+    final moved = apart(bus.snapBusToStop(bus.allBusesList.single)!, atFix);
+    final speedOnly = predictedExtra(36, 10);
+    final paced = gap / (8 * 60) * 10;
+    final blended = speedOnly * (1 - BusController.mapEtaBlend) + paced * BusController.mapEtaBlend;
+    expect(paced, lessThan(speedOnly));
+    expectMoved(moved, blended);
+    expect(moved, lessThan(speedOnly * 0.85));
+  });
+
+  test('a stopped bus still eases forward while ETA has time left', () {
+    final bus = route();
+    addTearDown(bus.dispose);
+    bus.selectStop(2);
+    final t0 = DateTime.utc(2026, 10, 8, 8);
+    const fix = LatLng(22.195, 113.54);
+    const from = LatLng(22.19, 113.54);
+    const to = LatLng(22.20, 113.54);
+    final gap = distance.as(LengthUnit.Meter, from, to) - distance.as(LengthUnit.Meter, from, fix);
+    bus.allBusesList = [_bus(lat: fix.latitude, speed: 0, seq: 1, etaMinutes: 2)];
+    bus.advanceBusMotion(t0);
+    final atFix = bus.snapBusToStop(bus.allBusesList.single)!;
+    bus.advanceBusMotion(t0.add(const Duration(seconds: 10)));
+    final moved = apart(bus.snapBusToStop(bus.allBusesList.single)!, atFix);
+    final paced = gap / (2 * 60) * 10 * BusController.mapEtaBlend;
+    expectMoved(moved, paced);
+    expect(moved, greaterThan(15));
+    expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, to), greaterThan(80));
+    expect(bus.displaySpeedKmh(bus.allBusesList.single), 0);
+  });
+
+  test('ETA covering a later stop only spends this leg its share of the time', () {
+    final current = etaRemainingOnLeg(
+      etaMinutes: 8,
+      gpsMeters: 500,
+      hops: const [
+        MapLegHop(fromSeq: 1, toSeq: 2, meters: 1000),
+        MapLegHop(fromSeq: 2, toSeq: 3, meters: 1000),
+      ],
+    );
+    // Half of this hop remains, plus the next hop: 500 / 1500 of 8 minutes.
+    expect(current, closeTo(8 * 60 * (500 / 1500), 0.01));
+
+    final learned = etaRemainingOnLeg(
+      etaMinutes: 7,
+      gpsMeters: 500,
+      hops: const [
+        MapLegHop(fromSeq: 1, toSeq: 2, meters: 1000, learnedSeconds: 100),
+        MapLegHop(fromSeq: 2, toSeq: 3, meters: 1000, learnedSeconds: 300),
+      ],
+    );
+    // Remainder is half of 100s, then 300s. Share 50/350 of 7 minutes.
+    expect(learned, closeTo(7 * 60 * (50 / 350), 0.01));
+  });
+
+  test('the same ETA to a further stop spends less time on this leg', () {
+    double movedToward(int stopSeq) {
+      final bus = route();
+      addTearDown(bus.dispose);
+      bus.selectStop(stopSeq);
+      final t0 = DateTime.utc(2026, 10, 8, 8);
+      bus.allBusesList = [_bus(lat: 22.195, speed: 0, seq: 1, etaMinutes: 8)];
+      bus.advanceBusMotion(t0);
+      final atFix = bus.snapBusToStop(bus.allBusesList.single)!;
+      bus.advanceBusMotion(t0.add(const Duration(seconds: 10)));
+      return apart(bus.snapBusToStop(bus.allBusesList.single)!, atFix);
+    }
+
+    final nextStop = movedToward(2);
+    final furtherStop = movedToward(3);
+    expect(furtherStop, greaterThan(nextStop + 8));
+  });
+
+  test('atStop places the bus at the stop even when ETA still has minutes', () {
+    final bus = route();
+    addTearDown(bus.dispose);
+    bus.selectStop(2);
+    final t0 = DateTime.utc(2026, 10, 8, 8);
+    bus.allBusesList = [_bus(lat: 22.195, speed: 0, seq: 1, etaMinutes: 10)];
+    bus.advanceBusMotion(t0);
+    bus.advanceBusMotion(t0.add(const Duration(seconds: 5)));
+    final before = bus.snapBusToStop(bus.allBusesList.single)!;
+
+    bus.allBusesList = [
+      _bus(lat: 22.20, speed: 0, seq: 2, atStop: true, etaMinutes: 0),
+    ];
+    bus.advanceBusMotion(t0.add(const Duration(seconds: 5)));
+    final parked = bus.snapBusToStop(bus.allBusesList.single)!;
+    expect(apart(parked, const LatLng(22.20, 113.54)), lessThan(25));
+    expect(apart(parked, before), greaterThan(100));
+  });
+
+  test('a fix behind the icon stays put even if ETA is short', () {
+    final bus = route();
+    addTearDown(bus.dispose);
+    bus.selectStop(2);
+    final t0 = DateTime.utc(2026, 10, 8, 8);
+    bus.allBusesList = [_bus(lat: 22.195, speed: 36, seq: 1, etaMinutes: 8)];
+    bus.advanceBusMotion(t0);
+    bus.advanceBusMotion(t0.add(const Duration(seconds: 4)));
+    final ahead = bus.snapBusToStop(bus.allBusesList.single)!;
+
+    final backAt = t0.add(const Duration(seconds: 4));
+    bus.allBusesList = [_bus(lat: 22.192, speed: 36, seq: 1, etaMinutes: 1)];
+    bus.advanceBusMotion(backAt);
+    expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, ahead), lessThan(5));
+    bus.advanceBusMotion(backAt.add(const Duration(seconds: 3)));
+    final held = bus.snapBusToStop(bus.allBusesList.single)!;
+    expect(apart(held, ahead), lessThan(5));
+    expect(held.latitude, greaterThan(22.192));
+  });
+
+  test('clearing the selected-stop ETA stops the time glide', () {
+    final bus = route();
+    addTearDown(bus.dispose);
+    bus.selectStop(2);
+    final t0 = DateTime.utc(2026, 10, 8, 8);
+    bus.allBusesList = [_bus(lat: 22.195, speed: 0, seq: 1, etaMinutes: 2)];
+    bus.advanceBusMotion(t0);
+    final atFix = bus.snapBusToStop(bus.allBusesList.single)!;
+    bus.advanceBusMotion(t0.add(const Duration(seconds: 8)));
+    final mid = bus.snapBusToStop(bus.allBusesList.single)!;
+    expect(apart(mid, atFix), greaterThan(15));
+
+    bus.selectStop(3);
+    bus.advanceBusMotion(t0.add(const Duration(seconds: 18)));
+    expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, mid), lessThan(5));
+  });
+
+  test('a learned segment duration glides a later bus from the stop', () {
+    final bus = route();
+    addTearDown(bus.dispose);
+    final t0 = DateTime.utc(2026, 10, 8, 8);
+    bus.allBusesList = [
+      _bus(lat: 22.19, speed: 0, seq: 1, atStop: true, plate: 'TRAIN'),
+    ];
+    bus.advanceBusMotion(t0);
+    final left = t0.add(const Duration(seconds: 1));
+    bus.allBusesList = [_bus(lat: 22.1903, speed: 0, seq: 1, plate: 'TRAIN')];
+    bus.advanceBusMotion(left);
+    bus.allBusesList = [
+      _bus(lat: 22.20, speed: 0, seq: 2, atStop: true, plate: 'TRAIN'),
+    ];
+    bus.advanceBusMotion(left.add(const Duration(seconds: 100)));
+
+    final t1 = left.add(const Duration(seconds: 110));
+    bus.allBusesList = [
+      _bus(lat: 22.19, speed: 0, seq: 1, atStop: true, plate: 'RIDER'),
+    ];
+    bus.advanceBusMotion(t1);
+    final go = t1.add(const Duration(seconds: 1));
+    bus.allBusesList = [_bus(lat: 22.1903, speed: 0, seq: 1, plate: 'RIDER')];
+    bus.advanceBusMotion(go);
+    final started = bus.snapBusToStop(bus.allBusesList.single)!;
+
+    bus.advanceBusMotion(go.add(const Duration(seconds: 40)));
+    final later = bus.snapBusToStop(bus.allBusesList.single)!;
+    const from = LatLng(22.19, 113.54);
+    const fix = LatLng(22.1903, 113.54);
+    final length = distance.as(LengthUnit.Meter, from, const LatLng(22.20, 113.54));
+    final gps = distance.as(LengthUnit.Meter, from, fix);
+    final ref = length * (40 / 100);
+    final blended = gps * (1 - BusController.mapEtaBlend) + ref * BusController.mapEtaBlend;
+    expect(apart(later, started), greaterThan(80));
+    expectMoved(apart(later, from), blended);
+    expect(apart(later, const LatLng(22.20, 113.54)), greaterThan(200));
   });
 }
