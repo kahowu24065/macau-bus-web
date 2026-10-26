@@ -1710,28 +1710,39 @@ class BusController extends ChangeNotifier {
   /// 所以格數密就會沿路線滑，而唔係半秒跳一格。
   static const Duration mapMotionFrame = Duration(milliseconds: 32);
 
-  /// 兩次 `/bus-eta` 之間唔好用足報稱車速。全速推一個輪詢週期會衝過
-  /// 下一個粗定位（站或者半路），圖示再跳返轉頭就好似倒車。
-  static const double mapPredictSpeedFactor = 0.6;
+  /// 兩次 `/bus-eta` 之間用穩陣車速沿路線滑，唔好全速衝。
+  /// 全速推一個輪詢會衝過下一個粗定位，再被拉停就好似一頓一頓。
+  static const double mapCruiseFactor = 0.8;
 
-  /// 用 [mapPredictSpeedFactor] 推前幾多秒。輪詢大約 [etaAutoRefreshSeconds] 秒一次，
-  /// 所以呢個窗短過個輪詢，唔好喺下一包資料到之前衝到落站。
-  static const double mapPredictHorizonSeconds = 6;
+  /// 以 [mapCruiseFactor] 滑幾多秒。大約一個輪詢，期間車速保持不變。
+  static const double mapCruiseSeconds = 10;
 
-  /// 預測窗過咗、下一包又未到，就改為慢速沿路線滑，唔好企定定。
-  static const double mapCoastSpeedFactor = 0.25;
-
-  /// 慢速滑最長幾多秒。再長就停，避免一份舊車速行成段路。
-  static const double mapCoastSeconds = 14;
+  /// 輪詢過咗、下一包又未到，就由巡航車速平滑收到停，唔好中途斷崖減速。
+  static const double mapTaperSeconds = 8;
 
   /// 由呢個定位再推前，最遠幾多米。快車都唔好衝離報稱位置太遠。
   /// 另外 [_legCap] 仍然唔會衝過下一站。
+  /// 收近上限時會平滑減到 0，唔好撞到個帽就企定。
   /// 時間參考（ETA／路段）唔受呢個 90 米限制，但一樣唔會衝過下一站。
   static const double mapPredictMaxMeters = 90;
+
+  /// 離 [mapPredictMaxMeters] 幾多米開始收慢。
+  static const double mapSpeedSoftCapMeters = 30;
+
+  /// 新定位喺圖示前面時，補返個差距至少用幾多秒。
+  /// 補位由 0 加速開始，所以巡航速度唔會被一下打斷。
+  static const double mapCatchUpMinSeconds = 10;
+
+  /// 補差距嘅平均速度（米／秒）。大差距會拉長時間，唔好一秒衝完。
+  static const double mapCatchUpAverageMps = 3.5;
 
   /// 車速推算同時間參考點幾多比重。1 代表完全跟 ETA／路段時間。
   /// 時間參考唔會拉後，亦唔會喺 atStop 時同站序爭。
   static const double mapEtaBlend = 0.65;
+
+  /// 分鐘數一跳，新步伐只採納呢個比例，並且單次變化唔超過 [mapEtaPaceMaxStep]。
+  static const double mapEtaPaceSlew = 0.35;
+  static const double mapEtaPaceMaxStep = 0.25;
 
   /// 剩餘時間短過呢個，就唔再靠 ETA 帶位（分鐘數太粗，容易衝去站）。
   static const double mapEtaMinRemainingSeconds = 20;
@@ -1764,13 +1775,25 @@ class BusController extends ChangeNotifier {
 
   /// 跟最新定位沿路線行。車速 0（或 5km/h 或以下）就停低，
   /// 除非去所選站嘅 ETA（或者學到嘅路段時間）仲話架車應該向前。
-  /// 郁緊就用 [mapPredictSpeedFactor] 推 [mapPredictHorizonSeconds]，
-  /// 之後用 [mapCoastSpeedFactor] 慢滑，再同時間參考按 [mapEtaBlend] 混合。
-  /// 同一轉嘅路線進度只會向前：新位置如果喺而家顯示位置後面，就保持而家嘅位置。
+  /// 郁緊就用 [mapCruiseFactor] 滑 [mapCruiseSeconds]，之後平滑收到停，
+  /// 再同時間參考按 [mapEtaBlend] 混合。新定位喺前面就慢慢補上，唔好一秒衝過去。
+  /// 同一轉嘅路線進度只會向前：新位置如果喺而家顯示位置後面，就由而家嘅位置繼續滑，唔好倒車，亦唔好企定。
   /// 到站（atStop）跟站序擺位，唔好用 ETA 比例同站序爭。
   /// 車由清單消失再出現、轉線或者轉方向（[fetchStops] 會清走進度），
   /// 又或者站序退後並且維持 [mapTripResetHold]，先至重新擺位。
   /// [now] 畀測試固定個鐘；平時用而家。
+  double _speedExtra(double speedKmh, double ageSeconds) {
+    return speedEnvelopeMeters(
+      speedKmh: speedKmh,
+      ageSeconds: ageSeconds,
+      cruiseFactor: mapCruiseFactor,
+      cruiseSeconds: mapCruiseSeconds,
+      taperSeconds: mapTaperSeconds,
+      maxMeters: mapPredictMaxMeters,
+      softCapMeters: mapSpeedSoftCapMeters,
+    );
+  }
+
   bool advanceBusMotion([DateTime? now]) {
     final clock = now ?? DateTime.now();
     final live = <String>{};
@@ -1871,12 +1894,14 @@ class BusController extends ChangeNotifier {
     return length > 40 ? length - 25 : length * 0.85;
   }
 
-  /// 新一次定位：投影到呢段路線。如果喺而家顯示位置前面，約 1 秒滑過去；
-  /// 如果喺後面，就保持而家嘅位置，唔好滑返轉頭。
-  /// 之後車速 > 5km/h 就按 [mapPredictSpeedFactor] 推前，
-  /// 窗過咗就按 [mapCoastSpeedFactor] 慢滑。
+  /// 新一次定位：投影到呢段路線。同一段路線就由而家嘅位置繼續滑，
+  /// 前面嘅差距用 [catchUpMeters] 慢慢補，唔好一秒衝完。
+  /// 定位如果喺後面，就由而家嘅位置繼續向前，唔好滑返轉頭，亦唔好企定。
+  /// 轉咗站先用約 1 秒沿路線滑去新位置。
+  /// 之後車速 > 5km/h 就按 [mapCruiseFactor] 滑，窗過咗就平滑收到停。
   /// 另外用去所選站嘅 ETA（或者學到嘅路段時間）做軟參考，
   /// 同車速推算按 [mapEtaBlend] 混合。車速 0 但時間參考仲喺前面，都會慢慢滑。
+  /// 分鐘數變咗先更新步伐，而且只採納一部分，避免整分鐘一跳圖示就衝。
   /// [acceptBehind] 只用於確認咗係新一轉，要即刻擺去新位置，唔沿路線倒車。
   ({_BusLegMotion motion, bool moved}) _stepLeg({
     required Bus bus,
@@ -1971,15 +1996,18 @@ class BusController extends ChangeNotifier {
               acceptBehind: true,
             );
           }
-          final held = _heldBack(
-            prev: prev,
-            bus: bus,
-            now: now,
-            reportedIndex: reportedIndex,
-            streak: decision.streak,
-            since: decision.since,
-          );
-          return (motion: held, moved: _motionMoved(prev, held));
+          // 站序真係退後先停低。同一段路線只係定位慢過圖示，就繼續向前滑。
+          if (decision.streak > 0) {
+            final held = _heldBack(
+              prev: prev,
+              bus: bus,
+              now: now,
+              reportedIndex: reportedIndex,
+              streak: decision.streak,
+              since: decision.since,
+            );
+            return (motion: held, moved: _motionMoved(prev, held));
+          }
         }
       }
     }
@@ -1988,11 +2016,15 @@ class BusController extends ChangeNotifier {
     final liveMinutes = _liveEtaMinutes(bus);
     final hadPace = prev != null && prev.etaImpliedMps > 0;
     final haveLive = liveMinutes != null;
-    // 定位冇變就沿用舊步伐，分鐘一跳都唔好彈。
-    // ETA 消失（切站）或者先至有 ETA，先重新計。
+    final sameLeg = prev != null && prev.stopSeq == motionStopSeq;
+    // 同一段、分鐘數冇變，就沿用舊步伐。GPS 微移唔好重計，
+    // 否則整分鐘 ETA 會令圖示一下加快或者停低。
+    // 換站、ETA 消失或者先至有 ETA，先重新計。
+    final minutesChanged = prev != null && prev.etaMinutes != liveMinutes;
     final retarget =
         prev == null ||
-        fresh ||
+        !sameLeg ||
+        minutesChanged ||
         (hadPace && !haveLive) ||
         (!hadPace && haveLive);
     final alongMeters = !fresh ? prev.traveledMeters : gpsMeters;
@@ -2005,6 +2037,7 @@ class BusController extends ChangeNotifier {
       alongMeters: alongMeters,
       now: now,
       retarget: retarget,
+      sameLeg: sameLeg,
       prev: prev,
       learnFromSnapshot: fresh,
     );
@@ -2024,6 +2057,14 @@ class BusController extends ChangeNotifier {
       easeToLat = held.easeToLat;
       easeToLng = held.easeToLng;
       easeFromMeters = held.easeFromMeters;
+    } else if (sameLeg && !acceptBehind) {
+      // 同一段唔好用一秒 smoothstep 追新定位，中間會衝完再停。
+      easedIn = false;
+      easeFromLat = prev.renderLat;
+      easeFromLng = prev.renderLng;
+      easeToLat = target.latitude;
+      easeToLng = target.longitude;
+      easeFromMeters = prev.traveledMeters;
     } else if (prev == null || _renderNear(prev, target)) {
       easedIn = false;
       easeFromLat = target.latitude;
@@ -2049,6 +2090,8 @@ class BusController extends ChangeNotifier {
     final double traveled;
     final double renderLat;
     final double renderLng;
+    var glideOrigin = gpsMeters;
+    var curveAtFix = gpsMeters;
     final bool alongRoute = (easeFromMeters - gpsMeters).abs() >= 0.5;
 
     if (easedIn && age < easeSeconds) {
@@ -2071,28 +2114,12 @@ class BusController extends ChangeNotifier {
         renderLng = easeFromLng + (easeToLng - easeFromLng) * s;
         traveled = easeFromMeters + (gpsMeters - easeFromMeters) * s;
       }
-    } else {
-      // 由定位起計，先用折扣車速推一段，之後慢滑。
-      // 新定位滑入之後先計速度。慢滑窗過咗，車速部份就停。
-      // 時間參考（ETA 或者路段）可以繼續向前，但唔會拉後，亦唔會衝過下一站。
-      final delay = easedIn ? easeSeconds : 0.0;
+    } else if (easedIn) {
+      // 轉站嗰下補完位之後，先用巡航車速。時間參考可以繼續向前，但唔會拉後。
+      final delay = easeSeconds;
       var predict = age - delay;
       if (predict < 0) predict = 0;
-      var speedExtra = 0.0;
-      if (!stopped) {
-        final full = predict > mapPredictHorizonSeconds
-            ? mapPredictHorizonSeconds
-            : predict;
-        var coast = predict - mapPredictHorizonSeconds;
-        if (coast < 0) coast = 0;
-        if (coast > mapCoastSeconds) coast = mapCoastSeconds;
-        final mps = fixSpeed * 1000 / 3600;
-        speedExtra =
-            mps * (full * mapPredictSpeedFactor + coast * mapCoastSpeedFactor);
-        if (speedExtra > mapPredictMaxMeters) {
-          speedExtra = mapPredictMaxMeters;
-        }
-      }
+      final speedExtra = stopped ? 0.0 : _speedExtra(fixSpeed, predict);
       final learnedMeters = pace.mps > 0
           ? null
           : _learnedReferenceMeters(
@@ -2120,6 +2147,63 @@ class BusController extends ChangeNotifier {
       if (prev != null &&
           prev.stopSeq == motionStopSeq &&
           meters < prev.traveledMeters) {
+        meters = prev.traveledMeters;
+      }
+      traveled = meters;
+      final point = _pointAtMeters(from, to, traveled);
+      renderLat = point.latitude;
+      renderLng = point.longitude;
+    } else {
+      // 由而家嘅圖示位置跟模型向前滑。模型跳前就慢慢補，模型喺後面就繼續行，唔好企定。
+      double modelAt(double ageSeconds) {
+        final extra = stopped ? 0.0 : _speedExtra(fixSpeed, ageSeconds);
+        final at = ageSeconds <= 0
+            ? fixAt
+            : fixAt.add(Duration(microseconds: (ageSeconds * 1000000).round()));
+        final learned = pace.mps > 0
+            ? null
+            : _learnedReferenceMeters(
+                plate: bus.busLicense,
+                fromSeq: from.seq,
+                toSeq: to.seq,
+                length: length,
+                gpsMeters: gpsMeters,
+                now: at,
+              );
+        final timeMeters = _timeReferenceMeters(
+          impliedMps: pace.mps,
+          anchorAt: pace.at,
+          anchorMeters: pace.meters,
+          now: at,
+          learnedMeters: learned,
+        );
+        return blendLegMeters(
+          gpsMeters: gpsMeters,
+          speedMeters: gpsMeters + extra,
+          timeMeters: timeMeters,
+          blend: mapEtaBlend,
+          cap: cap,
+        );
+      }
+
+      if (!fresh && prev != null) {
+        glideOrigin = prev.glideOriginMeters;
+        curveAtFix = prev.curveAtFixMeters;
+      } else {
+        curveAtFix = modelAt(0);
+        glideOrigin = prev != null && sameLeg ? prev.traveledMeters : curveAtFix;
+      }
+      final curveNow = modelAt(age);
+      var meters = glideMeters(
+        origin: glideOrigin,
+        curveAtFix: curveAtFix,
+        curveNow: curveNow,
+        ageSeconds: age,
+        catchUpMinSeconds: mapCatchUpMinSeconds,
+        catchUpAverageMps: mapCatchUpAverageMps,
+        cap: cap,
+      );
+      if (prev != null && sameLeg && meters < prev.traveledMeters) {
         meters = prev.traveledMeters;
       }
       traveled = meters;
@@ -2184,6 +2268,8 @@ class BusController extends ChangeNotifier {
       easeToLng: easeToLng,
       easeFromMeters: easeFromMeters,
       easedIn: easedIn,
+      glideOriginMeters: glideOrigin,
+      curveAtFixMeters: curveAtFix,
       floorRouteMeters: floor,
       floorStopIndex: floorStop,
       retreatStreak: 0,
@@ -2193,6 +2279,7 @@ class BusController extends ChangeNotifier {
       etaImpliedMps: pace.mps,
       etaAnchorAt: pace.at,
       etaAnchorMeters: pace.meters,
+      etaMinutes: liveMinutes,
     );
     _noteOnLeg(
       plate: bus.busLicense,
@@ -2254,6 +2341,7 @@ class BusController extends ChangeNotifier {
     required double alongMeters,
     required DateTime now,
     required bool retarget,
+    required bool sameLeg,
     required _BusLegMotion? prev,
     required bool learnFromSnapshot,
   }) {
@@ -2298,7 +2386,26 @@ class BusController extends ChangeNotifier {
         );
       }
     }
-    return (mps: mps, at: mps > 0 ? now : null, meters: alongMeters);
+    var adopted = mps;
+    var anchorMeters = alongMeters;
+    // 同一段先平滑咁改步伐，並且由舊時間參考嘅位置繼續，唔好拉後再停。
+    if (sameLeg &&
+        prev != null &&
+        prev.etaImpliedMps > 0 &&
+        adopted > 0 &&
+        prev.etaAnchorAt != null) {
+      adopted = slewPaceMps(
+        previous: prev.etaImpliedMps,
+        target: adopted,
+        slew: mapEtaPaceSlew,
+        maxStep: mapEtaPaceMaxStep,
+      );
+      final ageMs = now.difference(prev.etaAnchorAt!).inMilliseconds;
+      final age = ageMs <= 0 ? 0.0 : ageMs / 1000.0;
+      final projected = prev.etaAnchorMeters + prev.etaImpliedMps * age;
+      if (projected > anchorMeters) anchorMeters = projected;
+    }
+    return (mps: adopted, at: adopted > 0 ? now : null, meters: anchorMeters);
   }
 
   double? _timeReferenceMeters({
@@ -2887,7 +2994,7 @@ class _BusLegMotion {
   /// 第一個退站樣本嘅時間。維持到 [BusController.mapTripResetHold] 先當新一轉。
   final DateTime? retreatSince;
 
-  /// 最新定位喺顯示位置後面，所以唔再跟住佢推前。
+  /// 站序退後、未確認新一轉之前，停喺而家嘅位置。
   final bool holdingBack;
   final int reportedStopIndex;
 
@@ -2895,6 +3002,15 @@ class _BusLegMotion {
   final double etaImpliedMps;
   final DateTime? etaAnchorAt;
   final double etaAnchorMeters;
+
+  /// 呢個定位入面，圖示開始滑嗰陣嘅路段米數。
+  final double glideOriginMeters;
+
+  /// 呢個定位入面，模型喺起點嘅路段米數。之後只加模型向前嘅部分。
+  final double curveAtFixMeters;
+
+  /// 計 [etaImpliedMps] 嗰陣嘅整分鐘 ETA。分鐘冇變就唔重計步伐。
+  final int? etaMinutes;
 
   const _BusLegMotion({
     required this.stopSeq,
@@ -2925,6 +3041,9 @@ class _BusLegMotion {
     this.etaImpliedMps = 0,
     this.etaAnchorAt,
     this.etaAnchorMeters = 0,
+    this.glideOriginMeters = 0,
+    this.curveAtFixMeters = 0,
+    this.etaMinutes,
   });
 
   bool matchesFix(Bus bus) {
