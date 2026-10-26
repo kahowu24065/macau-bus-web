@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 // Soft map position from ETA minutes and per-leg travel time.
 //
 // The client does not receive learned hop tables. Bus.etaMinutes is the
@@ -132,4 +134,113 @@ double blendLegMeters({
   if (meters > cap) meters = cap;
   if (meters < 0) meters = 0;
   return meters;
+}
+
+/// Metres of damped dead-reckoning after [ageSeconds].
+///
+/// Speed holds [cruiseFactor] for [cruiseSeconds], then eases to zero across
+/// [taperSeconds] so the icon does not cliff from a fast predict into a coast.
+/// Near [maxMeters] the extra distance soft-stops instead of hitting a wall.
+double speedEnvelopeMeters({
+  required double speedKmh,
+  required double ageSeconds,
+  double cruiseFactor = 0.8,
+  double cruiseSeconds = 10,
+  double taperSeconds = 8,
+  double maxMeters = 90,
+  double softCapMeters = 30,
+}) {
+  if (speedKmh <= 0 || ageSeconds <= 0 || cruiseFactor <= 0) return 0;
+  final cruiseVel = speedKmh / 3.6 * cruiseFactor;
+  final cruise = ageSeconds < cruiseSeconds ? ageSeconds : cruiseSeconds;
+  var raw = cruiseVel * cruise;
+  if (ageSeconds > cruiseSeconds && taperSeconds > 0) {
+    var u = (ageSeconds - cruiseSeconds) / taperSeconds;
+    if (u < 0) u = 0;
+    if (u > 1) u = 1;
+    // ∫(1 - smoothstep) from 0 to u = u - u^3 + 0.5 u^4.
+    final taper = u - (u * u * u) + 0.5 * (u * u * u * u);
+    raw += cruiseVel * taperSeconds * taper;
+  }
+  return _softCapMeters(raw, maxMeters, softCapMeters);
+}
+
+double _softCapMeters(double raw, double maxMeters, double softMeters) {
+  if (raw <= 0 || maxMeters <= 0) return 0;
+  if (softMeters <= 0) return raw < maxMeters ? raw : maxMeters;
+  final soft = softMeters < maxMeters ? softMeters : maxMeters;
+  final start = maxMeters - soft;
+  if (raw <= start) return raw;
+  final gained = soft * (1 - math.exp(-(raw - start) / soft));
+  final capped = start + gained;
+  return capped > maxMeters ? maxMeters : capped;
+}
+
+/// How much of a forward gap to close after [ageSeconds].
+///
+/// Smoothstep starts and ends with zero extra speed, so cruise speed is not
+/// kicked. Large gaps stretch the duration and stay under [averageMps].
+double catchUpMeters({
+  required double gapMeters,
+  required double ageSeconds,
+  double minSeconds = 10,
+  double averageMps = 3.5,
+}) {
+  if (gapMeters <= 0 || ageSeconds <= 0) return 0;
+  final average = averageMps < 0.1 ? 0.1 : averageMps;
+  final duration = math.max(minSeconds, gapMeters / average);
+  final u = ageSeconds >= duration ? 1.0 : ageSeconds / duration;
+  final s = u * u * (3 - 2 * u);
+  return gapMeters * s;
+}
+
+/// Icon metres along the leg.
+///
+/// [origin] is where the icon already was. [curveAtFix] / [curveNow] are the
+/// model positions at the fix and now. The icon eases onto the model and
+/// keeps the model's forward progress, and it never moves back to [origin].
+double glideMeters({
+  required double origin,
+  required double curveAtFix,
+  required double curveNow,
+  required double ageSeconds,
+  double catchUpMinSeconds = 10,
+  double catchUpAverageMps = 3.5,
+  required double cap,
+}) {
+  var progress = curveNow - curveAtFix;
+  if (progress < 0) progress = 0;
+  final gap = curveAtFix - origin;
+  final caught = catchUpMeters(
+    gapMeters: gap > 0 ? gap : 0,
+    ageSeconds: ageSeconds,
+    minSeconds: catchUpMinSeconds,
+    averageMps: catchUpAverageMps,
+  );
+  var meters = origin + caught + progress;
+  if (meters < origin) meters = origin;
+  if (meters > cap) meters = cap;
+  if (meters < 0) meters = 0;
+  return meters;
+}
+
+/// Adopt part of a new ETA pace so a whole-minute jump does not spike speed.
+///
+/// A missing previous pace ([previous] <= 0) takes [target] as-is. A cleared
+/// target stays cleared.
+double slewPaceMps({
+  required double previous,
+  required double target,
+  double slew = 0.35,
+  double maxStep = 0.25,
+}) {
+  if (target <= 0) return 0;
+  if (previous <= 0) return target;
+  final blended = previous + (target - previous) * (slew < 0 ? 0 : slew);
+  final step = maxStep < 0 ? 0.0 : maxStep;
+  final hi = previous * (1 + step);
+  final lo = previous * (1 - step);
+  if (blended > hi) return hi;
+  if (blended < lo) return lo;
+  return blended;
 }

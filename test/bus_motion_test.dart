@@ -69,18 +69,17 @@ void main() {
 
   double apart(LatLng a, LatLng b) => distance.as(LengthUnit.Meter, a, b);
 
-  /// Metres added by damped dead-reckoning, ignoring the 1s ease onto a new fix.
+  /// Metres added by the smooth cruise-then-taper envelope.
   double predictedExtra(double speedKmh, double ageSeconds) {
-    final predict = ageSeconds < 0 ? 0.0 : ageSeconds;
-    final horizon = BusController.mapPredictHorizonSeconds;
-    final full = predict > horizon ? horizon : predict;
-    var coast = predict - horizon;
-    if (coast < 0) coast = 0;
-    if (coast > BusController.mapCoastSeconds) coast = BusController.mapCoastSeconds;
-    final extra = speedKmh /
-        3.6 *
-        (full * BusController.mapPredictSpeedFactor + coast * BusController.mapCoastSpeedFactor);
-    return math.min(extra, BusController.mapPredictMaxMeters);
+    return speedEnvelopeMeters(
+      speedKmh: speedKmh,
+      ageSeconds: ageSeconds,
+      cruiseFactor: BusController.mapCruiseFactor,
+      cruiseSeconds: BusController.mapCruiseSeconds,
+      taperSeconds: BusController.mapTaperSeconds,
+      maxMeters: BusController.mapPredictMaxMeters,
+      softCapMeters: BusController.mapSpeedSoftCapMeters,
+    );
   }
 
   void expectMoved(double actual, double expected) {
@@ -123,7 +122,7 @@ void main() {
     expect(bus.displaySpeedKmh(bus.allBusesList.single), 0);
   });
 
-  test('speed just above 5 km/h creeps, coasts, then holds short of full speed', () {
+  test('speed just above 5 km/h cruises, then eases to a hold short of full speed', () {
     final bus = route();
     addTearDown(bus.dispose);
     final t0 = DateTime.utc(2026, 10, 8, 8);
@@ -144,9 +143,10 @@ void main() {
     bus.advanceBusMotion(t0.add(const Duration(seconds: 10)));
     final atPoll = bus.snapBusToStop(bus.allBusesList.single)!;
     expectMoved(apart(atPoll, atFix), predictedExtra(6, 10));
-    expect(apart(atPoll, atFix), lessThan(fullTen * 0.7));
+    expect(apart(atPoll, atFix), greaterThan(fullTen * 0.6));
+    expect(apart(atPoll, atFix), lessThan(fullTen * 0.95));
 
-    final holdAt = BusController.mapPredictHorizonSeconds + BusController.mapCoastSeconds;
+    final holdAt = BusController.mapCruiseSeconds + BusController.mapTaperSeconds;
     bus.advanceBusMotion(t0.add(Duration(milliseconds: (holdAt * 1000).round())));
     final held = bus.snapBusToStop(bus.allBusesList.single)!;
     bus.advanceBusMotion(t0.add(Duration(milliseconds: (holdAt * 1000).round() + 4000)));
@@ -170,17 +170,24 @@ void main() {
     bus.allBusesList = [_bus(lat: 22.196, speed: 0, seq: 1)];
     final stoppedAt = t0.add(const Duration(seconds: 4));
     bus.advanceBusMotion(stoppedAt);
-    expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, later), lessThan(5));
+    final atStopFix = bus.snapBusToStop(bus.allBusesList.single)!;
+    expect(apart(atStopFix, later), lessThan(5));
 
     bus.advanceBusMotion(stoppedAt.add(const Duration(seconds: 1)));
+    final early = bus.snapBusToStop(bus.allBusesList.single)!;
+    // One second must not keep the old 36 km/h (~10m) or already reach the fix.
+    expect(apart(early, atStopFix), lessThan(6));
+    expect(apart(early, const LatLng(22.196, 113.54)), greaterThan(20));
+
+    bus.advanceBusMotion(stoppedAt.add(const Duration(seconds: 40)));
     final parked = bus.snapBusToStop(bus.allBusesList.single)!;
-    expect(apart(parked, const LatLng(22.196, 113.54)), lessThan(25));
-    bus.advanceBusMotion(stoppedAt.add(const Duration(seconds: 5)));
-    expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, parked), lessThan(1));
+    expect(apart(parked, const LatLng(22.196, 113.54)), lessThan(30));
+    bus.advanceBusMotion(stoppedAt.add(const Duration(seconds: 48)));
+    expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, parked), lessThan(2));
     expect(bus.displaySpeedKmh(bus.allBusesList.single), 0);
   });
 
-  test('moving buses dead-reckon slower than reported speed, then coast', () {
+  test('moving buses cruise slower than reported speed, then ease to a hold', () {
     final bus = route();
     addTearDown(bus.dispose);
     final t0 = DateTime.utc(2026, 10, 8, 8);
@@ -200,21 +207,22 @@ void main() {
     bus.advanceBusMotion(t0.add(const Duration(seconds: 10)));
     final atPoll = bus.snapBusToStop(bus.allBusesList.single)!;
     expectMoved(apart(atPoll, atFix), predictedExtra(30, 10));
-    expect(apart(atPoll, atFix), lessThan(30 / 3.6 * 10 * 0.6));
+    expect(apart(atPoll, atFix), greaterThan(30 / 3.6 * 10 * 0.6));
+    expect(apart(atPoll, atFix), lessThan(30 / 3.6 * 10 * 0.95));
 
     bus.advanceBusMotion(t0.add(const Duration(seconds: 14)));
     final stillCoasting = bus.snapBusToStop(bus.allBusesList.single)!;
     expect(apart(stillCoasting, atPoll), greaterThan(4));
     expect(bus.displaySpeedKmh(bus.allBusesList.single), 30);
 
-    final holdAt = BusController.mapPredictHorizonSeconds + BusController.mapCoastSeconds;
+    final holdAt = BusController.mapCruiseSeconds + BusController.mapTaperSeconds;
     bus.advanceBusMotion(t0.add(Duration(milliseconds: (holdAt * 1000).round())));
     final held = bus.snapBusToStop(bus.allBusesList.single)!;
     bus.advanceBusMotion(t0.add(Duration(milliseconds: (holdAt * 1000).round() + 4000)));
     expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, held), lessThan(1));
   });
 
-  test('a new fix eases onto the GPS point over a second before using speed', () {
+  test('a same-leg fix ahead glides instead of sprinting onto the GPS', () {
     final bus = route();
     addTearDown(bus.dispose);
     final t0 = DateTime.utc(2026, 10, 8, 8);
@@ -227,26 +235,27 @@ void main() {
     final fixAt = t0.add(const Duration(seconds: 2));
     bus.allBusesList = [_bus(lat: nextFix.latitude, speed: 30, seq: 1)];
     bus.advanceBusMotion(fixAt);
-    expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, before), lessThan(5));
-
-    bus.advanceBusMotion(fixAt.add(const Duration(milliseconds: 500)));
-    final mid = bus.snapBusToStop(bus.allBusesList.single)!;
-    expect(apart(mid, before), greaterThan(40));
-    expect(apart(mid, nextFix), greaterThan(40));
-    expect(apart(mid, before) + apart(mid, nextFix), closeTo(apart(before, nextFix), 30));
+    final atFix = bus.snapBusToStop(bus.allBusesList.single)!;
+    expect(apart(atFix, before), lessThan(5));
 
     bus.advanceBusMotion(fixAt.add(const Duration(seconds: 1)));
-    final eased = bus.snapBusToStop(bus.allBusesList.single)!;
-    expect(apart(eased, nextFix), lessThan(25));
+    final early = bus.snapBusToStop(bus.allBusesList.single)!;
+    final gap = apart(before, nextFix);
+    final step = apart(early, atFix);
+    // One second must not swallow most of the gap, but cruise still moves forward.
+    expect(step, greaterThan(4));
+    expect(step, lessThan(gap * 0.25));
+    expect(early.latitude, greaterThan(atFix.latitude));
 
-    bus.advanceBusMotion(fixAt.add(const Duration(seconds: 2)));
-    final after = bus.snapBusToStop(bus.allBusesList.single)!;
-    expectMoved(apart(after, eased), predictedExtra(30, 1));
-    bus.advanceBusMotion(fixAt.add(const Duration(seconds: 4)));
-    final later = bus.snapBusToStop(bus.allBusesList.single)!;
-    expectMoved(apart(later, after), predictedExtra(30, 3) - predictedExtra(30, 1));
-    bus.advanceBusMotion(fixAt.add(const Duration(seconds: 12)));
-    expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, later), greaterThan(10));
+    var previous = early;
+    for (var half = 1; half <= 8; half++) {
+      bus.advanceBusMotion(fixAt.add(Duration(milliseconds: 1000 + 500 * half)));
+      final here = bus.snapBusToStop(bus.allBusesList.single)!;
+      expect(here.latitude, greaterThan(previous.latitude - 1e-7));
+      expect(apart(here, previous), lessThan(12));
+      previous = here;
+    }
+    expect(previous.latitude, greaterThan(early.latitude));
   });
 
   test('a new stop sequence keeps the GPS position instead of snapping to the stop', () {
@@ -383,7 +392,7 @@ void main() {
     expect(BusController.mapMotionFrame.inMilliseconds, inInclusiveRange(16, 40));
   });
 
-  test('a same-leg correction eases along the bend instead of cutting the corner', () {
+  test('a same-leg correction glides along the bend instead of cutting the corner', () {
     final bus = route();
     addTearDown(bus.dispose);
     const corner = LatLng(22.19072, 113.54);
@@ -406,16 +415,21 @@ void main() {
 
     bus.allBusesList = [_bus(lat: end.latitude, lng: end.longitude, speed: 18, seq: 1)];
     bus.advanceBusMotion(fixAt);
-    bus.advanceBusMotion(fixAt.add(const Duration(milliseconds: 500)));
-    final mid = bus.snapBusToStop(bus.allBusesList.single)!;
-    final chord = LatLng(
-      (before.latitude + end.latitude) / 2,
-      (before.longitude + end.longitude) / 2,
-    );
-    // The bend goes north first. A straight ease is still south of the corner
-    // at the halfway mark; the route ease is already up at the corner.
-    expect(mid.latitude, greaterThan(chord.latitude + 0.0001), reason: 'before=$before mid=$mid chord=$chord');
-    expect(apart(mid, corner), lessThan(apart(chord, corner)));
+    LatLng? onSecondLeg;
+    for (var step = 1; step <= 40; step++) {
+      bus.advanceBusMotion(fixAt.add(Duration(milliseconds: 500 * step)));
+      final here = bus.snapBusToStop(bus.allBusesList.single)!;
+      // The route goes north, then east. A chord would raise lat and lng together.
+      if (here.longitude > 113.54015 && here.latitude > corner.latitude - 0.00008) {
+        onSecondLeg = here;
+        break;
+      }
+    }
+    expect(onSecondLeg, isNotNull, reason: 'before=$before');
+    final chordAtLng = before.latitude +
+        (end.latitude - before.latitude) *
+            ((onSecondLeg!.longitude - before.longitude) / (end.longitude - before.longitude));
+    expect(onSecondLeg.latitude, greaterThan(chordAtLng + 0.00015));
   });
 
   test('without motion yet, the icon still follows GPS instead of the last stop', () {
@@ -427,7 +441,7 @@ void main() {
     expect(apart(icon, const LatLng(22.19, 113.54)), greaterThan(400));
   });
 
-  test('a fix behind the icon does not pull it backward', () {
+  test('a fix behind the icon does not reverse and does not freeze', () {
     final bus = route();
     addTearDown(bus.dispose);
     final t0 = DateTime.utc(2026, 10, 8, 8);
@@ -443,8 +457,11 @@ void main() {
 
     bus.advanceBusMotion(backAt.add(const Duration(seconds: 3)));
     final held = bus.snapBusToStop(bus.allBusesList.single)!;
-    expect(apart(held, ahead), lessThan(5));
+    expect(held.latitude, greaterThan(ahead.latitude));
+    expect(apart(held, ahead), greaterThan(8));
     expect(held.latitude, greaterThan(22.192));
+    final cruise = 36 / 3.6 * BusController.mapCruiseFactor * 3;
+    expect(apart(held, ahead), lessThan(cruise * 1.35));
   });
 
   test('atStop on the current stop does not snap the icon backward', () {
@@ -554,13 +571,17 @@ void main() {
 
     const nextFix = LatLng(22.198, 113.54);
     final fixAt = rejectedAt.add(const Duration(seconds: 2));
+    final beforeNext = bus.snapBusToStop(bus.allBusesList.single)!;
+    expect(beforeNext.latitude, greaterThan(ahead.latitude - 1e-7));
     bus.allBusesList = [_bus(lat: nextFix.latitude, speed: 30, seq: 1)];
     bus.advanceBusMotion(fixAt);
-    expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, ahead), lessThan(8));
-    bus.advanceBusMotion(fixAt.add(const Duration(seconds: 1)));
-    final eased = bus.snapBusToStop(bus.allBusesList.single)!;
-    expect(apart(eased, nextFix), lessThan(30));
-    expect(eased.latitude, greaterThan(ahead.latitude));
+    final atNext = bus.snapBusToStop(bus.allBusesList.single)!;
+    expect(apart(atNext, beforeNext), lessThan(8));
+    expect(atNext.latitude + 1e-7, greaterThan(ahead.latitude));
+    bus.advanceBusMotion(fixAt.add(const Duration(seconds: 6)));
+    final later = bus.snapBusToStop(bus.allBusesList.single)!;
+    expect(later.latitude, greaterThan(atNext.latitude));
+    expect(apart(later, atNext), lessThan(80));
   });
 
   test('ETA to the next stop slows a fast snapshot', () {
@@ -669,7 +690,7 @@ void main() {
     expect(apart(parked, before), greaterThan(100));
   });
 
-  test('a fix behind the icon stays put even if ETA is short', () {
+  test('a fix behind the icon does not reverse even if ETA is short', () {
     final bus = route();
     addTearDown(bus.dispose);
     bus.selectStop(2);
@@ -685,8 +706,10 @@ void main() {
     expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, ahead), lessThan(5));
     bus.advanceBusMotion(backAt.add(const Duration(seconds: 3)));
     final held = bus.snapBusToStop(bus.allBusesList.single)!;
-    expect(apart(held, ahead), lessThan(5));
+    expect(held.latitude, greaterThan(ahead.latitude));
     expect(held.latitude, greaterThan(22.192));
+    // A 1-minute ETA must not sprint the icon toward the stop in 3 seconds.
+    expect(apart(held, ahead), lessThan(80));
   });
 
   test('clearing the selected-stop ETA stops the time glide', () {
@@ -743,5 +766,186 @@ void main() {
     expect(apart(later, started), greaterThan(80));
     expectMoved(apart(later, from), blended);
     expect(apart(later, const LatLng(22.20, 113.54)), greaterThan(200));
+  });
+
+  test('cruise speed does not cliff across the old predict window', () {
+    final bus = route();
+    addTearDown(bus.dispose);
+    final t0 = DateTime.utc(2026, 10, 8, 8);
+    bus.allBusesList = [_bus(lat: 22.192, speed: 24, seq: 1)];
+    bus.advanceBusMotion(t0);
+    final origin = bus.snapBusToStop(bus.allBusesList.single)!;
+    const precise = Distance(roundResult: false);
+    final marks = <int, double>{};
+    for (final second in [5, 6, 7, 8, 10, 11]) {
+      bus.advanceBusMotion(t0.add(Duration(seconds: second)));
+      final here = bus.snapBusToStop(bus.allBusesList.single)!;
+      marks[second] = precise.as(LengthUnit.Meter, here, origin);
+    }
+    final early = marks[6]! - marks[5]!;
+    final later = marks[8]! - marks[7]!;
+    expect(later, greaterThan(early * 0.9));
+    expect(early, greaterThan(later * 0.9));
+    final intoTaper = marks[11]! - marks[10]!;
+    final cruiseStep = marks[10]! - marks[8]!;
+    // The old formula dropped from 0.6 to 0.25 at 6s. The first taper second stays near cruise.
+    expect(intoTaper, greaterThan(cruiseStep / 2 * 0.85));
+  });
+
+  test('a whole-minute ETA change does not stall or sprint', () {
+    final bus = route();
+    addTearDown(bus.dispose);
+    bus.selectStop(2);
+    final t0 = DateTime.utc(2026, 10, 8, 8);
+    bus.allBusesList = [_bus(lat: 22.195, speed: 0, seq: 1, etaMinutes: 4)];
+    bus.advanceBusMotion(t0);
+    final atFix = bus.snapBusToStop(bus.allBusesList.single)!;
+    bus.advanceBusMotion(t0.add(const Duration(seconds: 10)));
+    final mid = bus.snapBusToStop(bus.allBusesList.single)!;
+    final firstHop = apart(mid, atFix);
+    expect(firstHop, greaterThan(10));
+
+    bus.allBusesList = [_bus(lat: 22.195, speed: 0, seq: 1, etaMinutes: 1)];
+    bus.advanceBusMotion(t0.add(const Duration(seconds: 10)));
+    expect(apart(bus.snapBusToStop(bus.allBusesList.single)!, mid), lessThan(5));
+    bus.advanceBusMotion(t0.add(const Duration(seconds: 20)));
+    final secondHop = apart(bus.snapBusToStop(bus.allBusesList.single)!, mid);
+    expect(secondHop, greaterThan(firstHop * 0.85));
+    expect(secondHop, lessThan(firstHop * 1.7));
+  });
+
+  test('speed envelope eases into the taper instead of stepping', () {
+    const speed = 24.0;
+    final before = speedEnvelopeMeters(
+      speedKmh: speed,
+      ageSeconds: BusController.mapCruiseSeconds - 0.4,
+      cruiseFactor: BusController.mapCruiseFactor,
+      cruiseSeconds: BusController.mapCruiseSeconds,
+      taperSeconds: BusController.mapTaperSeconds,
+      maxMeters: 1000,
+      softCapMeters: 0,
+    );
+    final at = speedEnvelopeMeters(
+      speedKmh: speed,
+      ageSeconds: BusController.mapCruiseSeconds,
+      cruiseFactor: BusController.mapCruiseFactor,
+      cruiseSeconds: BusController.mapCruiseSeconds,
+      taperSeconds: BusController.mapTaperSeconds,
+      maxMeters: 1000,
+      softCapMeters: 0,
+    );
+    final after = speedEnvelopeMeters(
+      speedKmh: speed,
+      ageSeconds: BusController.mapCruiseSeconds + 0.4,
+      cruiseFactor: BusController.mapCruiseFactor,
+      cruiseSeconds: BusController.mapCruiseSeconds,
+      taperSeconds: BusController.mapTaperSeconds,
+      maxMeters: 1000,
+      softCapMeters: 0,
+    );
+    final into = at - before;
+    final out = after - at;
+    expect(out, greaterThan(into * 0.9));
+    final done = speedEnvelopeMeters(
+      speedKmh: speed,
+      ageSeconds: BusController.mapCruiseSeconds + BusController.mapTaperSeconds + 5,
+      cruiseFactor: BusController.mapCruiseFactor,
+      cruiseSeconds: BusController.mapCruiseSeconds,
+      taperSeconds: BusController.mapTaperSeconds,
+      maxMeters: 1000,
+      softCapMeters: 0,
+    );
+    final held = speedEnvelopeMeters(
+      speedKmh: speed,
+      ageSeconds: BusController.mapCruiseSeconds + BusController.mapTaperSeconds + 9,
+      cruiseFactor: BusController.mapCruiseFactor,
+      cruiseSeconds: BusController.mapCruiseSeconds,
+      taperSeconds: BusController.mapTaperSeconds,
+      maxMeters: 1000,
+      softCapMeters: 0,
+    );
+    expect(held, closeTo(done, 0.01));
+    final full = speed / 3.6 * (BusController.mapCruiseSeconds + 4);
+    expect(at, lessThan(full));
+  });
+
+  test('soft cap approaches the metre limit without passing it', () {
+    final capped = speedEnvelopeMeters(
+      speedKmh: 80,
+      ageSeconds: 30,
+      cruiseFactor: 1,
+      cruiseSeconds: 30,
+      taperSeconds: 1,
+      maxMeters: 90,
+      softCapMeters: 30,
+    );
+    expect(capped, lessThan(90));
+    expect(capped, greaterThan(80));
+    final uncapped = speedEnvelopeMeters(
+      speedKmh: 80,
+      ageSeconds: 4,
+      cruiseFactor: 1,
+      cruiseSeconds: 30,
+      taperSeconds: 1,
+      maxMeters: 1000,
+      softCapMeters: 0,
+    );
+    // 4s at 80 km/h is about 89m, still linear before the soft cap.
+    expect(uncapped, closeTo(80 / 3.6 * 4, 0.1));
+  });
+
+  test('catch-up and glide do not jump or reverse', () {
+    expect(
+      catchUpMeters(gapMeters: 80, ageSeconds: 0, minSeconds: 10, averageMps: 3.5),
+      0,
+    );
+    final early = catchUpMeters(gapMeters: 80, ageSeconds: 1, minSeconds: 10, averageMps: 3.5);
+    expect(early, lessThan(8));
+    final done = catchUpMeters(gapMeters: 80, ageSeconds: 40, minSeconds: 10, averageMps: 3.5);
+    expect(done, closeTo(80, 0.01));
+
+    final atFix = glideMeters(
+      origin: 100,
+      curveAtFix: 180,
+      curveNow: 180,
+      ageSeconds: 0,
+      cap: 500,
+    );
+    expect(atFix, 100);
+    final soon = glideMeters(
+      origin: 100,
+      curveAtFix: 180,
+      curveNow: 188,
+      ageSeconds: 1,
+      cap: 500,
+    );
+    expect(soon, greaterThan(100));
+    expect(soon, lessThan(130));
+    final joined = glideMeters(
+      origin: 100,
+      curveAtFix: 180,
+      curveNow: 180,
+      ageSeconds: 40,
+      cap: 500,
+    );
+    expect(joined, closeTo(180, 0.5));
+
+    final behind = glideMeters(
+      origin: 200,
+      curveAtFix: 140,
+      curveNow: 152,
+      ageSeconds: 3,
+      cap: 500,
+    );
+    expect(behind, closeTo(212, 0.5));
+  });
+
+  test('ETA pace slew limits a whole-minute jump', () {
+    final doubled = slewPaceMps(previous: 4, target: 8, slew: 0.35, maxStep: 0.25);
+    expect(doubled, closeTo(4 * 1.25, 0.001));
+    final small = slewPaceMps(previous: 4, target: 4.4, slew: 0.35, maxStep: 0.25);
+    expect(small, closeTo(4 + 0.4 * 0.35, 0.001));
+    expect(slewPaceMps(previous: 0, target: 5), 5);
+    expect(slewPaceMps(previous: 4, target: 0), 0);
   });
 }
