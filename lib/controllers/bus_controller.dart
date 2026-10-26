@@ -18,6 +18,7 @@ import '../services/live_activity_bridge.dart';
 import '../utils/boarding_alert_schedule.dart';
 import '../utils/boarding_bus_choice.dart';
 import '../utils/bus_eta_estimate.dart';
+import '../utils/map_segment_reference.dart';
 import '../data/local_route_catalog.dart';
 
 
@@ -74,6 +75,13 @@ class BusController extends ChangeNotifier {
   final Set<int> _stopsMissingOfficialCoords = {};
   final Map<String, _BusLegMotion> _legMotion = {};
   final Map<String, double> _segmentMetersCache = {};
+
+  /// 呢個畫面睇到嘅路段行車時間（秒），route|dir|from|to。
+  /// 由車實際行完一段，或者由「ETA 就係下一站」嘅比例反推，慢慢更新。
+  final Map<String, double> _segmentSeconds = {};
+
+  /// 每架車而家呢段係幾時開始。車離站先算得知起點。
+  final Map<String, _LegClock> _legClocks = {};
   List<int>? _stopGpxIndex;
 
   String _currentRoutesLang = 'zh';
@@ -174,6 +182,7 @@ class BusController extends ChangeNotifier {
     if (!showLiveArrivals && (allBusesList.isNotEmpty || _legMotion.isNotEmpty)) {
       allBusesList = [];
       _legMotion.clear();
+      _legClocks.clear();
     }
     notifyListeners();
   }
@@ -1421,6 +1430,7 @@ class BusController extends ChangeNotifier {
       etaData = null;
       allBusesList = [];
       _legMotion.clear();
+      _legClocks.clear();
       _segmentMetersCache.clear();
       _etaShownStopSeq = null;
       _etaMinutesStale = false;
@@ -1616,6 +1626,7 @@ class BusController extends ChangeNotifier {
         } else {
           allBusesList = [];
           _legMotion.clear();
+          _legClocks.clear();
         }
 
         await _syncBoardingLiveEta(fetchedStopSeq: seq);
@@ -1715,7 +1726,32 @@ class BusController extends ChangeNotifier {
 
   /// 由呢個定位再推前，最遠幾多米。快車都唔好衝離報稱位置太遠。
   /// 另外 [_legCap] 仍然唔會衝過下一站。
+  /// 時間參考（ETA／路段）唔受呢個 90 米限制，但一樣唔會衝過下一站。
   static const double mapPredictMaxMeters = 90;
+
+  /// 車速推算同時間參考點幾多比重。1 代表完全跟 ETA／路段時間。
+  /// 時間參考唔會拉後，亦唔會喺 atStop 時同站序爭。
+  static const double mapEtaBlend = 0.65;
+
+  /// 剩餘時間短過呢個，就唔再靠 ETA 帶位（分鐘數太粗，容易衝去站）。
+  static const double mapEtaMinRemainingSeconds = 20;
+
+  /// 離下一站近過呢個，就交返畀車速同到站判斷。
+  static const double mapEtaMinGapMeters = 25;
+
+  /// ETA 反推嘅步速上限（米／秒，大約 80km/h）。
+  static const double mapEtaMaxMps = 22;
+
+  /// 行完一整段之後，新樣本佔路段時間幾多。
+  static const double mapSegmentLearnRate = 0.35;
+
+  /// 用「ETA 就係下一站」反推路段時間時，新樣本佔幾多。
+  /// 分鐘數係整數，所以比重低過實際行完一段。
+  static const double mapSegmentEtaLearnRate = 0.2;
+
+  /// 路段時間短過或者長過呢個範圍就唔記。
+  static const double mapSegmentSecondsMin = 20;
+  static const double mapSegmentSecondsMax = 20 * 60;
 
   /// 站序退後幾多站，先當可能係新一轉（而唔係同一轉入面嘅雜訊）。
   static const int mapTripResetStopDrop = 1;
@@ -1726,10 +1762,12 @@ class BusController extends ChangeNotifier {
     seconds: etaAutoRefreshSeconds * 2,
   );
 
-  /// 跟最新定位沿路線行。車速 0（或 5km/h 或以下）就停低。
+  /// 跟最新定位沿路線行。車速 0（或 5km/h 或以下）就停低，
+  /// 除非去所選站嘅 ETA（或者學到嘅路段時間）仲話架車應該向前。
   /// 郁緊就用 [mapPredictSpeedFactor] 推 [mapPredictHorizonSeconds]，
-  /// 之後用 [mapCoastSpeedFactor] 慢滑。
+  /// 之後用 [mapCoastSpeedFactor] 慢滑，再同時間參考按 [mapEtaBlend] 混合。
   /// 同一轉嘅路線進度只會向前：新位置如果喺而家顯示位置後面，就保持而家嘅位置。
+  /// 到站（atStop）跟站序擺位，唔好用 ETA 比例同站序爭。
   /// 車由清單消失再出現、轉線或者轉方向（[fetchStops] 會清走進度），
   /// 又或者站序退後並且維持 [mapTripResetHold]，先至重新擺位。
   /// [now] 畀測試固定個鐘；平時用而家。
@@ -1755,6 +1793,7 @@ class BusController extends ChangeNotifier {
           if (prev != null) live.add(key);
           continue;
         }
+        _noteArrived(plate: key, stopSeq: bus.currentStopSeq, now: clock);
         live.add(key);
         _legMotion[key] = parked.motion;
         if (parked.moved) changed = true;
@@ -1794,6 +1833,7 @@ class BusController extends ChangeNotifier {
     }
     final before = _legMotion.length;
     _legMotion.removeWhere((key, _) => !live.contains(key));
+    _legClocks.removeWhere((key, _) => !live.contains(key));
     if (_legMotion.length != before) changed = true;
     return changed;
   }
@@ -1834,7 +1874,9 @@ class BusController extends ChangeNotifier {
   /// 新一次定位：投影到呢段路線。如果喺而家顯示位置前面，約 1 秒滑過去；
   /// 如果喺後面，就保持而家嘅位置，唔好滑返轉頭。
   /// 之後車速 > 5km/h 就按 [mapPredictSpeedFactor] 推前，
-  /// 窗過咗就按 [mapCoastSpeedFactor] 慢滑。車停就停。
+  /// 窗過咗就按 [mapCoastSpeedFactor] 慢滑。
+  /// 另外用去所選站嘅 ETA（或者學到嘅路段時間）做軟參考，
+  /// 同車速推算按 [mapEtaBlend] 混合。車速 0 但時間參考仲喺前面，都會慢慢滑。
   /// [acceptBehind] 只用於確認咗係新一轉，要即刻擺去新位置，唔沿路線倒車。
   ({_BusLegMotion motion, bool moved}) _stepLeg({
     required Bus bus,
@@ -1848,6 +1890,10 @@ class BusController extends ChangeNotifier {
   }) {
     const stopKmh = _mapIconStopKmh;
     const easeSeconds = 1.0;
+
+    if (acceptBehind) {
+      _legClocks.remove(bus.busLicense);
+    }
 
     final legIndex = _indexOfSeq(motionStopSeq);
     final fresh = prev == null || !prev.matchesFix(bus);
@@ -1938,6 +1984,31 @@ class BusController extends ChangeNotifier {
       }
     }
 
+    final length = _segmentMeters(from, to);
+    final liveMinutes = _liveEtaMinutes(bus);
+    final hadPace = prev != null && prev.etaImpliedMps > 0;
+    final haveLive = liveMinutes != null;
+    // 定位冇變就沿用舊步伐，分鐘一跳都唔好彈。
+    // ETA 消失（切站）或者先至有 ETA，先重新計。
+    final retarget =
+        prev == null ||
+        fresh ||
+        (hadPace && !haveLive) ||
+        (!hadPace && haveLive);
+    final alongMeters = !fresh ? prev.traveledMeters : gpsMeters;
+    final pace = _paceAnchor(
+      bus: bus,
+      fromIndex: legIndex,
+      from: from,
+      to: to,
+      length: length,
+      alongMeters: alongMeters,
+      now: now,
+      retarget: retarget,
+      prev: prev,
+      learnFromSnapshot: fresh,
+    );
+
     final target = _pointAtMeters(from, to, gpsMeters);
     final bool easedIn;
     final double easeFromLat;
@@ -2000,30 +2071,57 @@ class BusController extends ChangeNotifier {
         renderLng = easeFromLng + (easeToLng - easeFromLng) * s;
         traveled = easeFromMeters + (gpsMeters - easeFromMeters) * s;
       }
-    } else if (stopped) {
-      traveled = gpsMeters;
-      final point = _pointAtMeters(from, to, traveled);
-      renderLat = point.latitude;
-      renderLng = point.longitude;
     } else {
       // 由定位起計，先用折扣車速推一段，之後慢滑。
-      // 新定位滑入之後先計速度。慢滑窗過咗就停，等下一個定位。
+      // 新定位滑入之後先計速度。慢滑窗過咗，車速部份就停。
+      // 時間參考（ETA 或者路段）可以繼續向前，但唔會拉後，亦唔會衝過下一站。
       final delay = easedIn ? easeSeconds : 0.0;
       var predict = age - delay;
       if (predict < 0) predict = 0;
-      final full = predict > mapPredictHorizonSeconds
-          ? mapPredictHorizonSeconds
-          : predict;
-      var coast = predict - mapPredictHorizonSeconds;
-      if (coast < 0) coast = 0;
-      if (coast > mapCoastSeconds) coast = mapCoastSeconds;
-      final mps = fixSpeed * 1000 / 3600;
-      var extra =
-          mps * (full * mapPredictSpeedFactor + coast * mapCoastSpeedFactor);
-      if (extra > mapPredictMaxMeters) extra = mapPredictMaxMeters;
-      var meters = gpsMeters + extra;
-      if (meters > cap) meters = cap;
-      if (meters < 0) meters = 0;
+      var speedExtra = 0.0;
+      if (!stopped) {
+        final full = predict > mapPredictHorizonSeconds
+            ? mapPredictHorizonSeconds
+            : predict;
+        var coast = predict - mapPredictHorizonSeconds;
+        if (coast < 0) coast = 0;
+        if (coast > mapCoastSeconds) coast = mapCoastSeconds;
+        final mps = fixSpeed * 1000 / 3600;
+        speedExtra =
+            mps * (full * mapPredictSpeedFactor + coast * mapCoastSpeedFactor);
+        if (speedExtra > mapPredictMaxMeters) {
+          speedExtra = mapPredictMaxMeters;
+        }
+      }
+      final learnedMeters = pace.mps > 0
+          ? null
+          : _learnedReferenceMeters(
+              plate: bus.busLicense,
+              fromSeq: from.seq,
+              toSeq: to.seq,
+              length: length,
+              gpsMeters: gpsMeters,
+              now: now,
+            );
+      final timeMeters = _timeReferenceMeters(
+        impliedMps: pace.mps,
+        anchorAt: pace.at,
+        anchorMeters: pace.meters,
+        now: now,
+        learnedMeters: learnedMeters,
+      );
+      var meters = blendLegMeters(
+        gpsMeters: gpsMeters,
+        speedMeters: gpsMeters + speedExtra,
+        timeMeters: timeMeters,
+        blend: mapEtaBlend,
+        cap: cap,
+      );
+      if (prev != null &&
+          prev.stopSeq == motionStopSeq &&
+          meters < prev.traveledMeters) {
+        meters = prev.traveledMeters;
+      }
       traveled = meters;
       final point = _pointAtMeters(from, to, traveled);
       renderLat = point.latitude;
@@ -2092,8 +2190,225 @@ class BusController extends ChangeNotifier {
       retreatSince: null,
       holdingBack: false,
       reportedStopIndex: _indexOfSeq(bus.currentStopSeq),
+      etaImpliedMps: pace.mps,
+      etaAnchorAt: pace.at,
+      etaAnchorMeters: pace.meters,
+    );
+    _noteOnLeg(
+      plate: bus.busLicense,
+      fromSeq: from.seq,
+      toSeq: to.seq,
+      now: now,
+      prev: prev,
+      fraction: length <= 0 ? 0 : gpsMeters / length,
     );
     return (motion: motion, moved: _motionMoved(prev, motion));
+  }
+
+  /// 所選站嘅 ETA 先可以用來帶地圖。切站之後分鐘會變 stale，這裡當冇。
+  int? _mapEtaStopSeq() {
+    if (_etaMinutesStale || selectedStopSeq == null) return null;
+    if (_etaShownStopSeq != null && _etaShownStopSeq != selectedStopSeq) {
+      return null;
+    }
+    return selectedStopSeq;
+  }
+
+  int? _liveEtaMinutes(Bus bus) {
+    if (_mapEtaStopSeq() == null) return null;
+    final minutes = bus.etaMinutes;
+    if (minutes == null || minutes < 1) return null;
+    return minutes;
+  }
+
+  /// 由而家呢段去到 ETA 嗰站。去唔到就唔用呢個 ETA。
+  List<MapLegHop>? _hopsUntilEta(int fromIndex, int etaStopSeq) {
+    if (fromIndex < 0 || fromIndex >= stopsList.length) return null;
+    final hops = <MapLegHop>[];
+    for (var i = fromIndex; i < stopsList.length - 1; i++) {
+      final a = stopsList[i];
+      final b = stopsList[i + 1];
+      if (a.lat == 0.0 || a.lng == 0.0 || b.lat == 0.0 || b.lng == 0.0) {
+        return null;
+      }
+      hops.add(
+        MapLegHop(
+          fromSeq: a.seq,
+          toSeq: b.seq,
+          meters: _segmentMeters(a, b),
+          learnedSeconds: _learnedSegmentSeconds(a.seq, b.seq),
+        ),
+      );
+      if (b.seq == etaStopSeq) return hops;
+    }
+    return null;
+  }
+
+  /// 時間參考錨在呢個定位。定位冇變就沿用舊步伐，避免分鐘一跳圖示就彈。
+  ({double mps, DateTime? at, double meters}) _paceAnchor({
+    required Bus bus,
+    required int fromIndex,
+    required BusStop from,
+    required BusStop to,
+    required double length,
+    required double alongMeters,
+    required DateTime now,
+    required bool retarget,
+    required _BusLegMotion? prev,
+    required bool learnFromSnapshot,
+  }) {
+    if (!retarget && prev != null) {
+      return (mps: prev.etaImpliedMps, at: prev.etaAnchorAt, meters: prev.etaAnchorMeters);
+    }
+    final minutes = _liveEtaMinutes(bus);
+    final etaStop = _mapEtaStopSeq();
+    if (minutes == null || etaStop == null) {
+      return (mps: 0.0, at: null, meters: alongMeters);
+    }
+    final hops = _hopsUntilEta(fromIndex, etaStop);
+    if (hops == null) {
+      return (mps: 0.0, at: null, meters: alongMeters);
+    }
+    final remaining = etaRemainingOnLeg(
+      etaMinutes: minutes,
+      hops: hops,
+      gpsMeters: alongMeters,
+      minGapMeters: mapEtaMinGapMeters,
+      minRemainingSeconds: mapEtaMinRemainingSeconds,
+    );
+    final gap = length - alongMeters;
+    final mps = remaining == null
+        ? 0.0
+        : (etaPaceMps(
+                gapMeters: gap < 0 ? 0 : gap,
+                remainingSeconds: remaining,
+                maxMps: mapEtaMaxMps,
+                minGapMeters: mapEtaMinGapMeters,
+                minRemainingSeconds: mapEtaMinRemainingSeconds,
+              ) ??
+              0.0);
+    if (learnFromSnapshot && mps > 0 && etaStop == to.seq && length > 1) {
+      final fraction = alongMeters / length;
+      if (fraction > 0.08 && fraction < 0.88) {
+        _learnSegmentSeconds(
+          from.seq,
+          to.seq,
+          minutes * 60.0 / (1 - fraction),
+          rate: mapSegmentEtaLearnRate,
+        );
+      }
+    }
+    return (mps: mps, at: mps > 0 ? now : null, meters: alongMeters);
+  }
+
+  double? _timeReferenceMeters({
+    required double impliedMps,
+    required DateTime? anchorAt,
+    required double anchorMeters,
+    required DateTime now,
+    required double? learnedMeters,
+  }) {
+    if (impliedMps > 0 && anchorAt != null) {
+      final ageMs = now.difference(anchorAt).inMilliseconds;
+      final age = ageMs <= 0 ? 0.0 : ageMs / 1000.0;
+      return anchorMeters + impliedMps * age;
+    }
+    return learnedMeters;
+  }
+
+  double? _learnedReferenceMeters({
+    required String plate,
+    required int fromSeq,
+    required int toSeq,
+    required double length,
+    required double gpsMeters,
+    required DateTime now,
+  }) {
+    final clock = _legClocks[plate];
+    if (clock == null || !clock.startKnown) return null;
+    if (clock.fromSeq != fromSeq || clock.toSeq != toSeq) return null;
+    final learned = _learnedSegmentSeconds(fromSeq, toSeq);
+    if (learned == null) return null;
+    final elapsedMs = now.difference(clock.startedAt).inMilliseconds;
+    final elapsed = elapsedMs <= 0 ? 0.0 : elapsedMs / 1000.0;
+    return learnedLegMeters(
+      legMeters: length,
+      gpsMeters: gpsMeters,
+      elapsedSeconds: elapsed,
+      learnedSeconds: learned,
+    );
+  }
+
+  void _learnSegmentSeconds(
+    int fromSeq,
+    int toSeq,
+    double seconds, {
+    required double rate,
+  }) {
+    if (seconds < mapSegmentSecondsMin || seconds > mapSegmentSecondsMax) {
+      return;
+    }
+    if (rate <= 0) return;
+    final key = '$currentRoute|$currentDirection|$fromSeq|$toSeq';
+    final prev = _segmentSeconds[key];
+    _segmentSeconds[key] = prev == null
+        ? seconds
+        : prev + (seconds - prev) * rate;
+  }
+
+  double? _learnedSegmentSeconds(int fromSeq, int toSeq) {
+    return _segmentSeconds['$currentRoute|$currentDirection|$fromSeq|$toSeq'];
+  }
+
+  /// 見到車離開本站，或者一出現已經喺段頭，先記低開始時間。
+  void _noteOnLeg({
+    required String plate,
+    required int fromSeq,
+    required int toSeq,
+    required DateTime now,
+    required _BusLegMotion? prev,
+    required double fraction,
+  }) {
+    final existing = _legClocks[plate];
+    if (existing != null &&
+        existing.fromSeq == fromSeq &&
+        existing.toSeq == toSeq) {
+      return;
+    }
+    final nearStart = fraction < 0.12;
+    final departed =
+        prev != null &&
+        !prev.holdingBack &&
+        prev.fixAtStop &&
+        prev.fixStopSeq == fromSeq &&
+        fraction < 0.35;
+    _legClocks[plate] = _LegClock(
+      fromSeq: fromSeq,
+      toSeq: toSeq,
+      startedAt: now,
+      startKnown: nearStart || departed,
+    );
+  }
+
+  /// 車報到呢一站。起點知道先更新路段時間，然後清走個鐘。
+  void _noteArrived({
+    required String plate,
+    required int stopSeq,
+    required DateTime now,
+  }) {
+    final clock = _legClocks[plate];
+    if (clock == null || clock.toSeq != stopSeq) return;
+    if (clock.startKnown) {
+      final elapsedMs = now.difference(clock.startedAt).inMilliseconds;
+      final seconds = elapsedMs <= 0 ? 0.0 : elapsedMs / 1000.0;
+      _learnSegmentSeconds(
+        clock.fromSeq,
+        clock.toSeq,
+        seconds,
+        rate: mapSegmentLearnRate,
+      );
+    }
+    _legClocks.remove(plate);
   }
 
   /// 唔係總站、但資料話到站。如果個站喺而家顯示位置後面，就保持位置；
@@ -2525,6 +2840,20 @@ class BusController extends ChangeNotifier {
   }
 }
 
+class _LegClock {
+  final int fromSeq;
+  final int toSeq;
+  final DateTime startedAt;
+  final bool startKnown;
+
+  const _LegClock({
+    required this.fromSeq,
+    required this.toSeq,
+    required this.startedAt,
+    required this.startKnown,
+  });
+}
+
 class _BusLegMotion {
   final int stopSeq;
   final double traveledMeters;
@@ -2562,6 +2891,11 @@ class _BusLegMotion {
   final bool holdingBack;
   final int reportedStopIndex;
 
+  /// ETA 反推、由 [etaAnchorMeters] 計起嘅步速。0 代表呢個定位冇時間參考。
+  final double etaImpliedMps;
+  final DateTime? etaAnchorAt;
+  final double etaAnchorMeters;
+
   const _BusLegMotion({
     required this.stopSeq,
     required this.traveledMeters,
@@ -2588,6 +2922,9 @@ class _BusLegMotion {
     required this.retreatSince,
     required this.holdingBack,
     required this.reportedStopIndex,
+    this.etaImpliedMps = 0,
+    this.etaAnchorAt,
+    this.etaAnchorMeters = 0,
   });
 
   bool matchesFix(Bus bus) {
