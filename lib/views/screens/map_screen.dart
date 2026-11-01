@@ -1,13 +1,14 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
 import '../../constants/feature_flags.dart';
+import '../../constants/map_tiles.dart';
 import '../../controllers/bus_controller.dart';
 import '../../controllers/location_controller.dart';
 import '../../controllers/navigation_controller.dart';
@@ -19,6 +20,8 @@ import '../../utils/easy_read_arrival.dart';
 import '../../models/itinerary.dart';
 import '../../services/gps_service.dart';
 import '../../utils/route_result_helper.dart'; // 🌟 引入共用工具
+import '../widgets/map_basemap.dart';
+import '../widgets/map_tile_attribution.dart';
 import '../widgets/routing_bottom_sheet.dart';
 import '../widgets/route_liquid_glass_nav.dart';
 import '../widgets/fit_marquee_text.dart';
@@ -84,6 +87,8 @@ class _MapScreenState extends State<MapScreen> {
   double? _labelRotation;
   String? _openBusLicense;
   bool? _lastCameraEasyRead;
+  MapTileCredit _tileCredit =
+      kIsWeb ? MapTileCredit.mierune : MapTileCredit.openFreeMap;
 
   @override
   void initState() {
@@ -162,7 +167,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   /// TileLayer often skips the first layout (0-size / sheet still closing).
-  /// A camera event is required before OSM tiles actually download.
+  /// A camera event is required before basemap tiles actually download.
   void _scheduleTileKicks() {
     _tileKickTimer?.cancel();
     void kick({required bool fitRoute}) {
@@ -708,6 +713,7 @@ class _MapScreenState extends State<MapScreen> {
                 options: MapOptions(
                   initialCenter: mapCenter,
                   initialZoom: initialZoom,
+                  backgroundColor: const Color(0xFFF8F4F0),
                   onMapReady: _onMapReady,
                   onMapEvent: (_) {
                     if (!_mapReady) return;
@@ -727,7 +733,12 @@ class _MapScreenState extends State<MapScreen> {
                   },
                 ),
                 children: [
-                  TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'com.macau.bus_app', tileProvider: CachedTileProvider()),
+                  MapBasemap(
+                    onCredit: (credit) {
+                      if (!mounted || _tileCredit == credit) return;
+                      setState(() => _tileCredit = credit);
+                    },
+                  ),
                   if (isDark)
                     const IgnorePointer(
                       child: SizedBox.expand(
@@ -755,6 +766,11 @@ class _MapScreenState extends State<MapScreen> {
                   ),
                   MarkerLayer(markers: extraMarkers),
                 ],
+              ),
+              Positioned(
+                top: isPicking ? 72 : 8,
+                left: 8,
+                child: MapTileAttribution(credit: _tileCredit),
               ),
               if (busCtrl.isPickingMapStart || busCtrl.isPickingMapEnd)
                 Positioned(
@@ -1256,9 +1272,4 @@ class _BusPin extends StatelessWidget {
       ),
     );
   }
-}
-
-class CachedTileProvider extends TileProvider {
-  CachedTileProvider(); 
-  @override ImageProvider getImage(TileCoordinates coordinates, TileLayer options) { return CachedNetworkImageProvider(getTileUrl(coordinates, options)); }
 }

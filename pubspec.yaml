@@ -33,6 +33,8 @@ dependencies:
   flutter_markdown: ^0.6.18
   liquid_glass_easy: ^4.3.1
   flutter_tts: ^4.2.3
+  # 7.3.1 stays on flutter_map 6. 8.x requires flutter_map 7.
+  vector_map_tiles: 7.3.1
 
 dev_dependencies:
   flutter_test:
