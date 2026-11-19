@@ -191,8 +191,9 @@ String _formatBandTime(String raw, String lang) {
 }
 
 /// Published route timetable. Gold bus header, a day-type pill that opens on
-/// today's section, and one dark card per frequency band. Routes with no
-/// bundled bands show the empty-state copy instead of failing.
+/// today's section, and one dark card per frequency band. Bands come from the
+/// bundled DSAT file first; a server refresh can replace them while the dialog
+/// is open. Routes with no bands show the empty-state copy instead of failing.
 class TimetableDialog extends StatefulWidget {
   final String route;
   final int direction;
@@ -228,11 +229,19 @@ class TimetableDialog extends StatefulWidget {
 
 class _TimetableDialogState extends State<TimetableDialog> {
   late int _index;
+  bool _picked = false;
 
   @override
   void initState() {
     super.initState();
     _index = _initialIndex();
+    DsatTimetable.addListener(_onFrequencies);
+  }
+
+  @override
+  void dispose() {
+    DsatTimetable.removeListener(_onFrequencies);
+    super.dispose();
   }
 
   @override
@@ -241,8 +250,30 @@ class _TimetableDialogState extends State<TimetableDialog> {
     if (oldWidget.route != widget.route ||
         oldWidget.direction != widget.direction ||
         oldWidget.today != widget.today) {
+      _picked = false;
       _index = _initialIndex();
     }
+  }
+
+  /// A refresh that arrives after the dialog is open swaps the cards in place.
+  /// A day the rider already chose stays selected.
+  void _onFrequencies() {
+    if (!mounted) return;
+    setState(() {
+      final sections = DsatTimetable.sectionsFor(
+        widget.route,
+        widget.direction,
+      );
+      if (!_picked) {
+        _index = sections.isEmpty ? 0 : _initialIndex();
+        return;
+      }
+      if (sections.isEmpty) {
+        _index = 0;
+        return;
+      }
+      if (_index >= sections.length) _index = sections.length - 1;
+    });
   }
 
   int _initialIndex() {
@@ -323,7 +354,10 @@ class _TimetableDialogState extends State<TimetableDialog> {
                       ],
                       selected: selected,
                       isDark: isDark,
-                      onSelected: (index) => setState(() => _index = index),
+                      onSelected: (index) => setState(() {
+                        _picked = true;
+                        _index = index;
+                      }),
                     ),
                     const SizedBox(height: 14),
                     Flexible(

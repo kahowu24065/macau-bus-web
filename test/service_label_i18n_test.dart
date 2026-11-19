@@ -43,5 +43,9 @@ void main() {
       ServiceLabelI18n.translate('2026年9月12日、19日、25日及2026年10月1日、4日', 'en'),
       '12, 19 & 25 Sep 2026\n1 & 4 Oct 2026',
     );
+    expect(ServiceLabelI18n.translate('2026年11月19-21日', 'en'), '19–21 Nov 2026');
+    expect(ServiceLabelI18n.translate('2026年11月22日', 'en'), '22 Nov 2026');
+    expect(ServiceLabelI18n.translate('2026年11月19-21日', 'pt'), '19–21 nov. 2026');
+    expect(ServiceLabelI18n.translate('2026年11月22日', 'pt'), '22 nov. 2026');
   });
 }

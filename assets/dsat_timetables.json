@@ -4,8 +4,8 @@
   "source_site": "https://www.dsat.gov.mo/",
   "route_list_url": "https://www.dsat.gov.mo/dsat/bus_route.aspx",
   "fetched_at": "2026-10-05T23:47:21+08:00",
-  "route_count": 101,
-  "source_note": "Official DSAT route PDFs (bus_route.aspx / download_route.aspx). TimetableDialog reads each route's app_frequency (服務時間 / 班次(分鐘)). Headway ranges, not a departure clock, except routes that publish exact times (71S). PDF text excerpts are omitted.",
+  "route_count": 103,
+  "source_note": "Official DSAT route PDFs (bus_route.aspx / download_route.aspx). TimetableDialog reads each route's app_frequency (服務時間 / 班次(分鐘)). Headway ranges, not a departure clock, except routes that publish exact times (71S). PDF text excerpts are omitted. 12T and 31T are the 19-22 Nov 2026 Grand Prix free shuttles from the DSAT notice https://www.dsat.gov.mo/dsat/subpage.aspx?a_id=1793872311. The 22 Nov note that service may stop early if the circuit opens is not a published clock and is not encoded as one.",
   "routes": {
     "1": {
       "route": "1",
@@ -1642,6 +1642,60 @@
       "typhoon_note_pt": "Durante a passagem do tufão, as últimas partidas de autocarros partem uma hora após o içamento do sinal n.º 8",
       "hotline": "2",
       "special_notes": null,
+      "parse_ok": true
+    },
+    "12T": {
+      "route": "12T",
+      "route_name_pt": "TERMINAL MARÍTIMO DO PORTO EXTERIOR ↺ PRAÇA DE FERREIRA DO AMARAL",
+      "route_name_zh": "外港碼頭 ↺ 亞馬喇前地",
+      "bidirectional": false,
+      "circular": true,
+      "route_type_pt": "PERCURSO CIRCULAR",
+      "source_url": "https://www.dsat.gov.mo/dsat/subpage.aspx?a_id=1793872311",
+      "schedule_format": "frequency_bands",
+      "app_frequency": {
+        "columns": [
+          "服務時間",
+          "班次(分鐘)"
+        ],
+        "sections": [
+          {
+            "title": "2026年11月19-21日",
+            "title_pt": "19 a 21 de Novembro de 2026",
+            "directions": [
+              {
+                "direction_label": "CIRCULAR",
+                "rows": [
+                  {
+                    "服務時間": "06:00-00:30",
+                    "班次(分鐘)": "12-20"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "title": "2026年11月22日",
+            "title_pt": "22 de Novembro de 2026",
+            "directions": [
+              {
+                "direction_label": "CIRCULAR",
+                "rows": [
+                  {
+                    "服務時間": "06:00-19:00",
+                    "班次(分鐘)": "12-20"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "disclaimer": "Frequency bands transcribed from the DSAT Grand Prix free-shuttle notice (subpage a_id=1793872311). 19-21 Nov 2026 run 06:00 to 00:30 the next day. 22 Nov 2026 runs 06:00 to about 19:00, stored as 19:00. Service that day may stop earlier if the circuit opens; that earlier stop is not a published clock and is not encoded.",
+      "special_notes": [
+        "外港碼頭 ↺ 亞馬喇前地. Headway about 12-20 minutes.",
+        "22 Nov 2026 may end before 19:00 if the circuit opens. No separate clock is published for that case."
+      ],
       "parse_ok": true
     },
     "15": {
@@ -7453,6 +7507,60 @@
       "typhoon_note_pt": "Durante a passagem do tufão, as últimas partidas de autocarros partem 30 minutos após o içamento do sinal n.º 8",
       "hotline": "2885-0060",
       "special_notes": null,
+      "parse_ok": true
+    },
+    "31T": {
+      "route": "31T",
+      "route_name_pt": "TERMINAL MARÍTIMO DO PORTO EXTERIOR ↺ FÓRUM DE MACAU",
+      "route_name_zh": "外港碼頭 ↺ 綜藝館",
+      "bidirectional": false,
+      "circular": true,
+      "route_type_pt": "PERCURSO CIRCULAR",
+      "source_url": "https://www.dsat.gov.mo/dsat/subpage.aspx?a_id=1793872311",
+      "schedule_format": "frequency_bands",
+      "app_frequency": {
+        "columns": [
+          "服務時間",
+          "班次(分鐘)"
+        ],
+        "sections": [
+          {
+            "title": "2026年11月19-21日",
+            "title_pt": "19 a 21 de Novembro de 2026",
+            "directions": [
+              {
+                "direction_label": "CIRCULAR",
+                "rows": [
+                  {
+                    "服務時間": "06:00-00:30",
+                    "班次(分鐘)": "12-20"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "title": "2026年11月22日",
+            "title_pt": "22 de Novembro de 2026",
+            "directions": [
+              {
+                "direction_label": "CIRCULAR",
+                "rows": [
+                  {
+                    "服務時間": "06:00-19:00",
+                    "班次(分鐘)": "12-20"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "disclaimer": "Frequency bands transcribed from the DSAT Grand Prix free-shuttle notice (subpage a_id=1793872311). 19-21 Nov 2026 run 06:00 to 00:30 the next day. 22 Nov 2026 runs 06:00 to about 19:00, stored as 19:00. Service that day may stop earlier if the circuit opens; that earlier stop is not a published clock and is not encoded.",
+      "special_notes": [
+        "外港碼頭 ↺ 綜藝館. Headway about 12-20 minutes.",
+        "22 Nov 2026 may end before 19:00 if the circuit opens. No separate clock is published for that case."
+      ],
       "parse_ok": true
     },
     "32": {
