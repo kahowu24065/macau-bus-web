@@ -1,9 +1,12 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -162,7 +165,9 @@ int _keyedCount(WidgetTester tester, String prefix) {
 void main() {
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
+    DsatTimetable.debugFetch = (_) async => http.Response('offline', 503);
     await DsatTimetable.ensureLoaded();
+    await DsatTimetable.debugRefreshInFlight;
     await _loadRoboto();
   });
 
@@ -203,6 +208,14 @@ void main() {
       ),
       0,
     );
+
+    final shuttle = DsatTimetable.sectionsFor('31T', 1);
+    expect(timetableSectionIndexFor(shuttle, DateTime(2026, 11, 19)), 0);
+    expect(timetableSectionIndexFor(shuttle, DateTime(2026, 11, 20)), 0);
+    expect(timetableSectionIndexFor(shuttle, DateTime(2026, 11, 21)), 0);
+    expect(timetableSectionIndexFor(shuttle, DateTime(2026, 11, 22)), 1);
+    expect(shuttle[1].items.single.time, '06:00-19:00');
+    expect(shuttle[1].items.single.freq, '12 - 20');
   });
 
   test('dated sections win, and a shorter list beats a longer one', () {
@@ -342,6 +355,36 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('12T shows the Grand Prix bands for either direction', (
+    tester,
+  ) async {
+    await _pumpDialog(
+      tester,
+      route: '12T',
+      direction: 1,
+      today: DateTime(2026, 11, 22),
+    );
+
+    expect(find.text('12T 時間表'), findsOneWidget);
+    expect(find.text('06:00 - 19:00'), findsOneWidget);
+    expect(find.text('12 - 20'), findsOneWidget);
+    expect(find.text('06:00 - 00:30'), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('timetable-day-selected')),
+        matching: find.text('2026年11月22日'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('2026年11月19-21日'));
+    await tester.pumpAndSettle();
+    expect(find.text('06:00 - 00:30'), findsOneWidget);
+    expect(find.text('06:00 - 19:00'), findsNothing);
+    expect(find.text('12 - 20'), findsOneWidget);
+    expect(find.textContaining('18:'), findsNothing);
   });
 
   testWidgets('a route without bands fails with the empty state', (
@@ -492,6 +535,91 @@ void main() {
   ) async {
     await _expectFrequencyRow(tester, easyRead: true);
   });
+
+  testWidgets('an open dialog picks up a new server shuttle', (tester) async {
+    final gate = Completer<http.Response>();
+    final uris = <Uri>[];
+    DsatTimetable.debugFetch = (uri) {
+      uris.add(uri);
+      return gate.future;
+    };
+    addTearDown(() async {
+      if (!gate.isCompleted) {
+        gate.complete(http.Response('offline', 503));
+      }
+      await DsatTimetable.debugRefreshInFlight;
+      DsatTimetable.debugReset();
+      DsatTimetable.debugFetch = (_) async => http.Response('offline', 503);
+      await DsatTimetable.ensureLoaded();
+      await DsatTimetable.debugRefreshInFlight;
+    });
+
+    DsatTimetable.debugExpire();
+    await _pumpDialog(tester, route: '99T', direction: 1);
+    expect(find.text('暫無詳細時間表資料'), findsOneWidget);
+    expect(find.text('服務時間'), findsNothing);
+    expect(uris.single.toString(), DsatTimetable.frequencyUri.toString());
+
+    gate.complete(
+      http.Response.bytes(
+        utf8.encode(
+          _serverBody({
+            '99T': {
+              'circular': true,
+              'app_frequency': {
+                'sections': [
+                  {
+                    'title': '2026年11月19日',
+                    'directions': [
+                      {
+                        'direction_label': 'CIRCULAR',
+                        'rows': [
+                          {'服務時間': '08:15-09:45', '班次(分鐘)': '5-7'},
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+          }),
+        ),
+        200,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('暫無詳細時間表資料'), findsNothing);
+    expect(find.text('99T 時間表'), findsOneWidget);
+    expect(find.text('08:15 - 09:45'), findsOneWidget);
+    expect(find.text('5 - 7'), findsOneWidget);
+    expect(find.text('服務時間'), findsOneWidget);
+    expect(DsatTimetable.usingServerCopy, isTrue);
+  });
+}
+
+String _serverBody(Map<String, dynamic> extra) {
+  final routes = <String, dynamic>{
+    for (var i = 0; i < DsatTimetable.minServerRoutes; i++)
+      'F$i': {
+        'app_frequency': {
+          'sections': [
+            {
+              'title': '2026年11月19日',
+              'directions': [
+                {
+                  'rows': [
+                    {'服務時間': '06:00-07:00', '班次(分鐘)': '10-12'},
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+  };
+  routes.addAll(extra);
+  return jsonEncode({'schema': DsatTimetable.schema, 'routes': routes});
 }
 
 /// Clock and frequency label stay on one line, next to each other, and share

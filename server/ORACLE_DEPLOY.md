@@ -106,3 +106,98 @@ mountBoardingReminder(app, {
 While the reminder is active, the process sends an Apple Live Activity update about every 20 seconds (`apns-push-type: liveactivity`, topic `mo.mbka.bus.push-type.liveactivity`). Each update is the original remaining time minus elapsed wall time, as predicted minutes, an etaLabel such as 預測到站時間尚餘, and a sentence that names the stop. It does not call the transport bureau again. An end push is sent when that countdown reaches the stop. The timer is in memory, so the Node process has to stay up. `POST /api/boarding-reminder/cancel` clears it, and a later tick does not push. The same `reminderId` does not schedule a second timer. A later POST with that same id and `activityToken` stores the token. If an update was already due and had no token, that POST sends the current countdown. A new reminder that reuses the same activity token or push-to-start token cancels the older one.
 
 Apple push is sent only when `APNS_KEY_ID`, `APNS_TEAM_ID`, and `APNS_KEY_P8` or `APNS_KEY_PATH` are set. `APNS_USE_SANDBOX=1` uses the sandbox host. Do not invent a key. Without those values the reminder is still stored and `pushConfigured` is false.
+
+## Frequency timetable (時間表 dialog)
+
+The route screen reads official headway bands from `GET https://macaubus-kat1.com/api/dsat_timetables.json`.
+
+This repo does not contain `server.js`. Copy `server/dsat_timetables.js` and `server/dsat_timetables.json` to `~/macau-bus/` and mount them on the same app as `/api/bus-stops`:
+
+```js
+const { mountDsatTimetables } = require('./dsat_timetables');
+
+mountDsatTimetables(app, {
+  filePath: "/home/ubuntu/macau-bus/dsat_timetables.json",
+});
+```
+
+`filePath` must be a quoted string. `DSAT_TIMETABLES_PATH` overrides it. The handler also registers `GET /dsat_timetables.json`. The app calls `/api/dsat_timetables.json`.
+
+The handler reads the file on every request, so a later edit does not need a process restart. It does not call bis.dsat.gov.mo or motransportinfo.
+
+Check the file before relying on it:
+
+```bash
+node ~/macau-bus/dsat_timetables.js --file ~/macau-bus/dsat_timetables.json
+curl -sS 'http://127.0.0.1:PORT/api/dsat_timetables.json' | head -c 200
+```
+
+A valid file prints `{"ok":true,...,"has12T":true,"has31T":true}`. The curl body is the same JSON. Anything else (missing file, bad JSON, wrong schema, fewer than 50 usable routes) is HTTP 503 `{"success":false,"error":"dsat_timetables_..."}`. The app treats 503 as a challenge and keeps the bands it already has.
+
+### Do not touch `/api/timetable.json`
+
+That endpoint stays the compact first/last windows:
+
+```json
+{ "date": "20261119", "routes": { "1A_0": { "startTime": "06:00", "endTime": "00:10" } } }
+```
+
+The frequency file is a different document. Do not serve one from the other's URL.
+
+### JSON shape
+
+`schema` must be `dsat-app-frequency-v1`. `routes` is the full set. A successful response replaces the app's in-memory map, so a route left out of the file disappears from the dialog until the next app release. Add a shuttle by adding one key. A circular route has one direction; the dialog shows that direction for either direction index.
+
+```json
+{
+  "schema": "dsat-app-frequency-v1",
+  "routes": {
+    "12T": {
+      "circular": true,
+      "app_frequency": {
+        "columns": ["服務時間", "班次(分鐘)"],
+        "sections": [
+          {
+            "title": "2026年11月19-21日",
+            "directions": [
+              {
+                "direction_label": "CIRCULAR",
+                "rows": [{ "服務時間": "06:00-00:30", "班次(分鐘)": "12-20" }]
+              }
+            ]
+          },
+          {
+            "title": "2026年11月22日",
+            "directions": [
+              {
+                "direction_label": "CIRCULAR",
+                "rows": [{ "服務時間": "06:00-19:00", "班次(分鐘)": "12-20" }]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+The block above is the shape of one route. Serving that fragment alone is refused (`dsat_timetables_too_small`). `server/dsat_timetables.json` is the full file, including every bundled route plus 12T and 31T. Start from it. 31T uses the same two bands (外港碼頭 ↺ 綜藝館). 12T is 外港碼頭 ↺ 亞馬喇前地. Both are from the DSAT Grand Prix notice `https://www.dsat.gov.mo/dsat/subpage.aspx?a_id=1793872311`:
+
+- 19–21 Nov 2026: 06:00 to 00:30 the next day, headway 12–20 minutes
+- 22 Nov 2026: 06:00 to about 19:00, stored as 19:00, same headway
+
+The notice says service on the 22nd may stop early if the circuit opens. That earlier stop is not a published clock and is not in the file. Do not add a time for it.
+
+A route counts as usable when its value has an `app_frequency` object, or a legacy `directions` object keyed `"0"` / `"1"`. A `directions` array does not count. The server and the app both refuse a file with fewer than 50 usable routes (`MIN_ROUTES` in `dsat_timetables.js`, `DsatTimetable.minServerRoutes` in the app).
+
+### What the app does
+
+1. Opening 時間表 loads `assets/dsat_timetables.json` from the install if memory is empty. The dialog does not wait for the network.
+2. If the last attempt was more than 30 minutes ago, or there has not been one, the app GETs `/api/dsat_timetables.json` with a 5 second timeout. One attempt runs at a time.
+3. The in-memory map is replaced only when the response is HTTP 200, not a Cloudflare challenge (403, 429, 503, or a body whose first non-space character is `<`), `schema` is `dsat-app-frequency-v1`, and at least 50 routes are usable. The open dialog rebuilds when that happens.
+4. Any error, timeout, challenge, schema mismatch, or short file keeps the current map (the asset, or the last accepted server file).
+5. A failed attempt still starts the 30 minute wait. The next dialog open inside that window does not try again.
+6. Nothing is written to disk. The next process starts from the bundled asset, then refreshes.
+
+The response sends `Cache-Control: public, max-age=60`. Keep Cloudflare's cache for this path that short or shorter. A long CDN cache hides a server edit from phones that are already refreshing. The app itself will not ask more often than every 30 minutes.

@@ -3,7 +3,8 @@
 /// Route polylines come from the DSAT open-data shapefile
 /// (`ROUTE_NETWORK` joined through `BUS_ROUTE_SEQ`), via `/api/route-shape`.
 /// Published timetables are official DSAT frequency bands
-/// (`assets/dsat_timetables.json`), not motransportinfo / debug_details.
+/// (`assets/dsat_timetables.json`, refreshed from `/api/dsat_timetables.json`),
+/// not motransportinfo / debug_details.
 class FeatureFlags {
   /// Route map polylines, including the route map button and the planner
   /// "show on map" shape overlay.
